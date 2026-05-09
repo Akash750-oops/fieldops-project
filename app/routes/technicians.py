@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from typing import List, Union
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import get_db
@@ -11,23 +12,39 @@ router = APIRouter(
 )
 
 
-@router.post("/technicians", status_code=status.HTTP_200_OK)
-def create_technician(technician: schemas.TechnicianCreate, db: Session = Depends(get_db)):
+@router.post("/technicians", status_code=status.HTTP_201_CREATED)
+def create_technician(technicians: Union[schemas.TechnicianCreate, List[schemas.TechnicianCreate]], db: Session = Depends(get_db)):
     """
-    Create a new technician.
+    Create one or more new technicians.
     """
     try:
-        new_technician = models.Technician(
-            technician_name=technician.technician_name,
-            technician_skill=technician.technician_skill,
-            technician_location=technician.technician_location,
-            technician_status=technician.technician_status
-        )
+        # Normalize input to a list of technicians
+        is_bulk = isinstance(technicians, list)
+        technician_data_list = technicians if is_bulk else [technicians]
 
-        db.add(new_technician)
+        technician_objects = [
+            models.Technician(
+                technician_name=t.technician_name,
+                technician_skill=t.technician_skill,
+                technician_location=t.technician_location,
+                technician_status=t.technician_status
+            ) for t in technician_data_list
+        ]
+
+        db.add_all(technician_objects)
         db.commit()
-        db.refresh(new_technician)
 
+        if is_bulk:
+            for tech in technician_objects:
+                db.refresh(tech)
+            return {
+                "message": f"{len(technician_objects)} technicians created successfully",
+                "technicians": technician_objects
+            }
+
+        # Single technician response (preserving existing format)
+        new_technician = technician_objects[0]
+        db.refresh(new_technician)
         return {
             "message": "Technician created successfully",
             "technician_id": new_technician.technician_id,
