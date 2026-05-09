@@ -13,6 +13,7 @@ class JobCreate(BaseModel):
     @field_validator("priority")
     @classmethod
     def validate_priority(cls, value):
+        value = value.upper() if isinstance(value, str) else value
         allowed = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
         if value not in allowed:
             raise ValueError("Invalid priority value")

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Union
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -13,31 +14,42 @@ router = APIRouter(
 
 
 @router.post("/jobs", status_code=status.HTTP_200_OK)
-def create_job(job: schemas.JobCreate, db: Session = Depends(get_db)):
+def create_job(jobs: Union[schemas.JobCreate, List[schemas.JobCreate]], db: Session = Depends(get_db)):
     """
-    Create a new job.
+    Create one or more new jobs.
 
     PostgreSQL automatically generates a unique job ID
     because id is SERIAL / primary key in the jobs table.
-
-    Success: 200
-    Bad request: 400
-    Database/server error: 500
     """
 
     try:
-        new_job = models.Job(
-            customer_name=job.customer_name,
-            location=job.location,
-            issue=job.issue,
-            priority=job.priority,
-            status=job.status
-        )
+        # Normalize input to a list of jobs
+        is_bulk = isinstance(jobs, list)
+        job_data_list = jobs if is_bulk else [jobs]
 
-        db.add(new_job)
+        job_objects = [
+            models.Job(
+                customer_name=j.customer_name,
+                location=j.location,
+                issue=j.issue,
+                priority=j.priority,
+                status=j.status
+            ) for j in job_data_list
+        ]
+
+        db.add_all(job_objects)
         db.commit()
 
-        # Get auto-generated ID from PostgreSQL
+        if is_bulk:
+            for job in job_objects:
+                db.refresh(job)
+            return {
+                "message": f"{len(job_objects)} jobs created successfully",
+                "jobs": job_objects
+            }
+
+        # Single job response (preserving existing format for frontend compatibility)
+        new_job = job_objects[0]
         db.refresh(new_job)
 
         return {
@@ -161,6 +173,7 @@ def update_job(job_id: int, job_data: schemas.JobCreate, db: Session = Depends(g
         job.location = job_data.location
         job.issue = job_data.issue
         job.priority = job_data.priority
+        job.status = job_data.status
 
         db.commit()
         db.refresh(job)
