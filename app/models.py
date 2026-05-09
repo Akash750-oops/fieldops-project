@@ -26,11 +26,10 @@ class Job(Base):
 class Technician(Base):
     __tablename__ = "technicians"
 
-    id = Column(Integer, primary_key=True, index=True)
+    technician_id = Column(Integer, primary_key=True, index=True)
     technician_name = Column(Text, nullable=False)
-    skill = Column(Text, nullable=False)
-    phone_number = Column(Text, nullable=False)
-    availability_status = Column(Text, nullable=False)
-    assigned_area = Column(Text, nullable=False)
+    technician_skill = Column(Text, nullable=False)
+    technician_location = Column(Text, nullable=False)
+    technician_status = Column(Text, nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())

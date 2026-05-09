@@ -19,10 +19,9 @@ def create_technician(technician: schemas.TechnicianCreate, db: Session = Depend
     try:
         new_technician = models.Technician(
             technician_name=technician.technician_name,
-            skill=technician.skill,
-            phone_number=technician.phone_number,
-            availability_status=technician.availability_status,
-            assigned_area=technician.assigned_area
+            technician_skill=technician.technician_skill,
+            technician_location=technician.technician_location,
+            technician_status=technician.technician_status
         )
 
         db.add(new_technician)
@@ -31,7 +30,7 @@ def create_technician(technician: schemas.TechnicianCreate, db: Session = Depend
 
         return {
             "message": "Technician created successfully",
-            "technician_id": new_technician.id,
+            "technician_id": new_technician.technician_id,
             "technician": new_technician
         }
 
@@ -55,7 +54,7 @@ def get_all_technicians(db: Session = Depends(get_db)):
     Get all technicians.
     """
     try:
-        technicians = db.query(models.Technician).order_by(models.Technician.id.desc()).all()
+        technicians = db.query(models.Technician).order_by(models.Technician.technician_id.desc()).all()
 
         return {
             "message": "Technicians fetched successfully",
@@ -76,7 +75,7 @@ def get_technician_by_id(technician_id: int, db: Session = Depends(get_db)):
     Get one technician by ID.
     """
     try:
-        technician = db.query(models.Technician).filter(models.Technician.id == technician_id).first()
+        technician = db.query(models.Technician).filter(models.Technician.technician_id == technician_id).first()
 
         if not technician:
             raise HTTPException(
@@ -104,7 +103,7 @@ def update_technician(technician_id: int, technician_data: schemas.TechnicianCre
     Update technician details.
     """
     try:
-        technician = db.query(models.Technician).filter(models.Technician.id == technician_id).first()
+        technician = db.query(models.Technician).filter(models.Technician.technician_id == technician_id).first()
 
         if not technician:
             raise HTTPException(
@@ -113,10 +112,9 @@ def update_technician(technician_id: int, technician_data: schemas.TechnicianCre
             )
 
         technician.technician_name = technician_data.technician_name
-        technician.skill = technician_data.skill
-        technician.phone_number = technician_data.phone_number
-        technician.availability_status = technician_data.availability_status
-        technician.assigned_area = technician_data.assigned_area
+        technician.technician_skill = technician_data.technician_skill
+        technician.technician_location = technician_data.technician_location
+        technician.technician_status = technician_data.technician_status
 
         db.commit()
         db.refresh(technician)
@@ -142,7 +140,7 @@ def delete_technician(technician_id: int, db: Session = Depends(get_db)):
     Delete technician.
     """
     try:
-        technician = db.query(models.Technician).filter(models.Technician.id == technician_id).first()
+        technician = db.query(models.Technician).filter(models.Technician.technician_id == technician_id).first()
 
         if not technician:
             raise HTTPException(
@@ -150,7 +148,7 @@ def delete_technician(technician_id: int, db: Session = Depends(get_db)):
                 detail="Technician not found"
             )
 
-        deleted_id = technician.id
+        deleted_id = technician.technician_id
         db.delete(technician)
         db.commit()
 

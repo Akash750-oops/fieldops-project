@@ -42,35 +42,24 @@ class JobResponse(BaseModel):
 
 class TechnicianCreate(BaseModel):
     technician_name: str
-    skill: str
-    phone_number: str
-    availability_status: str
-    assigned_area: str
+    technician_skill: str
+    technician_location: str
+    technician_status: str
 
-    @field_validator("technician_name", "skill", "phone_number", "availability_status", "assigned_area")
+    @field_validator("technician_name", "technician_skill", "technician_location", "technician_status")
     @classmethod
     def field_must_not_be_empty(cls, value):
         if value is None or value.strip() == "":
             raise ValueError("Field cannot be empty")
         return value.strip()
 
-    @field_validator("phone_number")
-    @classmethod
-    def validate_phone_number(cls, value):
-        if len(value) < 10:
-            raise ValueError("Phone number must be at least 10 digits")
-        if not value.isdigit():
-            raise ValueError("Phone number must contain only digits")
-        return value
-
 
 class TechnicianResponse(BaseModel):
-    id: int
+    technician_id: int
     technician_name: str
-    skill: str
-    phone_number: str
-    availability_status: str
-    assigned_area: str
+    technician_skill: str
+    technician_location: str
+    technician_status: str
     created_at: datetime
     updated_at: datetime
 
