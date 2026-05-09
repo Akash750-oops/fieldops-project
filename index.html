@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -89,6 +89,7 @@
             <div class="input-box">
               <select id="priority" name="priority" required>
                 <option value="">-- Select Priority --</option>
+                <option value="Critical">Critical</option>
                 <option value="High">High</option>
                 <option value="Medium">Medium</option>
                 <option value="Low">Low</option>
@@ -140,6 +141,7 @@
           <option value="pending">Pending</option>
           <option value="inprogress">In Progress</option>
           <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
         </select>
       </div>
 
@@ -148,6 +150,7 @@
 
         <select id="priorityFilter">
           <option value="">All Priority</option>
+          <option value="Critical">Critical</option>
           <option value="High">High</option>
           <option value="Medium">Medium</option>
           <option value="Low">Low</option>
@@ -245,6 +248,7 @@
            
             <select id="edit_priority">
               <option value="">-- Select Priority --</option>
+              <option value="Critical">Critical</option>
               <option value="High">High</option>
               <option value="Medium">Medium</option>
               <option value="Low">Low</option>
@@ -259,9 +263,11 @@
           <div class="input-box">
             <select id="edit_status" required>
               <option value="">-- Select Status --</option>
+              <option value="active">Active</option>
               <option value="pending">Pending</option>
               <option value="inprogress">In Progress</option>
               <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
             </select>
           </div>
         </div>

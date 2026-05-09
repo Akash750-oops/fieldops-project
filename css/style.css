@@ -1,4 +1,4 @@
-﻿/* ===== FieldOps Commander UI ===== */
+/* ===== FieldOps Commander UI ===== */
 
 * {
   box-sizing: border-box;
@@ -625,3 +625,53 @@ select.invalid {
     padding: 22px;
   }
 }
+
+/* ===== Cancel & Delete Buttons ===== */
+
+.action-btns {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.btn-cancel {
+  padding: 8px 14px;
+  border: 1.5px solid #fecaca;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.btn-cancel:hover {
+  background: #fee2e2;
+  transform: translateY(-1px);
+}
+
+.btn-delete {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 10px;
+  background: #334155;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.btn-delete:hover {
+  background: #1e293b;
+  transform: translateY(-1px);
+}
+
+/* Status Text Colors */
+
+.status-active { color: #2563eb; font-weight: 700; }
+.status-pending { color: #d97706; font-weight: 700; }
+.status-inprogress { color: #7c3aed; font-weight: 700; }
+.status-completed { color: #059669; font-weight: 700; }
+.status-cancelled { color: #94a3b8; font-weight: 700; text-decoration: line-through; }

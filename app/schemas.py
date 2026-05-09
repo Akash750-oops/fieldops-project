@@ -8,7 +8,7 @@ class JobCreate(BaseModel):
     location: str
     issue: str
     priority: str
-    status: Literal["active", "pending", "in progress", "completed"] = "active"
+    status: Literal["active", "pending", "in progress", "completed", "cancelled"] = "active"
 
     @field_validator("priority")
     @classmethod

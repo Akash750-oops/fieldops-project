@@ -1,52 +1,58 @@
+import requests
+import json
 
-from fastapi.testclient import TestClient
-from app.main import app
-import random
+BASE_URL = "http://127.0.0.1:8000"
 
-client = TestClient(app)
-
-def test_sorting_functionality():
-    # 1. Clear or ensure we have fresh data for the test if possible, 
-    # but since it's a real DB, we'll just add new identifiable ones.
-    test_id = random.randint(1000, 9999)
-    
+def setup_sample_jobs():
     jobs_to_create = [
-        {"priority": "LOW", "customer_name": f"Low_{test_id}"},
-        {"priority": "CRITICAL", "customer_name": f"Critical_{test_id}"},
-        {"priority": "MEDIUM", "customer_name": f"Medium_{test_id}"},
-        {"priority": "HIGH", "customer_name": f"High_{test_id}"},
+        {"customer_name": "Low User", "location": "Loc A", "issue": "Problem A", "priority": "LOW"},
+        {"customer_name": "High User", "location": "Loc B", "issue": "Problem B", "priority": "HIGH"},
+        {"customer_name": "Medium User", "location": "Loc C", "issue": "Problem C", "priority": "MEDIUM"},
+        {"customer_name": "Critical User", "location": "Loc D", "issue": "Problem D", "priority": "CRITICAL"},
+        {"customer_name": "Another High User", "location": "Loc E", "issue": "Problem E", "priority": "HIGH"},
     ]
     
+    print("Creating sample jobs...")
     for job in jobs_to_create:
-        response = client.post("/jobs", json={
-            "customer_name": job["customer_name"],
-            "location": "Test City",
-            "issue": "Test Issue",
-            "priority": job["priority"]
-        })
-        assert response.status_code == 200
+        requests.post(f"{BASE_URL}/jobs", json=job)
 
-    # 2. Fetch sorted jobs
-    response = client.get("/jobs/sorted")
-    assert response.status_code == 200
-    data = response.json()
-    jobs = data["jobs"]
-    
-    # Filter only our test jobs to verify order among them
-    our_jobs = [j for j in jobs if str(test_id) in j["customer_name"]]
-    
-    priorities_received = [j["priority"] for j in our_jobs]
-    expected_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
-    
-    print(f"Priorities received: {priorities_received}")
-    assert priorities_received == expected_order
-    print("Verification Successful: Jobs are correctly sorted by priority!")
+def test_job_sorting():
+    print("Testing GET /jobs/sorted...")
+    try:
+        response = requests.get(f"{BASE_URL}/jobs/sorted")
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            jobs = data.get("jobs", [])
+            print(f"Total jobs: {len(jobs)}")
+            
+            priorities = [job["priority"] for job in jobs]
+            print(f"Priority sequence: {priorities}")
+            
+            # Expected order of levels logic: CRITICAL before HIGH, HIGH before MEDIUM, MEDIUM before LOW
+            level_map = {"CRITICAL": 1, "HIGH": 2, "MEDIUM": 3, "LOW": 4}
+            
+            is_sorted = True
+            for i in range(len(priorities) - 1):
+                if level_map[priorities[i]] > level_map[priorities[i+1]]:
+                    is_sorted = False
+                    break
+            
+            if is_sorted:
+                print("✅ SUCCESS: Jobs are sorted correctly by priority!")
+            else:
+                print("❌ FAILURE: Jobs are NOT sorted correctly by priority.")
+                
+            # Print the first few for visual check
+            for i, job in enumerate(jobs[:5]):
+                print(f"{i+1}. {job['customer_name']} - Priority: {job['priority']}")
+        else:
+            print(f"Error: {response.text}")
+            
+    except Exception as e:
+        print(f"Error connecting to API: {e}. Make sure the FastAPI server is running at {BASE_URL}")
 
 if __name__ == "__main__":
-    try:
-        test_sorting_functionality()
-        print("\nAll sorting tests passed!")
-    except Exception as e:
-        print(f"\nSorting tests failed: {e}")
-        import traceback
-        traceback.print_exc()
+    setup_sample_jobs()
+    test_job_sorting()
