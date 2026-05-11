@@ -40,3 +40,23 @@ def create_job(job: JobCreate, db: Session = Depends(get_db)):
 @router.get("/", response_model=list[JobResponse])
 def get_jobs(db: Session = Depends(get_db)):
     return db.query(Job).order_by(Job.id.desc()).all()
+
+@router.put("/{job_id}", response_model=JobResponse)
+def update_job(job_id: int, job: JobCreate, db: Session = Depends(get_db)):
+    existing_job = db.query(Job).filter(Job.id == job_id).first()
+
+    if not existing_job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    existing_job.customer_name = job.customer_name
+    existing_job.location = job.location
+    existing_job.issue_description = job.issue_description
+    existing_job.priority = job.priority
+    existing_job.service_type = job.service_type
+    existing_job.contact_number = job.contact_number
+    existing_job.preferred_service_date = job.preferred_service_date
+
+    db.commit()
+    db.refresh(existing_job)
+
+    return existing_job
