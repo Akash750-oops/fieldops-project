@@ -8,6 +8,7 @@ class JobCreate(BaseModel):
     location: str
     issue: str
     priority: str
+    required_skill: str
     status: Literal["active", "pending", "in progress", "completed", "cancelled"] = "active"
 
     @field_validator("priority")
@@ -18,7 +19,7 @@ class JobCreate(BaseModel):
             raise ValueError("Invalid priority value")
         return value
 
-    @field_validator("customer_name", "location", "issue")
+    @field_validator("customer_name", "location", "issue", "required_skill")
     @classmethod
     def field_must_not_be_empty(cls, value):
         if value is None or value.strip() == "":
@@ -32,7 +33,9 @@ class JobResponse(BaseModel):
     location: str
     issue: str
     priority: str
+    required_skill: str
     status: str
+    assigned_technician_id: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -65,3 +68,13 @@ class TechnicianResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TechnicianAssignment(BaseModel):
+    job_id: int
+    technician_id: int
+
+
+class NearestTechnicianResponse(BaseModel):
+    technician: TechnicianResponse
+    distance: float

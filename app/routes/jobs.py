@@ -31,6 +31,7 @@ def create_job(job: schemas.JobCreate, db: Session = Depends(get_db)):
             location=job.location,
             issue=job.issue,
             priority=job.priority,
+            required_skill=job.required_skill,
             status=job.status
         )
 
@@ -49,6 +50,7 @@ def create_job(job: schemas.JobCreate, db: Session = Depends(get_db)):
                 "location": new_job.location,
                 "issue": new_job.issue,
                 "priority": new_job.priority,
+                "required_skill": new_job.required_skill,
                 "status": new_job.status,
                 "created_at": new_job.created_at,
                 "updated_at": new_job.updated_at,
@@ -161,6 +163,7 @@ def update_job(job_id: int, job_data: schemas.JobCreate, db: Session = Depends(g
         job.location = job_data.location
         job.issue = job_data.issue
         job.priority = job_data.priority
+        job.required_skill = job_data.required_skill
 
         db.commit()
         db.refresh(job)
@@ -173,6 +176,7 @@ def update_job(job_id: int, job_data: schemas.JobCreate, db: Session = Depends(g
                 "location": job.location,
                 "issue": job.issue,
                 "priority": job.priority,
+                "required_skill": job.required_skill,
                 "status": job.status,
                 "created_at": job.created_at,
                 "updated_at": job.updated_at,
@@ -228,6 +232,7 @@ def cancel_job(job_id: int, db: Session = Depends(get_db)):
                 "location": job.location,
                 "issue": job.issue,
                 "priority": job.priority,
+                "required_skill": job.required_skill,
                 "status": job.status,
                 "created_at": job.created_at,
                 "updated_at": job.updated_at,
