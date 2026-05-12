@@ -39,27 +39,28 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     errors = exc.errors()
-
+    
+    # Check if this is our custom priority error or priority field error
     for err in errors:
         loc = err.get("loc", [])
         is_priority = "priority" in loc
         msg = err.get("msg", "")
-
+        
         if is_priority or "Invalid priority value" in msg:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"error": "Invalid priority value"}
             )
-
+            
+        # Handle field_must_not_be_empty or other generic field errors
         if "Field cannot be empty" in msg:
-            field = loc[-1] if loc else "field"
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content={
-                    "error": f"{str(field).replace('_', ' ').capitalize()} cannot be empty"
-                }
-            )
+             field = loc[-1] if loc else "field"
+             return JSONResponse(
+                 status_code=status.HTTP_400_BAD_REQUEST,
+                 content={"error": f"{str(field).replace('_', ' ').capitalize()} cannot be empty"}
+             )
 
+    # Fallback for other validation errors
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={
@@ -79,5 +80,5 @@ app.include_router(technicians.router)
 @app.get("/")
 def home():
     return {
-        "message": "FieldOps Commander API is running"
+        "message": "FieldOps Commander backend is running"
     }
