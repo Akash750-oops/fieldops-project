@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List
 
-from app.database import get_db
-from app import models, schemas, utils
+from ..database import get_db
+from .. import models, schemas, utils
 
 router = APIRouter(
     tags=["Assignment"]

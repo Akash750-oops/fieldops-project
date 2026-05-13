@@ -4,9 +4,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette import status
 
-from app.database import Base, engine
-from app.routes import jobs, technicians, assignment
-from app import models
+from .database import Base, engine
+from .routes import jobs, technicians, assignment
+from . import models
 
 
 app = FastAPI(

@@ -15,11 +15,10 @@ const initialFormData = {
 };
 
 const priorities = [
-  { label: "P1 — Critical", value: "P1" },
-  { label: "P2 — High", value: "P2" },
-  { label: "P3 — Medium", value: "P3" },
-  { label: "P4 — Low", value: "P4" },
-  { label: "P5 — Planned", value: "P5" },
+  { label: "Critical", value: "CRITICAL" },
+  { label: "High", value: "HIGH" },
+  { label: "Medium", value: "MEDIUM" },
+  { label: "Low", value: "LOW" },
 ];
 
 const serviceTypes = [
@@ -38,6 +37,9 @@ function JobCreationForm() {
   const [apiError, setApiError] = useState("");
   const [loading, setLoading] = useState(false);
   const [jobsLoading, setJobsLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [priorityFilter, setPriorityFilter] = useState("ALL");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingJobId, setEditingJobId] = useState(null);
@@ -201,6 +203,29 @@ function JobCreationForm() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this job?")) {
+      return;
+    }
+
+    try {
+      setJobsLoading(true);
+      await axios.delete(`${API_URL}${id}`);
+      setPopup({
+        show: true,
+        title: "Job Deleted",
+        message: "The job has been removed successfully.",
+        jobId: id,
+      });
+      fetchJobs();
+    } catch (error) {
+      console.error(error);
+      setApiError("Unable to delete job. Please check backend API.");
+    } finally {
+      setJobsLoading(false);
     }
   };
 
@@ -388,39 +413,129 @@ function JobCreationForm() {
             </button>
           </div>
 
+          <div className="filters-container" style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginBottom: '20px', padding: '15px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ flex: '1 1 200px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '8px' }}>SEARCH</label>
+              <input 
+                type="text"
+                placeholder="Search name, location, issue..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+              />
+            </div>
+            <div style={{ flex: '1 1 150px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '8px' }}>STATUS</label>
+              <select 
+                value={statusFilter} 
+                onChange={(e) => setStatusFilter(e.target.value)}
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="in progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '8px' }}>PRIORITY</label>
+              <select 
+                value={priorityFilter} 
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+              >
+                <option value="ALL">All Priorities</option>
+                <option value="CRITICAL">Critical</option>
+                <option value="HIGH">High</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="LOW">Low</option>
+              </select>
+            </div>
+          </div>
+
           {jobsLoading ? (
             <p className="empty-text">Loading jobs...</p>
           ) : jobs.length === 0 ? (
             <p className="empty-text">No jobs available. Create your first job.</p>
           ) : (
             <div className="job-list">
-              {jobs.map((job) => (
+              {jobs
+                .filter(job => statusFilter === "ALL" || job.status === statusFilter)
+                .filter(job => {
+                  if (priorityFilter === "ALL") return true;
+                  const jobPriority = (job.priority || "").toUpperCase();
+                  const priorityMap = {
+                    "P1": "CRITICAL",
+                    "P2": "HIGH",
+                    "P3": "MEDIUM",
+                    "P4": "LOW",
+                    "P5": "LOW"
+                  };
+                  const normalizedJobPriority = priorityMap[jobPriority] || jobPriority;
+                  return normalizedJobPriority === priorityFilter;
+                })
+                .filter(job => {
+                  const search = searchTerm.toLowerCase();
+                  return (
+                    (job.customer_name && job.customer_name.toLowerCase().includes(search)) ||
+                    (job.location && job.location.toLowerCase().includes(search)) ||
+                    (job.issue_description && job.issue_description.toLowerCase().includes(search))
+                  );
+                })
+                .map((job) => (
                 <div key={job.id} className="job-item">
                   <div className="job-info">
                     <div className="job-title-row">
                       <h3>{job.customer_name}</h3>
                       <span className={`priority-tag ${job.priority}`}>
-                        {job.priority}
+                        {(() => {
+                          const p = (job.priority || "").toUpperCase();
+                          const map = { "P1": "CRITICAL", "P2": "HIGH", "P3": "MEDIUM", "P4": "LOW", "P5": "LOW" };
+                          return map[p] || p;
+                        })()}
                       </span>
                     </div>
 
-                    <p>{job.issue_description}</p>
+                    {job.issue_description && (
+                      <p className="job-desc">
+                        <strong>Issue: </strong>{job.issue_description}
+                      </p>
+                    )}
 
                     <div className="job-meta">
-                      <span>📍 {job.location}</span>
-                      <span>🛠 {job.service_type}</span>
-                      <span>📞 {job.contact_number}</span>
-                      <span>📅 {job.preferred_service_date}</span>
+                      {job.location && <span>📍 {job.location}</span>}
+                      {job.service_type && <span>🛠 {job.service_type}</span>}
+                      {job.contact_number && <span>📞 {job.contact_number}</span>}
+                      {job.preferred_service_date && <span>📅 {job.preferred_service_date}</span>}
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    className="edit-btn"
-                    onClick={() => handleEdit(job)}
-                  >
-                    Edit
-                  </button>
+                  <div className="job-actions" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <button
+                      type="button"
+                      className="edit-btn"
+                      onClick={() => handleEdit(job)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="delete-btn"
+                      style={{ 
+                        backgroundColor: '#fee2e2', 
+                        color: '#b91c1c', 
+                        border: '1px solid #fecaca',
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => handleDelete(job.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

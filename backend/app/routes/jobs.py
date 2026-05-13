@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import case
-from app.database import get_db
-from app.models import Job
-from app.schemas import JobCreate, JobResponse
+from ..database import get_db
+from ..models import Job
+from ..schemas import JobCreate, JobResponse
 from typing import List, Union
 from sqlalchemy.exc import SQLAlchemyError
 
