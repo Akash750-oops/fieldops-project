@@ -11,7 +11,7 @@ class JobCreate(BaseModel):
     service_type: str
     contact_number: str
     preferred_service_date: date
-    required_skill: str # My addition
+    required_skill: Optional[str] = None # Made optional to match frontend
     status: str = "active"
 
     @field_validator(
@@ -39,17 +39,17 @@ class JobCreate(BaseModel):
 
 class JobResponse(BaseModel):
     id: int
-    customer_name: str
-    location: str
-    issue_description: str
-    priority: str
-    service_type: str
-    contact_number: str
-    preferred_service_date: date
-    status: str
+    customer_name: Optional[str] = None
+    location: Optional[str] = None
+    issue_description: Optional[str] = None
+    priority: Optional[str] = None
+    service_type: Optional[str] = None
+    contact_number: Optional[str] = None
+    preferred_service_date: Optional[date] = None
+    status: Optional[str] = None
     required_skill: Optional[str] = None
     assigned_technician_id: Optional[int] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
     class Config:

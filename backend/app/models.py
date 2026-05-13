@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, Date, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from app.database import Base
+from .database import Base
 
 
 class Technician(Base):
