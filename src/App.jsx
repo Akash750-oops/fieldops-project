@@ -9,72 +9,66 @@ function App() {
   return (
     <div className="app-shell">
       {/* ── Left Sidebar ── */}
-      <aside className="sidebar-nav">
+      <aside className="sidebar">
         {/* Logo */}
         <div className="sidebar-brand">
-          <span className="sidebar-logo">⚡</span>
-          <span className="sidebar-title">FieldOps Commander</span>
+          <span className="brand-icon">⚡</span>
+          <span className="brand-name">FieldOps</span>
         </div>
 
-        {/* Profile Card */}
-        <div className="sidebar-profile">
-          <div className="profile-avatar">R</div>
-          <div className="profile-info">
-            <span className="profile-name">Rajesh</span>
-            <span className="profile-role">Admin / Field Manager</span>
-          </div>
-        </div>
-
-        {/* Navigation Menu */}
-        <nav className="sidebar-menu">
-          <p className="menu-section-label">Main Menu</p>
+        {/* Nav Menu */}
+        <nav className="sidebar-nav">
+          <span className="nav-group-label">MAIN MENU</span>
           <button
-            className={`menu-item ${activeTab === "jobs" ? "active" : ""}`}
+            className={`nav-item ${activeTab === "jobs" ? "nav-active" : ""}`}
             onClick={() => setActiveTab("jobs")}
           >
-            <span className="menu-icon">📋</span>
-            <span>Jobs</span>
+            <span className="nav-icon">📋</span>Jobs
           </button>
           <button
-            className={`menu-item ${activeTab === "technicians" ? "active" : ""}`}
+            className={`nav-item ${activeTab === "technicians" ? "nav-active" : ""}`}
             onClick={() => setActiveTab("technicians")}
           >
-            <span className="menu-icon">👷</span>
-            <span>Technicians</span>
+            <span className="nav-icon">👷</span>Technicians
           </button>
         </nav>
 
-        {/* Help Footer */}
-        <div className="sidebar-footer">
-          <div className="help-card">
-            <span className="help-icon">💬</span>
-            <div>
-              <p className="help-title">Need Help?</p>
-              <a href="mailto:support@fieldops.com" className="help-link">Contact support</a>
-            </div>
+        {/* Help */}
+        <div className="sidebar-help">
+          <span className="help-icon-sm">💬</span>
+          <div>
+            <p className="help-title">Need Help?</p>
+            <a href="mailto:support@fieldops.com" className="help-link">Contact support</a>
+          </div>
+        </div>
+
+        {/* Admin Profile – compact at bottom */}
+        <div className="sidebar-profile-mini">
+          <div className="mini-avatar">R</div>
+          <div className="mini-info">
+            <span className="mini-name">Rajesh</span>
+            <span className="mini-role">Admin</span>
           </div>
         </div>
       </aside>
 
-      {/* ── Right Panel ── */}
-      <div className="main-panel">
+      {/* ── Main Area ── */}
+      <div className="main-area">
         {/* Top Header */}
         <header className="top-header">
-          <div className="header-left">
-            <span className="header-page-label">
-              {activeTab === "jobs" ? "📋 Job Management" : "👷 Technician Management"}
-            </span>
-          </div>
-          <div className="header-right">
-            <div className="status-indicator">
-              <span className="status-dot"></span>
-              <span className="status-text">System Online</span>
+          <span className="header-title">
+            {activeTab === "jobs" ? "Job Management" : "Technician Management"}
+          </span>
+          <div className="header-actions">
+            <div className="status-pill">
+              <span className="status-dot" />
+              System Online
             </div>
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="page-content">
+        {/* Page */}
+        <main className="page-wrap">
           {activeTab === "jobs" ? <JobCreationForm /> : <TechnicianList />}
         </main>
       </div>

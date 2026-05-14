@@ -150,7 +150,7 @@ function TechnicianList() {
           <h1 className="page-title">Technician Management</h1>
           <p className="page-subtitle">Manage field technicians and update their availability</p>
         </div>
-        <div style={{ display: "flex", gap: "12px" }}>
+        <div className="header-actions-row">
           <button className="refresh-icon-btn" onClick={fetchTechnicians}>⟳ Refresh</button>
           <button className="add-tech-btn" onClick={() => setIsSidebarOpen(true)}>+ Add Technician</button>
         </div>
@@ -290,6 +290,12 @@ function TechnicianList() {
                       <span className="updating-spinner">↻</span>
                     )}
                   </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="tech-card-actions">
+                  <button className="btn-view" onClick={() => alert("Details feature coming soon!")}>View Details</button>
+                  <button className="btn-edit-tech" onClick={() => alert("Edit feature coming soon!")}>Edit</button>
                 </div>
               </div>
             ))}
