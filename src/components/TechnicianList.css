@@ -60,10 +60,27 @@
 .kpi-label{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
 .kpi-value{font-size:24px;font-weight:700;color:#0f172a;line-height:1.1}
 
+/* ── Main Content Layout ──────────────────────────────────── */
+.main-content-row{
+  display:grid;gap:20px;
+  align-items:start;
+}
+.split-tech-layout{
+  grid-template-columns:1fr 340px;
+}
+
+/* ── Form Card (Right Side) ─────────────────────────────── */
+.form-card{
+  position:sticky;top:70px;
+}
+.tech-form{display:flex;flex-direction:column;gap:12px}
+.tech-form .form-group{gap:4px}
+.tech-form .submit-full{width:100%;margin-top:10px}
+
 /* ── Content Card ────────────────────────────────────────── */
 .content-card{
   background:#fff;border-radius:10px;
-  padding:18px 20px;
+  padding:20px;
   box-shadow:0 1px 5px rgba(0,0,0,.06);
 }
 
@@ -182,83 +199,13 @@
 }
 .btn-edit-tech:hover{background:#f1f5f9}
 
-/* ── Empty / Loading ─────────────────────────────────────── */
+/* ── Empty State ─────────────────────────────────────────── */
 .empty-state{
   display:flex;flex-direction:column;align-items:center;
   justify-content:center;padding:40px 20px;gap:8px;color:#94a3b8;
 }
 .empty-icon{font-size:36px}
 .empty-state p{font-size:13px;font-weight:500}
-
-/* ── Toast ───────────────────────────────────────────────── */
-.toast-message{
-  position:fixed;top:16px;right:16px;
-  padding:10px 18px;border-radius:8px;
-  color:#fff;font-weight:600;font-size:13px;
-  z-index:3000;box-shadow:0 6px 20px rgba(0,0,0,.12);
-  animation:toastIn .3s ease-out forwards;
-  display:flex;align-items:center;gap:8px;
-}
-.toast-success{background:#10b981}
-.toast-error  {background:#ef4444}
-@keyframes toastIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
-
-/* ── Sidebar Overlay ─────────────────────────────────────── */
-.sidebar-overlay{
-  position:fixed;inset:0;background:rgba(0,0,0,0);
-  visibility:hidden;z-index:2000;transition:background .3s;
-}
-.sidebar-overlay.open{visibility:visible;background:rgba(0,0,0,.45)}
-
-.sidebar{
-  position:absolute;top:0;right:-400px;width:380px;height:100%;
-  background:#fff;box-shadow:-6px 0 28px rgba(0,0,0,.1);
-  transition:right .3s ease;padding:24px 22px;overflow-y:auto;
-}
-.sidebar-overlay.open .sidebar{right:0}
-
-.sidebar-header{
-  display:flex;justify-content:space-between;align-items:flex-start;
-  margin-bottom:22px;padding-bottom:16px;border-bottom:1px solid #f1f5f9;
-}
-.sidebar-header h3{font-size:17px;font-weight:700;color:#0f172a;margin-top:4px}
-.close-btn{
-  background:#f1f5f9;border:none;width:30px;height:30px;border-radius:7px;
-  font-size:14px;cursor:pointer;color:#64748b;
-  display:flex;align-items:center;justify-content:center;transition:all .2s;
-}
-.close-btn:hover{background:#e2e8f0;color:#0f172a}
-
-/* Sidebar Form */
-.sidebar-form{display:flex;flex-direction:column;gap:16px}
-.form-group{display:flex;flex-direction:column;gap:4px}
-.form-group label{font-size:12px;font-weight:600;color:#374151}
-.form-group input,.form-group select{
-  padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:7px;
-  font-size:13px;font-family:'Inter',sans-serif;color:#1e293b;outline:none;
-  transition:border-color .2s,box-shadow .2s;
-}
-.form-group input:focus,.form-group select:focus{
-  border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.1);
-}
-.input-error{border-color:#ef4444!important}
-.field-error{font-size:11px;color:#ef4444}
-.req{color:#ef4444}
-
-.section-badge{
-  display:inline-block;background:#eff6ff;color:#3b82f6;
-  font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;
-  letter-spacing:.05em;text-transform:uppercase;margin-bottom:4px;
-}
-
-.btn-primary{
-  background:#3b82f6;color:#fff;border:none;
-  padding:10px 20px;border-radius:7px;
-  font-weight:700;font-size:13px;cursor:pointer;transition:background .2s;
-}
-.btn-primary:hover{background:#2563eb}
-.btn-primary:disabled{background:#93c5fd;cursor:not-allowed}
-.submit-full{width:100%;margin-top:6px}
 
 /* ── Responsive ──────────────────────────────────────────── */
 @media(max-width:1100px){.kpi-row{grid-template-columns:repeat(2,1fr)}}

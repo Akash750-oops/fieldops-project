@@ -19,7 +19,6 @@ function TechnicianList() {
   const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState("");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [techFormData, setTechFormData] = useState(initialTechFormData);
   const [formErrors, setFormErrors] = useState({});
   const [formLoading, setFormLoading] = useState(false);
@@ -97,7 +96,6 @@ function TechnicianList() {
       await axios.post(`${API_BASE_URL}/`, techFormData);
       showMessage("Technician added successfully", "success");
       setTechFormData(initialTechFormData);
-      setIsSidebarOpen(false);
       fetchTechnicians();
     } catch (error) {
       console.error(error);
@@ -152,7 +150,7 @@ function TechnicianList() {
         </div>
         <div className="header-actions-row">
           <button className="refresh-icon-btn" onClick={fetchTechnicians}>⟳ Refresh</button>
-          <button className="add-tech-btn" onClick={() => setIsSidebarOpen(true)}>+ Add Technician</button>
+          <button className="add-tech-btn" onClick={() => document.querySelector('.form-card').scrollIntoView({ behavior: 'smooth' })}>+ Add Technician</button>
         </div>
       </div>
 
@@ -188,78 +186,79 @@ function TechnicianList() {
         </div>
       </div>
 
-      {/* Main Content Card */}
-      <div className="content-card">
-        {/* Filters */}
-        <div className="tech-filters-row">
-          <div className="filter-group">
-            <label>Search</label>
-            <input
-              type="text"
-              placeholder="Name, skill, location..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="filter-input"
-            />
+      {/* Main Content Area: Split List Left + Form Right */}
+      <div className="main-content-row split-tech-layout">
+        {/* LEFT: Technicians Grid & Filters */}
+        <div className="content-card grid-card">
+          {/* Filters */}
+          <div className="tech-filters-row">
+            <div className="filter-group">
+              <label>Search</label>
+              <input
+                type="text"
+                placeholder="Name, skill, location..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="filter-input"
+              />
+            </div>
+            <div className="filter-group">
+              <label>Status</label>
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="filter-select">
+                <option value="ALL">All Statuses</option>
+                <option value="Available">Available</option>
+                <option value="Busy">Busy</option>
+                <option value="Offline">Offline</option>
+              </select>
+            </div>
           </div>
-          <div className="filter-group">
-            <label>Status</label>
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="filter-select">
-              <option value="ALL">All Statuses</option>
-              <option value="Available">Available</option>
-              <option value="Busy">Busy</option>
-              <option value="Offline">Offline</option>
-            </select>
-          </div>
-        </div>
 
-        <p className="results-count">{filteredTechnicians.length} technician{filteredTechnicians.length !== 1 ? "s" : ""} found</p>
+          <p className="results-count">{filteredTechnicians.length} technician{filteredTechnicians.length !== 1 ? "s" : ""} found</p>
 
-        {fetchError && <div className="alert-error">{fetchError}</div>}
+          {fetchError && <div className="alert-error">{fetchError}</div>}
 
-        {loading ? (
-          <div className="empty-state">
-            <span className="empty-icon">⏳</span>
-            <p>Loading technicians...</p>
-          </div>
-        ) : filteredTechnicians.length === 0 ? (
-          <div className="empty-state">
-            <span className="empty-icon">👷</span>
-            <p>No technicians found. Click "Add Technician" to get started.</p>
-          </div>
-        ) : (
-          <div className="tech-grid">
-            {filteredTechnicians.map(tech => (
-              <div key={tech.technician_id} className="tech-card">
-                <div className="tech-card-header">
-                  <div className="tech-avatar">
-                    {tech.technician_name.charAt(0).toUpperCase()}
+          {loading ? (
+            <div className="empty-state">
+              <span className="empty-icon">⏳</span>
+              <p>Loading technicians...</p>
+            </div>
+          ) : filteredTechnicians.length === 0 ? (
+            <div className="empty-state">
+              <span className="empty-icon">👷</span>
+              <p>No technicians found.</p>
+            </div>
+          ) : (
+            <div className="tech-grid">
+              {filteredTechnicians.map(tech => (
+                <div key={tech.technician_id} className="tech-card">
+                  <div className="tech-card-header">
+                    <div className="tech-avatar">
+                      {tech.technician_name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <h3 className="tech-name">{tech.technician_name}</h3>
+                      <span className={getStatusClass(tech.technician_status)}>
+                        {normalizeStatus(tech.technician_status)}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="tech-name">{tech.technician_name}</h3>
-                    <span className={getStatusClass(tech.technician_status)}>
-                      {normalizeStatus(tech.technician_status)}
-                    </span>
-                  </div>
-                </div>
 
-                <div className="tech-details">
-                  <div className="tech-detail-row">
-                    <span className="detail-icon">🛠</span>
-                    <span>{tech.technician_skill}</span>
+                  <div className="tech-details">
+                    <div className="tech-detail-row">
+                      <span className="detail-icon">🛠</span>
+                      <span>{tech.technician_skill}</span>
+                    </div>
+                    <div className="tech-detail-row">
+                      <span className="detail-icon">📍</span>
+                      <span>{tech.technician_location}</span>
+                    </div>
+                    <div className="tech-detail-row">
+                      <span className="detail-icon">📋</span>
+                      <span>Jobs: {tech.current_jobs} / {tech.max_jobs}</span>
+                    </div>
                   </div>
-                  <div className="tech-detail-row">
-                    <span className="detail-icon">📍</span>
-                    <span>{tech.technician_location}</span>
-                  </div>
-                  <div className="tech-detail-row">
-                    <span className="detail-icon">📋</span>
-                    <span>Jobs: {tech.current_jobs} / {tech.max_jobs}</span>
-                  </div>
-                </div>
 
-                {/* Workload Bar */}
-                <div className="workload-bar-wrap">
+                  {/* Workload Bar */}
                   <div className="workload-bar-track">
                     <div
                       className="workload-bar-fill"
@@ -269,52 +268,46 @@ function TechnicianList() {
                       }}
                     />
                   </div>
-                  <span className="workload-label">{Math.round((tech.current_jobs / tech.max_jobs) * 100)}% capacity</span>
-                </div>
 
-                {/* Availability Dropdown */}
-                <div className="availability-control">
-                  <label>Availability</label>
-                  <div className="select-wrapper">
-                    <select
-                      value={normalizeStatus(tech.technician_status)}
-                      onChange={e => handleStatusChange(tech.technician_id, e.target.value)}
-                      disabled={updatingId === tech.technician_id}
-                      className={`status-select status-${normalizeStatus(tech.technician_status).toLowerCase()}`}
-                    >
-                      <option value="Available">Available</option>
-                      <option value="Busy">Busy</option>
-                      <option value="Offline">Offline</option>
-                    </select>
-                    {updatingId === tech.technician_id && (
-                      <span className="updating-spinner">↻</span>
-                    )}
+                  {/* Availability Dropdown */}
+                  <div className="availability-control">
+                    <label>Availability</label>
+                    <div className="select-wrapper">
+                      <select
+                        value={normalizeStatus(tech.technician_status)}
+                        onChange={e => handleStatusChange(tech.technician_id, e.target.value)}
+                        disabled={updatingId === tech.technician_id}
+                        className={`status-select status-${normalizeStatus(tech.technician_status).toLowerCase()}`}
+                      >
+                        <option value="Available">Available</option>
+                        <option value="Busy">Busy</option>
+                        <option value="Offline">Offline</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="tech-card-actions">
+                    <button className="btn-view" onClick={() => alert("Details feature coming soon!")}>View</button>
+                    <button className="btn-edit-tech" onClick={() => alert("Edit feature coming soon!")}>Edit</button>
                   </div>
                 </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-                {/* Action Buttons */}
-                <div className="tech-card-actions">
-                  <button className="btn-view" onClick={() => alert("Details feature coming soon!")}>View Details</button>
-                  <button className="btn-edit-tech" onClick={() => alert("Edit feature coming soon!")}>Edit</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Right Sidebar */}
-      <div className={`sidebar-overlay ${isSidebarOpen ? "open" : ""}`} onClick={() => setIsSidebarOpen(false)}>
-        <div className="sidebar" onClick={e => e.stopPropagation()}>
-          <div className="sidebar-header">
+        {/* RIGHT: Add Technician Form */}
+        <div className="content-card form-card">
+          <div className="card-header">
             <div>
               <span className="section-badge">New Record</span>
-              <h3>Add Technician</h3>
+              <h3 className="card-title">Add Technician</h3>
+              <p className="card-subtitle">Register a new field technician</p>
             </div>
-            <button className="close-btn" onClick={() => setIsSidebarOpen(false)}>✕</button>
           </div>
 
-          <form className="sidebar-form" onSubmit={handleFormSubmit}>
+          <form className="tech-form" onSubmit={handleFormSubmit}>
             <div className="form-group">
               <label>Full Name <span className="req">*</span></label>
               <input
@@ -329,7 +322,7 @@ function TechnicianList() {
             </div>
 
             <div className="form-group">
-              <label>Skill / Specialization <span className="req">*</span></label>
+              <label>Skill <span className="req">*</span></label>
               <input
                 type="text"
                 name="technician_skill"

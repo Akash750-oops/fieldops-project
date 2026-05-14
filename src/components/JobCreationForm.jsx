@@ -61,7 +61,7 @@ function JobCreationForm() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [editingJobId, setEditingJobId] = useState(null);
-  const [popup, setPopup] = useState({ show: false, title: "", message: "", jobId: "" });
+  const [isFormOpen, setIsFormOpen] = useState(false);
 
   const fetchJobs = async () => {
     try {
@@ -106,6 +106,7 @@ function JobCreationForm() {
     setErrors({});
     setIsEditing(false);
     setEditingJobId(null);
+    setIsFormOpen(false);
   };
 
   const handleChange = (event) => {
@@ -128,7 +129,7 @@ function JobCreationForm() {
       contact_number: job.contact_number || "",
       preferred_service_date: job.preferred_service_date || "",
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setIsFormOpen(true);
   };
 
   const handleCancelEdit = () => { resetForm(); setApiError(""); };
@@ -215,7 +216,7 @@ function JobCreationForm() {
         </div>
         <div className="header-actions-row">
           <button className="refresh-icon-btn" onClick={fetchJobs} title="Refresh">⟳ Refresh</button>
-          <button className="add-job-btn" onClick={() => document.querySelector('.form-card').scrollIntoView({ behavior: 'smooth' })}>+ Create Job</button>
+          <button className="add-job-btn" onClick={() => setIsFormOpen(true)}>+ Create Job</button>
         </div>
       </div>
 
@@ -251,122 +252,9 @@ function JobCreationForm() {
         </div>
       </div>
 
-      {/* Main Content: Form Left + List Right */}
-      <div className="main-content-row">
-        {/* LEFT: Create / Edit Job Form */}
-        <div className="content-card form-card">
-          <div className="card-header">
-            <div>
-              <span className="section-badge">New Request</span>
-              <h2 className="card-title">{isEditing ? "Update Job Request" : "Create Job Request"}</h2>
-              <p className="card-subtitle">
-                {isEditing ? "Edit the selected job details below." : "Fill in the details to submit a new service request."}
-              </p>
-            </div>
-          </div>
-
-          {apiError && <div className="alert-error">{apiError}</div>}
-
-          <form onSubmit={handleSubmit} className="job-form">
-            <div className="form-grid-2">
-              <div className="form-group">
-                <label>Customer Name <span className="req">*</span></label>
-                <input
-                  type="text"
-                  name="customer_name"
-                  value={formData.customer_name}
-                  onChange={handleChange}
-                  placeholder="Enter customer name"
-                  className={errors.customer_name ? "input-error" : ""}
-                />
-                {errors.customer_name && <span className="field-error">{errors.customer_name}</span>}
-              </div>
-
-              <div className="form-group">
-                <label>Location <span className="req">*</span></label>
-                <input
-                  type="text"
-                  name="location"
-                  value={formData.location}
-                  onChange={handleChange}
-                  placeholder="Enter location"
-                  className={errors.location ? "input-error" : ""}
-                />
-                {errors.location && <span className="field-error">{errors.location}</span>}
-              </div>
-
-              <div className="form-group">
-                <label>Priority <span className="req">*</span></label>
-                <select name="priority" value={formData.priority} onChange={handleChange} className={errors.priority ? "input-error" : ""}>
-                  <option value="">Select priority</option>
-                  {priorities.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                </select>
-                {errors.priority && <span className="field-error">{errors.priority}</span>}
-              </div>
-
-              <div className="form-group">
-                <label>Service Type <span className="req">*</span></label>
-                <select name="service_type" value={formData.service_type} onChange={handleChange} className={errors.service_type ? "input-error" : ""}>
-                  <option value="">Select service type</option>
-                  {serviceTypes.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-                {errors.service_type && <span className="field-error">{errors.service_type}</span>}
-              </div>
-
-              <div className="form-group">
-                <label>Contact Number <span className="req">*</span></label>
-                <input
-                  type="text"
-                  name="contact_number"
-                  value={formData.contact_number}
-                  onChange={handleChange}
-                  placeholder="9876543210"
-                  maxLength="10"
-                  className={errors.contact_number ? "input-error" : ""}
-                />
-                {errors.contact_number && <span className="field-error">{errors.contact_number}</span>}
-              </div>
-
-              <div className="form-group">
-                <label>Preferred Service Date <span className="req">*</span></label>
-                <input
-                  type="date"
-                  name="preferred_service_date"
-                  value={formData.preferred_service_date}
-                  onChange={handleChange}
-                  className={errors.preferred_service_date ? "input-error" : ""}
-                />
-                {errors.preferred_service_date && <span className="field-error">{errors.preferred_service_date}</span>}
-              </div>
-            </div>
-
-            <div className="form-group full-width">
-              <label>Issue Description <span className="req">*</span></label>
-              <textarea
-                name="issue_description"
-                value={formData.issue_description}
-                onChange={handleChange}
-                placeholder="Describe the issue in detail..."
-                rows="4"
-                className={errors.issue_description ? "input-error" : ""}
-              />
-              {errors.issue_description && <span className="field-error">{errors.issue_description}</span>}
-            </div>
-
-            <div className="form-actions">
-              <button type="submit" className="btn-primary" disabled={loading}>
-                {loading ? "Submitting..." : isEditing ? "Update Job" : "Create Job"}
-              </button>
-              {isEditing && (
-                <button type="button" className="btn-secondary" onClick={handleCancelEdit}>
-                  Cancel
-                </button>
-              )}
-            </div>
-          </form>
-        </div>
-
-        {/* RIGHT: Job Management List */}
+      {/* Main Content: List Only (Form moved to Sidebar) */}
+      <div className="main-content-row full-list-layout">
+        {/* Job Management List */}
         <div className="content-card list-card">
           <div className="card-header">
             <div>
@@ -468,6 +356,114 @@ function JobCreationForm() {
           </div>
         </div>
       </div>
+
+      {/* Sliding Sidebar for Job Form */}
+      <div className={`job-form-sidebar ${isFormOpen ? "open" : ""}`}>
+        <div className="sidebar-header">
+          <h3>{isEditing ? "Edit Job" : "Create New Job"}</h3>
+          <button className="close-sidebar" onClick={() => setIsFormOpen(false)}>×</button>
+        </div>
+        <div className="sidebar-content">
+          {apiError && <div className="alert-error">{apiError}</div>}
+          <form onSubmit={handleSubmit} className="job-form">
+            <div className="form-group">
+              <label>Customer Name <span className="req">*</span></label>
+              <input
+                type="text"
+                name="customer_name"
+                value={formData.customer_name}
+                onChange={handleChange}
+                placeholder="Enter customer name"
+                className={errors.customer_name ? "input-error" : ""}
+              />
+              {errors.customer_name && <span className="field-error">{errors.customer_name}</span>}
+            </div>
+
+            <div className="form-group">
+              <label>Location <span className="req">*</span></label>
+              <input
+                type="text"
+                name="location"
+                value={formData.location}
+                onChange={handleChange}
+                placeholder="Enter location"
+                className={errors.location ? "input-error" : ""}
+              />
+              {errors.location && <span className="field-error">{errors.location}</span>}
+            </div>
+
+            <div className="form-group">
+              <label>Priority <span className="req">*</span></label>
+              <select name="priority" value={formData.priority} onChange={handleChange} className={errors.priority ? "input-error" : ""}>
+                <option value="">Select priority</option>
+                {priorities.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+              {errors.priority && <span className="field-error">{errors.priority}</span>}
+            </div>
+
+            <div className="form-group">
+              <label>Service Type <span className="req">*</span></label>
+              <select name="service_type" value={formData.service_type} onChange={handleChange} className={errors.service_type ? "input-error" : ""}>
+                <option value="">Select service type</option>
+                {serviceTypes.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+              {errors.service_type && <span className="field-error">{errors.service_type}</span>}
+            </div>
+
+            <div className="form-group">
+              <label>Contact Number <span className="req">*</span></label>
+              <input
+                type="text"
+                name="contact_number"
+                value={formData.contact_number}
+                onChange={handleChange}
+                placeholder="9876543210"
+                maxLength="10"
+                className={errors.contact_number ? "input-error" : ""}
+              />
+              {errors.contact_number && <span className="field-error">{errors.contact_number}</span>}
+            </div>
+
+            <div className="form-group">
+              <label>Preferred Service Date <span className="req">*</span></label>
+              <input
+                type="date"
+                name="preferred_service_date"
+                value={formData.preferred_service_date}
+                onChange={handleChange}
+                className={errors.preferred_service_date ? "input-error" : ""}
+              />
+              {errors.preferred_service_date && <span className="field-error">{errors.preferred_service_date}</span>}
+            </div>
+
+            <div className="form-group">
+              <label>Issue Description <span className="req">*</span></label>
+              <textarea
+                name="issue_description"
+                value={formData.issue_description}
+                onChange={handleChange}
+                placeholder="Describe the issue in detail..."
+                rows="4"
+                className={errors.issue_description ? "input-error" : ""}
+              />
+              {errors.issue_description && <span className="field-error">{errors.issue_description}</span>}
+            </div>
+
+            <div className="form-actions">
+              <button type="submit" className="btn-primary" disabled={loading}>
+                {loading ? "Submitting..." : isEditing ? "Update Job" : "Create Job"}
+              </button>
+              <button type="button" className="btn-secondary" onClick={handleCancelEdit}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {isFormOpen && <div className="sidebar-overlay" onClick={() => setIsFormOpen(false)}></div>}
+    </div>
+  );
+}
     </div>
   );
 }
