@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 from pydantic import BaseModel, field_validator
 
 
@@ -13,6 +13,14 @@ class JobCreate(BaseModel):
     preferred_service_date: date
     required_skill: Optional[str] = None # Made optional to match frontend
     status: str = "active"
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def validate_priority(cls, value: str):
+        # Allow case-insensitive priority values by converting to uppercase
+        if isinstance(value, str):
+            return value.upper()
+        return value
 
     @field_validator(
         "customer_name",
@@ -111,10 +119,20 @@ class AvailableTechnicianResponse(BaseModel):
 
 
 class TechnicianAssignment(BaseModel):
-    job_id: int
-    technician_id: int
+    job_id: Union[int, str]
+    technician_id: Optional[int] = None
+    job_type: Optional[str] = None
+
+class AutoAssignmentRequest(BaseModel):
+    job_id: Union[int, str]
+    job_type: str
 
 
 class NearestTechnicianResponse(BaseModel):
     technician: TechnicianResponse
     distance: float
+
+
+class TechnicianStatusUpdate(BaseModel):
+    technician_id: int
+    status: Literal["AVAILABLE", "BUSY", "OFFLINE"]
