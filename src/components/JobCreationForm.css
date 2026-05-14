@@ -6,7 +6,7 @@
   font-family:'Inter',sans-serif;
   background:#f1f5f9;
   min-height:100vh;
-  padding:20px 22px;
+  padding:20px 16px;
   color:#1e293b;
 }
 
@@ -17,6 +17,9 @@
 }
 .page-title{font-size:20px;font-weight:700;color:#0f172a}
 .page-subtitle{font-size:12px;color:#64748b;margin-top:2px}
+
+.header-actions-row{display:flex;gap:8px}
+
 .refresh-icon-btn{
   background:#fff;border:1px solid #e2e8f0;color:#374151;
   padding:7px 14px;border-radius:7px;
@@ -25,6 +28,15 @@
   white-space:nowrap;
 }
 .refresh-icon-btn:hover{background:#f8fafc}
+
+.add-job-btn{
+  background:#3b82f6;color:#fff;border:none;
+  padding:7px 16px;border-radius:7px;
+  font-weight:700;font-size:12px;cursor:pointer;
+  transition:background .2s;
+  box-shadow:0 2px 6px rgba(59,130,246,0.25);
+}
+.add-job-btn:hover{background:#2563eb}
 
 /* ── KPI Row ─────────────────────────────────────────────── */
 .kpi-row{

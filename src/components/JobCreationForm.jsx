@@ -213,7 +213,10 @@ function JobCreationForm() {
           <h1 className="page-title">Job Management</h1>
           <p className="page-subtitle">Create and manage field service job requests</p>
         </div>
-        <button className="refresh-icon-btn" onClick={fetchJobs} title="Refresh">⟳ Refresh</button>
+        <div className="header-actions-row">
+          <button className="refresh-icon-btn" onClick={fetchJobs} title="Refresh">⟳ Refresh</button>
+          <button className="add-job-btn" onClick={() => document.querySelector('.form-card').scrollIntoView({ behavior: 'smooth' })}>+ Create Job</button>
+        </div>
       </div>
 
       {/* KPI Cards */}
