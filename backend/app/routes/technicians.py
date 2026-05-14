@@ -160,3 +160,31 @@ def get_technician_by_id(technician_id: int, db: Session = Depends(get_db)):
     if not tech:
         raise HTTPException(status_code=404, detail="Technician not found")
     return tech
+
+
+@router.put("/{technician_id}/availability")
+def update_technician_availability(
+    technician_id: int,
+    update_data: schemas.TechnicianAvailabilityUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    Update the availability status of a technician.
+    """
+    tech = db.query(models.Technician).filter(models.Technician.technician_id == technician_id).first()
+    if not tech:
+        raise HTTPException(status_code=404, detail="Technician not found")
+    
+    # Validation is handled by Pydantic Literal
+    tech.technician_status = update_data.technician_status
+    db.commit()
+    db.refresh(tech)
+    
+    return {
+        "message": "Technician availability updated successfully",
+        "technician": {
+            "id": tech.technician_id,
+            "name": tech.technician_name,
+            "technician_status": tech.technician_status
+        }
+    }

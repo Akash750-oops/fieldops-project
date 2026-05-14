@@ -70,6 +70,9 @@ class TechnicianCreate(BaseModel):
         return value.strip()
 
 
+class TechnicianAvailabilityUpdate(BaseModel):
+    technician_status: Literal["Available", "Busy", "Offline"]
+
 class TechnicianResponse(BaseModel):
     technician_id: int
     technician_name: str
