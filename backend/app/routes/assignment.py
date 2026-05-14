@@ -19,10 +19,11 @@ def get_nearest_technician(job_id: int, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Filter technicians by skill and availability
+    # Filter technicians by skill, availability, and workload
     technicians = db.query(models.Technician).filter(
         models.Technician.technician_skill == job.required_skill,
-        models.Technician.technician_status == "AVAILABLE"
+        models.Technician.technician_status == "AVAILABLE",
+        models.Technician.current_jobs < models.Technician.max_jobs
     ).all()
 
     if not technicians:
@@ -79,24 +80,18 @@ def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(g
                 detail=f"Job #{job.id} is already assigned to technician #{job.assigned_technician_id}"
             )
 
-        # 4. Check Technician Availability
-        if technician.technician_status == "BUSY":
-            raise HTTPException(status_code=400, detail="Technician is currently unavailable")
-        
-        if technician.technician_status == "OFFLINE":
-            raise HTTPException(status_code=400, detail="Technician is offline")
+        # 4. Comprehensive Validation (Workload, Status, Skill)
+        from ..validation import validate_technician_for_assignment
+        validate_technician_for_assignment(technician, job)
 
-        # 5. Check Skill Match
-        if technician.technician_skill != job.required_skill:
-             raise HTTPException(
-                 status_code=400, 
-                 detail=f"Skill mismatch: Technician provides '{technician.technician_skill}' but job requires '{job.required_skill}'"
-             )
 
-        # 6. Perform Assignment
+        # 7. Perform Assignment
         job.assigned_technician_id = technician.technician_id
         job.status = "in progress"
-        technician.technician_status = "BUSY"
+        
+        # Use workload utility for increment and status sync
+        from ..workload_utils import update_workload_count
+        update_workload_count(db, technician.technician_id, 1)
 
         db.commit()
         db.refresh(job)

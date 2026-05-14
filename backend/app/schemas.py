@@ -76,11 +76,38 @@ class TechnicianResponse(BaseModel):
     technician_skill: str
     technician_location: str
     technician_status: str
+    current_jobs: int
+    max_jobs: int
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class WorkloadResponse(BaseModel):
+    technician: str
+    current_jobs: int
+    status: str
+
+
+class WorkloadUpdate(BaseModel):
+    technician_id: int
+    current_jobs: int
+
+
+class WorkloadValidationResponse(BaseModel):
+    technician: str
+    current_jobs: int
+    max_jobs: int
+    can_assign: bool
+    message: str
+
+
+class AvailableTechnicianResponse(BaseModel):
+    technician: str
+    status: str
+    eligible_for_assignment: bool
 
 
 class TechnicianAssignment(BaseModel):

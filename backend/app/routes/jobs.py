@@ -4,6 +4,7 @@ from sqlalchemy import case
 from ..database import get_db
 from ..models import Job
 from ..schemas import JobCreate, JobResponse
+from ..workload_utils import update_workload_count
 from typing import List, Union
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -107,6 +108,18 @@ def update_job(job_id: int, job_data: JobCreate, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
+    # Workload reduction logic
+    old_status = job.status.lower()
+    new_status = job_data.status.lower()
+    
+    # If job is transitioning from active/in-progress to completed/cancelled
+    active_statuses = ["active", "in progress"]
+    finished_statuses = ["completed", "cancelled", "done"]
+    
+    if old_status in active_statuses and new_status in finished_statuses:
+        if job.assigned_technician_id:
+            update_workload_count(db, job.assigned_technician_id, -1)
+            
     job.customer_name = job_data.customer_name
     job.location = job_data.location
     job.issue_description = job_data.issue_description
@@ -128,6 +141,10 @@ def delete_job(job_id: int, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
+    # If job was active and assigned, reduce workload
+    if job.status.lower() in ["active", "in progress"] and job.assigned_technician_id:
+        update_workload_count(db, job.assigned_technician_id, -1)
+        
     db.delete(job)
     db.commit()
     return {"message": "Job deleted successfully", "job_id": job_id}

@@ -12,6 +12,8 @@ class Technician(Base):
     technician_skill = Column(String(100), nullable=False)
     technician_location = Column(String(150), nullable=False)
     technician_status = Column(String(30), default="AVAILABLE")
+    current_jobs = Column(Integer, default=0)
+    max_jobs = Column(Integer, default=5)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -19,7 +21,7 @@ class Technician(Base):
 
 
 class Job(Base):
-    __tablename__ = "jobs"
+    __tablename__ = "jobs"  
 
     id = Column(Integer, primary_key=True, index=True)
     customer_name = Column(String(100), nullable=False)
