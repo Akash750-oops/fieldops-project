@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import "./JobCreationForm.css";
 
-const API_URL = "http://localhost:8000/jobs/";
+const API_URL = "http://localhost:8080/jobs/";
 
 const initialFormData = {
   customer_name: "",
@@ -495,6 +495,11 @@ function JobCreationForm() {
                           return map[p] || p;
                         })()}
                       </span>
+                      {job.status && (
+                        <span className={`status-badge ${(job.status || "").toLowerCase().replace(/\s+/g, '_')}`}>
+                          {job.status}
+                        </span>
+                      )}
                     </div>
 
                     {job.issue_description && (

@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = "http://127.0.0.1:8080";
 
 // DOM Elements
 const jobForm = document.getElementById("jobForm");
@@ -108,7 +108,7 @@ async function createJob(event) {
 async function updateJob(event) {
     event.preventDefault();
     const jobId = document.getElementById("edit_job_id").value;
-    
+
     const jobData = {
         customer_name: document.getElementById("edit_customer_name").value,
         location: document.getElementById("edit_location").value,
@@ -224,7 +224,7 @@ function renderJobs() {
     filteredJobs.forEach(job => {
         const card = document.createElement("div");
         card.className = `job-card priority-${job.priority.toLowerCase()}`;
-        
+
         card.innerHTML = `
             <div class="job-card-header">
                 <h3>${job.customer_name}</h3>
