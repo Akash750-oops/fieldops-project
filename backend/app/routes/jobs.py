@@ -43,13 +43,13 @@ def create_job(jobs: Union[JobCreate, List[JobCreate]], db: Session = Depends(ge
                 db.refresh(job)
             return {
                 "message": f"{len(job_objects)} jobs created successfully",
-                "jobs": job_objects
+                "jobs": [JobResponse.model_validate(job) for job in job_objects]
             }
 
         # Single job response
         new_job = job_objects[0]
         db.refresh(new_job)
-        return new_job
+        return JobResponse.model_validate(new_job)
 
     except SQLAlchemyError as e:
         db.rollback()

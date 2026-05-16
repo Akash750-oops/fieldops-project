@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from typing import List
+from typing import List, Union
 
 from ..database import get_db
 from .. import models, schemas
@@ -11,36 +11,54 @@ router = APIRouter(
     tags=["Technicians"]
 )
 
-@router.post("/", response_model=schemas.TechnicianResponse, status_code=status.HTTP_200_OK)
-def create_technician(technician: schemas.TechnicianCreate, db: Session = Depends(get_db)):
+@router.post("/", response_model=Union[schemas.TechnicianResponse, List[schemas.TechnicianResponse]], status_code=status.HTTP_200_OK)
+def create_technician(technician: Union[schemas.TechnicianCreate, List[schemas.TechnicianCreate]], db: Session = Depends(get_db)):
     """
-    Register a new technician.
+    Register one or more new technicians.
     Prevents duplicate entries based on name and skill.
     """
     try:
-        # Check for duplicate
-        existing = db.query(models.Technician).filter(
-            models.Technician.technician_name == technician.technician_name,
-            models.Technician.technician_skill == technician.technician_skill
-        ).first()
-        
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Technician with this name and skill already exists"
+        # Normalize to list for uniform processing
+        tech_list = technician if isinstance(technician, list) else [technician]
+        created_techs = []
+
+        for tech_data in tech_list:
+            # Check for duplicate
+            existing = db.query(models.Technician).filter(
+                models.Technician.technician_name == tech_data.technician_name,
+                models.Technician.technician_skill == tech_data.technician_skill
+            ).first()
+            
+            if existing:
+                if not isinstance(technician, list):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Technician with name '{tech_data.technician_name}' and skill '{tech_data.technician_skill}' already exists"
+                    )
+                # For bulk, we skip duplicates to avoid failing the whole batch
+                continue
+
+            new_tech = models.Technician(
+                technician_name=tech_data.technician_name,
+                technician_skill=tech_data.technician_skill,
+                technician_location=tech_data.technician_location,
+                technician_status=tech_data.technician_status
             )
+            db.add(new_tech)
+            created_techs.append(new_tech)
 
-        new_tech = models.Technician(
-            technician_name=technician.technician_name,
-            technician_skill=technician.technician_skill,
-            technician_location=technician.technician_location,
-            technician_status=technician.technician_status
-        )
-
-        db.add(new_tech)
         db.commit()
-        db.refresh(new_tech)
-        return new_tech
+        
+        # Refresh and return
+        for t in created_techs:
+            db.refresh(t)
+            
+        if isinstance(technician, list):
+            return created_techs
+        else:
+            if not created_techs: # Should not happen given logic above but for safety
+                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Technician already exists")
+            return created_techs[0]
 
     except HTTPException:
         raise
@@ -111,6 +129,26 @@ def update_technician_workload(update: schemas.WorkloadUpdate, db: Session = Dep
         "current_jobs": tech.current_jobs,
         "status": tech.technician_status
     }
+
+
+@router.put("/update-status", response_model=schemas.TechnicianResponse)
+def update_technician_status(update: schemas.TechnicianStatusUpdate, db: Session = Depends(get_db)):
+    """
+    Manually update technician availability status.
+    """
+    tech = db.query(models.Technician).filter(models.Technician.technician_id == update.technician_id).first()
+    if not tech:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Technician not found")
+        
+    tech.technician_status = update.status
+    
+    try:
+        db.commit()
+        db.refresh(tech)
+        return tech
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error: {str(e)}")
 
 
 @router.get("/validate-workload", response_model=schemas.WorkloadValidationResponse)
