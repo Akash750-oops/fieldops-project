@@ -1,6 +1,8 @@
 import { useState } from "react";
-import JobCreationForm from "./components/JobCreationForm";
-import TechnicianList from "./components/TechnicianList";
+import JobCreationForm from "./components/JobCreationForm.jsx";
+import TechnicianList from "./components/TechnicianList.jsx";
+import PlanningDashboard from "./components/PlanningDashboard.jsx";
+import logo from "./assets/logo.png";
 import "./App.css";
 
 function App() {
@@ -12,8 +14,11 @@ function App() {
       <aside className="sidebar">
         {/* Logo */}
         <div className="sidebar-brand">
-          <span className="brand-icon">⚡</span>
-          <span className="brand-name">FieldOps</span>
+          <div className="brand-logo-wrap">
+            <img src={logo} alt="FieldOps Logo" className="brand-logo-img" />
+
+          </div>
+
         </div>
 
         {/* Nav Menu */}
@@ -31,16 +36,13 @@ function App() {
           >
             <span className="nav-icon">👷</span>Technicians
           </button>
+          <button
+            className={`nav-item ${activeTab === "planning" ? "nav-active" : ""}`}
+            onClick={() => setActiveTab("planning")}
+          >
+            <span className="nav-icon">📅</span>Planning
+          </button>
         </nav>
-
-        {/* Help */}
-        <div className="sidebar-help">
-          <span className="help-icon-sm">💬</span>
-          <div>
-            <p className="help-title">Need Help?</p>
-            <a href="mailto:support@fieldops.com" className="help-link">Contact support</a>
-          </div>
-        </div>
 
         {/* Admin Profile – compact at bottom */}
         <div className="sidebar-profile-mini">
@@ -57,7 +59,9 @@ function App() {
         {/* Top Header */}
         <header className="top-header">
           <span className="header-title">
-            {activeTab === "jobs" ? "Job Management" : "Technician Management"}
+            {activeTab === "jobs" ? "Job Management" :
+              activeTab === "technicians" ? "Technician Management" :
+                "Planning Dashboard"}
           </span>
           <div className="header-actions">
             <div className="status-pill">
@@ -69,7 +73,9 @@ function App() {
 
         {/* Page */}
         <main className="page-wrap">
-          {activeTab === "jobs" ? <JobCreationForm /> : <TechnicianList />}
+          {activeTab === "jobs" && <JobCreationForm />}
+          {activeTab === "technicians" && <TechnicianList />}
+          {activeTab === "planning" && <PlanningDashboard />}
         </main>
       </div>
     </div>

@@ -26,6 +26,7 @@ function TechnicianList() {
   const [message, setMessage] = useState({ text: "", type: "" });
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [isFormOpen, setIsFormOpen] = useState(false);
 
   const fetchTechnicians = async () => {
     try {
@@ -145,12 +146,11 @@ function TechnicianList() {
       {/* Page Header */}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Technician Management</h1>
           <p className="page-subtitle">Manage field technicians and update their availability</p>
         </div>
         <div className="header-actions-row">
           <button className="refresh-icon-btn" onClick={fetchTechnicians}>⟳ Refresh</button>
-          <button className="add-tech-btn" onClick={() => document.querySelector('.form-card').scrollIntoView({ behavior: 'smooth' })}>+ Add Technician</button>
+          <button className="add-tech-btn" onClick={() => setIsFormOpen(true)}>+ Add Technician</button>
         </div>
       </div>
 
@@ -186,9 +186,9 @@ function TechnicianList() {
         </div>
       </div>
 
-      {/* Main Content Area: Split List Left + Form Right */}
-      <div className="main-content-row split-tech-layout">
-        {/* LEFT: Technicians Grid & Filters */}
+      {/* Main Content Area: Grid Only */}
+      <div className="main-content-row full-grid-layout">
+        {/* Technicians Grid & Filters */}
         <div className="content-card grid-card">
           {/* Filters */}
           <div className="tech-filters-row">
@@ -264,7 +264,7 @@ function TechnicianList() {
                       className="workload-bar-fill"
                       style={{
                         width: `${Math.min((tech.current_jobs / tech.max_jobs) * 100, 100)}%`,
-                        background: tech.current_jobs >= tech.max_jobs ? "#ef4444" : "#3b82f6"
+                        background: tech.current_jobs >= tech.max_jobs ? "#D96C6C" : "#7AAE8A"
                       }}
                     />
                   </div>
@@ -296,18 +296,19 @@ function TechnicianList() {
             </div>
           )}
         </div>
+      </div>
 
-        {/* RIGHT: Add Technician Form */}
-        <div className="content-card form-card">
-          <div className="card-header">
-            <div>
-              <span className="section-badge">New Record</span>
-              <h3 className="card-title">Add Technician</h3>
-              <p className="card-subtitle">Register a new field technician</p>
-            </div>
-          </div>
-
-          <form className="tech-form" onSubmit={handleFormSubmit}>
+      {/* Sliding Sidebar for Technician Form */}
+      <div className={`tech-form-sidebar ${isFormOpen ? "open" : ""}`}>
+        <div className="sidebar-header">
+          <h3>Add New Technician</h3>
+          <button className="close-sidebar" onClick={() => setIsFormOpen(false)}>×</button>
+        </div>
+        <div className="sidebar-content">
+          <form className="tech-form" onSubmit={(e) => {
+            handleFormSubmit(e);
+            if (validateForm()) setIsFormOpen(false);
+          }}>
             <div className="form-group">
               <label>Full Name <span className="req">*</span></label>
               <input
@@ -365,12 +366,18 @@ function TechnicianList() {
               </select>
             </div>
 
-            <button type="submit" className="btn-primary submit-full" disabled={formLoading}>
-              {formLoading ? "Saving..." : "Add Technician"}
-            </button>
+            <div className="form-actions">
+              <button type="submit" className="btn-primary" disabled={formLoading}>
+                {formLoading ? "Saving..." : "Add Technician"}
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setIsFormOpen(false)}>
+                Cancel
+              </button>
+            </div>
           </form>
         </div>
       </div>
+      {isFormOpen && <div className="sidebar-overlay" onClick={() => setIsFormOpen(false)}></div>}
     </div>
   );
 }

@@ -19,11 +19,12 @@ class JobCreate(BaseModel):
         "location",
         "issue_description",
         "service_type",
-        "contact_number",
-        "required_skill"
+        "contact_number"
     )
     @classmethod
-    def not_empty(cls, value):
+    def not_empty(cls, value, info):
+        if info.field_name == "required_skill" and value is None:
+            return value
         if not value or not value.strip():
             raise ValueError("Field cannot be empty")
         return value
@@ -108,9 +109,17 @@ class WorkloadValidationResponse(BaseModel):
 
 
 class AvailableTechnicianResponse(BaseModel):
+    technician_id: int
     technician: str
+    skill: str
+    location: str
     status: str
+    current_jobs: int
+    max_jobs: int
     eligible_for_assignment: bool
+
+    class Config:
+        from_attributes = True
 
 
 class TechnicianAssignment(BaseModel):
@@ -121,3 +130,17 @@ class TechnicianAssignment(BaseModel):
 class NearestTechnicianResponse(BaseModel):
     technician: TechnicianResponse
     distance: float
+
+class PlannedAssignmentResponse(BaseModel):
+    job_id: int
+    technician: str
+    skill: str
+    customer: str
+    location: str
+    priority: str
+    status: str
+    current_jobs: int
+    max_jobs: int
+
+    class Config:
+        from_attributes = True

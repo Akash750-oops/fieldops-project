@@ -12,6 +12,8 @@ const initialFormData = {
   service_type: "",
   contact_number: "",
   preferred_service_date: "",
+  status: "active",
+  required_skill: "",
 };
 
 const priorities = [
@@ -61,6 +63,7 @@ function JobCreationForm() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [editingJobId, setEditingJobId] = useState(null);
+  const [popup, setPopup] = useState({ show: false, title: "", message: "", jobId: "" });
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   const fetchJobs = async () => {
@@ -128,6 +131,8 @@ function JobCreationForm() {
       service_type: job.service_type || "",
       contact_number: job.contact_number || "",
       preferred_service_date: job.preferred_service_date || "",
+      status: job.status || "active",
+      required_skill: job.required_skill || "",
     });
     setIsFormOpen(true);
   };
@@ -211,7 +216,6 @@ function JobCreationForm() {
       {/* Page Header */}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Job Management</h1>
           <p className="page-subtitle">Create and manage field service job requests</p>
         </div>
         <div className="header-actions-row">
@@ -259,7 +263,6 @@ function JobCreationForm() {
           <div className="card-header">
             <div>
               <span className="section-badge">Dashboard</span>
-              <h2 className="card-title">Job Management</h2>
               <p className="card-subtitle">View and manage all submitted job requests</p>
             </div>
           </div>
@@ -461,9 +464,6 @@ function JobCreationForm() {
         </div>
       </div>
       {isFormOpen && <div className="sidebar-overlay" onClick={() => setIsFormOpen(false)}></div>}
-    </div>
-  );
-}
     </div>
   );
 }
