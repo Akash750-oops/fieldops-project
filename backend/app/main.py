@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from starlette import status
 
 from .database import Base, engine
-from .routes import jobs, technicians, assignment
+from .routes import jobs, technicians, assignment, planning
 from . import models
 
 
@@ -75,6 +75,7 @@ Base.metadata.create_all(bind=engine)
 app.include_router(jobs.router)
 app.include_router(assignment.router)
 app.include_router(technicians.router)
+app.include_router(planning.router)
 
 
 @app.get("/")

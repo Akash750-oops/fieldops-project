@@ -168,25 +168,29 @@ def validate_technician_workload_api(technician_id: int, db: Session = Depends(g
 @router.get("/available", response_model=List[schemas.AvailableTechnicianResponse])
 def get_available_technicians(db: Session = Depends(get_db)):
     """
-    Retrieve all technicians currently eligible for assignment.
+    Retrieve all technicians with their availability status and workload details.
+    Returns all technicians but marks eligibility for assignment.
     """
     techs = db.query(models.Technician).all()
-    available_techs = []
+    result = []
     
     for tech in techs:
-        # Eligible if AVAILABLE and under workload limit
-        is_eligible = (
-            tech.technician_status == "AVAILABLE" and 
-            tech.current_jobs < tech.max_jobs
-        )
+        # Eligible if status is AVAILABLE (case-insensitive) and under workload limit
+        is_available_status = tech.technician_status.upper() == "AVAILABLE"
+        is_eligible = is_available_status and tech.current_jobs < tech.max_jobs
         
-        available_techs.append({
+        result.append({
+            "technician_id": tech.technician_id,
             "technician": tech.technician_name,
+            "skill": tech.technician_skill,
+            "location": tech.technician_location,
             "status": tech.technician_status,
+            "current_jobs": tech.current_jobs,
+            "max_jobs": tech.max_jobs,
             "eligible_for_assignment": is_eligible
         })
         
-    return available_techs
+    return result
 
 
 @router.get("/{technician_id}", response_model=schemas.TechnicianResponse)
@@ -198,3 +202,31 @@ def get_technician_by_id(technician_id: int, db: Session = Depends(get_db)):
     if not tech:
         raise HTTPException(status_code=404, detail="Technician not found")
     return tech
+
+
+@router.put("/{technician_id}/availability")
+def update_technician_availability(
+    technician_id: int,
+    update_data: schemas.TechnicianAvailabilityUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    Update the availability status of a technician.
+    """
+    tech = db.query(models.Technician).filter(models.Technician.technician_id == technician_id).first()
+    if not tech:
+        raise HTTPException(status_code=404, detail="Technician not found")
+    
+    # Validation is handled by Pydantic Literal
+    tech.technician_status = update_data.technician_status
+    db.commit()
+    db.refresh(tech)
+    
+    return {
+        "message": "Technician availability updated successfully",
+        "technician": {
+            "id": tech.technician_id,
+            "name": tech.technician_name,
+            "technician_status": tech.technician_status
+        }
+    }

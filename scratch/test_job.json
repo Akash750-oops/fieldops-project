@@ -1,0 +1,10 @@
+{
+  "customer_name": "Kanmani",
+  "location": "Chennai",
+  "issue_description": "AC not working",
+  "priority": "HIGH",
+  "status": "PENDING",
+  "service_type": "HVAC_REPAIR",
+  "contact_number": "9876543210",
+  "preferred_service_date": "2026-05-20"
+}

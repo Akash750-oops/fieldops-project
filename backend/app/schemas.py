@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal, Optional, Union
+from typing import Literal, Optional
 from pydantic import BaseModel, field_validator
 
 
@@ -14,24 +14,17 @@ class JobCreate(BaseModel):
     required_skill: Optional[str] = None # Made optional to match frontend
     status: str = "active"
 
-    @field_validator("priority", mode="before")
-    @classmethod
-    def validate_priority(cls, value: str):
-        # Allow case-insensitive priority values by converting to uppercase
-        if isinstance(value, str):
-            return value.upper()
-        return value
-
     @field_validator(
         "customer_name",
         "location",
         "issue_description",
         "service_type",
-        "contact_number",
-        "required_skill"
+        "contact_number"
     )
     @classmethod
-    def not_empty(cls, value):
+    def not_empty(cls, value, info):
+        if info.field_name == "required_skill" and value is None:
+            return value
         if not value or not value.strip():
             raise ValueError("Field cannot be empty")
         return value
@@ -78,6 +71,9 @@ class TechnicianCreate(BaseModel):
         return value.strip()
 
 
+class TechnicianAvailabilityUpdate(BaseModel):
+    technician_status: Literal["Available", "Busy", "Offline"]
+
 class TechnicianResponse(BaseModel):
     technician_id: int
     technician_name: str
@@ -113,26 +109,38 @@ class WorkloadValidationResponse(BaseModel):
 
 
 class AvailableTechnicianResponse(BaseModel):
+    technician_id: int
     technician: str
+    skill: str
+    location: str
     status: str
+    current_jobs: int
+    max_jobs: int
     eligible_for_assignment: bool
+
+    class Config:
+        from_attributes = True
 
 
 class TechnicianAssignment(BaseModel):
-    job_id: Union[int, str]
-    technician_id: Optional[int] = None
-    job_type: Optional[str] = None
-
-class AutoAssignmentRequest(BaseModel):
-    job_id: Union[int, str]
-    job_type: str
+    job_id: int
+    technician_id: int
 
 
 class NearestTechnicianResponse(BaseModel):
     technician: TechnicianResponse
     distance: float
 
+class PlannedAssignmentResponse(BaseModel):
+    job_id: int
+    technician: str
+    skill: str
+    customer: str
+    location: str
+    priority: str
+    status: str
+    current_jobs: int
+    max_jobs: int
 
-class TechnicianStatusUpdate(BaseModel):
-    technician_id: int
-    status: Literal["AVAILABLE", "BUSY", "OFFLINE"]
+    class Config:
+        from_attributes = True

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import case
 from ..database import get_db
 from ..models import Job
-from ..schemas import JobCreate, JobResponse
+from ..schemas import JobCreate, JobResponse, PlannedAssignmentResponse
 from ..workload_utils import update_workload_count
 from typing import List, Union
 from sqlalchemy.exc import SQLAlchemyError
@@ -69,6 +69,19 @@ def create_job(jobs: Union[JobCreate, List[JobCreate]], db: Session = Depends(ge
 def get_jobs(db: Session = Depends(get_db)):
     jobs = db.query(Job).order_by(Job.id.desc()).all()
     return jobs
+
+
+@router.get("/pending", response_model=list[JobResponse])
+def get_pending_jobs(db: Session = Depends(get_db)):
+    """
+    Fetch all jobs with status 'PENDING' that are not yet assigned to a technician.
+    Excludes COMPLETED and CANCELLED jobs implicitly by filtering for PENDING.
+    """
+    pending_jobs = db.query(Job).filter(
+        Job.status.in_(["PENDING", "active", "ACTIVE", "pending"]),
+        Job.assigned_technician_id == None
+    ).order_by(Job.id.desc()).all()
+    return pending_jobs
 
 
 @router.get("/sorted", response_model=list[JobResponse])
