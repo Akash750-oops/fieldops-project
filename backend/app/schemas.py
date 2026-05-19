@@ -147,4 +147,19 @@ class PlannedAssignmentResponse(BaseModel):
     max_jobs: int
 
     class Config:
-        from_attributes = True
+        from_attributes = True
+
+
+class HeartbeatPayload(BaseModel):
+    last_lat: Optional[float] = None
+    last_lng: Optional[float] = None
+
+
+class AvailabilityResponse(BaseModel):
+    tech_id: str
+    status: str
+    last_ping: datetime
+    active_jobs: int
+    last_lat: Optional[float] = None
+    last_lng: Optional[float] = None
+

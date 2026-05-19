@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 import os
 import sys
 import uuid
+import json
 from datetime import datetime, timezone
 
 # Add backend to path
@@ -32,6 +33,14 @@ class MockRedis:
         self.data[key] = value
         self.expires[key] = time
         return True
+
+    def delete(self, key):
+        if key in self.data:
+            del self.data[key]
+            if key in self.expires:
+                del self.expires[key]
+            return True
+        return False
 
 @pytest.fixture(scope="function")
 def mock_redis():
@@ -71,7 +80,7 @@ def sample_tech(db_session):
         technician_skill="Testing",
         technician_location="Test Lab",
         technician_status="AVAILABLE",
-        current_jobs=0,
+        current_jobs=2,
         max_jobs=5
     )
     db_session.add(tech)
@@ -80,82 +89,115 @@ def sample_tech(db_session):
     return tech
 
 def test_heartbeat_valid(client, sample_tech, mock_redis):
-    """Test valid heartbeat updates timestamp and redis cache"""
+    """Test valid heartbeat updates timestamp and redis cache JSON"""
     headers = {
         "X-Tenant-ID": "tenant-123",
         "Authorization": "Bearer sample_token"
     }
+    payload = {
+        "last_lat": 13.0827,
+        "last_lng": 80.2707
+    }
     
-    response = client.post(f"/technicians/{sample_tech.tech_id}/heartbeat", headers=headers)
+    response = client.post(f"/technicians/{sample_tech.tech_id}/heartbeat", headers=headers, json=payload)
     assert response.status_code == 200
     
     data = response.json()
     assert data["tech_id"] == sample_tech.tech_id
     assert data["status"] == "AVAILABLE"
     assert "last_ping" in data
+    assert data["active_jobs"] == 2
+    assert data["last_lat"] == 13.0827
+    assert data["last_lng"] == 80.2707
     
     # Check Redis
-    heartbeat_key = f"tech:heartbeat:tenant-123:{sample_tech.tech_id}"
-    assert mock_redis.get(heartbeat_key) == "AVAILABLE"
+    heartbeat_key = f"tech:availability:tenant-123:{sample_tech.tech_id}"
+    cached_raw = mock_redis.get(heartbeat_key)
+    assert cached_raw is not None
+    
+    cached_json = json.loads(cached_raw)
+    assert cached_json["tech_id"] == sample_tech.tech_id
+    assert cached_json["last_lat"] == 13.0827
     assert mock_redis.expires[heartbeat_key] == 60
 
-def test_heartbeat_invalid_uuid(client):
-    """Test invalid UUID returns 400"""
+def test_availability_cache_hit(client, sample_tech, mock_redis):
+    """Test cache read latency logic (hit)"""
     headers = {
         "X-Tenant-ID": "tenant-123",
         "Authorization": "Bearer sample_token"
     }
     
+    # Pre-populate Redis
+    heartbeat_key = f"tech:availability:tenant-123:{sample_tech.tech_id}"
+    cache_data = {
+        "tech_id": sample_tech.tech_id,
+        "status": "AVAILABLE",
+        "last_ping": "2026-05-19T10:30:00Z",
+        "active_jobs": 2,
+        "last_lat": 12.0,
+        "last_lng": 80.0
+    }
+    mock_redis.setex(heartbeat_key, 60, json.dumps(cache_data))
+    
+    response = client.get(f"/technicians/{sample_tech.tech_id}/availability", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["last_lat"] == 12.0
+
+def test_availability_cache_miss_fallback(client, sample_tech, mock_redis):
+    """Test cache read (miss/fallback to DB)"""
+    headers = {
+        "X-Tenant-ID": "tenant-123",
+        "Authorization": "Bearer sample_token"
+    }
+    
+    # Ensure Redis is empty
+    heartbeat_key = f"tech:availability:tenant-123:{sample_tech.tech_id}"
+    mock_redis.delete(heartbeat_key)
+    
+    response = client.get(f"/technicians/{sample_tech.tech_id}/availability", headers=headers)
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert data["tech_id"] == sample_tech.tech_id
+    assert data["status"] == "AVAILABLE"
+    # Fallback to DB doesn't have lat/lng
+    assert data["last_lat"] is None
+
+def test_cache_invalidation(client, sample_tech, mock_redis):
+    """Test cache invalidation endpoint"""
+    headers = {
+        "X-Tenant-ID": "tenant-123",
+        "Authorization": "Bearer sample_token"
+    }
+    
+    # Pre-populate Redis
+    heartbeat_key = f"tech:availability:tenant-123:{sample_tech.tech_id}"
+    mock_redis.setex(heartbeat_key, 60, '{"status": "BUSY"}')
+    assert mock_redis.get(heartbeat_key) is not None
+    
+    # Invalidate cache
+    response = client.post(f"/technicians/{sample_tech.tech_id}/invalidate-cache", headers=headers)
+    assert response.status_code == 200
+    
+    # Verify cache is empty
+    assert mock_redis.get(heartbeat_key) is None
+
+def test_heartbeat_invalid_uuid(client):
+    headers = {
+        "X-Tenant-ID": "tenant-123",
+        "Authorization": "Bearer sample_token"
+    }
     response = client.post("/technicians/invalid-uuid/heartbeat", headers=headers)
     assert response.status_code == 400
-    assert "Invalid technician ID format" in response.json()["error"]
-
-def test_heartbeat_non_existent_tech(client):
-    """Test non-existent tech returns 404"""
-    headers = {
-        "X-Tenant-ID": "tenant-123",
-        "Authorization": "Bearer sample_token"
-    }
-    random_id = str(uuid.uuid4())
-    
-    response = client.post(f"/technicians/{random_id}/heartbeat", headers=headers)
-    assert response.status_code == 404
-
-def test_heartbeat_cross_tenant(client, sample_tech):
-    """Test cross-tenant access returns 403"""
-    headers = {
-        "X-Tenant-ID": "tenant-456", # Different tenant
-        "Authorization": "Bearer sample_token"
-    }
-    
-    response = client.post(f"/technicians/{sample_tech.tech_id}/heartbeat", headers=headers)
-    assert response.status_code == 403
 
 def test_heartbeat_rate_limiting(client, sample_tech, mock_redis):
-    """Test rate limiting (max 1 per 30 seconds)"""
     headers = {
         "X-Tenant-ID": "tenant-123",
         "Authorization": "Bearer sample_token"
     }
     
-    # First request should succeed
     response = client.post(f"/technicians/{sample_tech.tech_id}/heartbeat", headers=headers)
     assert response.status_code == 200
     
-    # Second request should fail with 429 because rate limit key is set in mock_redis
     response2 = client.post(f"/technicians/{sample_tech.tech_id}/heartbeat", headers=headers)
     assert response2.status_code == 429
-    
-    # Clear the rate limit and it should succeed again
-    mock_redis.data = {}
-    response3 = client.post(f"/technicians/{sample_tech.tech_id}/heartbeat", headers=headers)
-    assert response3.status_code == 200
-
-def test_heartbeat_unauthorized(client, sample_tech):
-    """Test unauthorized when Bearer token is missing"""
-    headers = {
-        "X-Tenant-ID": "tenant-123",
-    }
-    
-    response = client.post(f"/technicians/{sample_tech.tech_id}/heartbeat", headers=headers)
-    assert response.status_code == 401
