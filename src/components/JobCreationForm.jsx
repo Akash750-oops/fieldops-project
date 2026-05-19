@@ -37,10 +37,6 @@ const priorityColors = {
   MEDIUM: "#eab308",
   LOW: "#22c55e",
   P1: "#ef4444",
-  P2: "#f97316",
-  P3: "#eab308",
-  P4: "#22c55e",
-  P5: "#22c55e",
 };
 
 const priorityMap = { P1: "CRITICAL", P2: "HIGH", P3: "MEDIUM", P4: "LOW", P5: "LOW" };
@@ -52,17 +48,21 @@ function normalizeP(p) {
 
 function JobCreationForm() {
   const [formData, setFormData] = useState(initialFormData);
-  const [jobs, setJobs] = useState([]);
   const [errors, setErrors] = useState({});
   const [apiError, setApiError] = useState("");
   const [loading, setLoading] = useState(false);
   const [jobsLoading, setJobsLoading] = useState(false);
+
+  // Missing state variables for list rendering and filtering
+  const [jobs, setJobs] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [priorityFilter, setPriorityFilter] = useState("ALL");
   const [serviceFilter, setServiceFilter] = useState("ALL");
-  const [searchTerm, setSearchTerm] = useState("");
+
   const [isEditing, setIsEditing] = useState(false);
   const [editingJobId, setEditingJobId] = useState(null);
+
   const [popup, setPopup] = useState({ show: false, title: "", message: "", jobId: "" });
   const [isFormOpen, setIsFormOpen] = useState(false);
 
@@ -156,7 +156,8 @@ function JobCreationForm() {
       fetchJobs();
     } catch (error) {
       console.error(error);
-      setApiError(error.response?.data?.detail || "Unable to save job. Please check backend API.");
+      const errorMsg = error.response?.data?.error || error.response?.data?.detail || "Unable to save job. Please check backend API.";
+      setApiError(errorMsg);
     } finally {
       setLoading(false);
     }
