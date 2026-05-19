@@ -67,7 +67,7 @@ function TechnicianList() {
       ));
     } catch (error) {
       console.error(error);
-      const errorMsg = error.response?.data?.detail || "Unable to update availability. Please try again.";
+      const errorMsg = error.response?.data?.error || error.response?.data?.detail || "Unable to update availability. Please try again.";
       showMessage(errorMsg, "error");
     } finally {
       setUpdatingId(null);
@@ -100,7 +100,7 @@ function TechnicianList() {
       fetchTechnicians();
     } catch (error) {
       console.error(error);
-      const errorMsg = error.response?.data?.detail || "Unable to add technician. Please try again.";
+      const errorMsg = error.response?.data?.error || error.response?.data?.detail || "Unable to add technician. Please try again.";
       showMessage(errorMsg, "error");
     } finally {
       setFormLoading(false);
