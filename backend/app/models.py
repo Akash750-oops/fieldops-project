@@ -8,12 +8,15 @@ class Technician(Base):
     __tablename__ = "technicians"
 
     technician_id = Column(Integer, primary_key=True, index=True)
+    tech_id = Column(String(36), unique=True, index=True, nullable=True) # Added for heartbeat UUID
+    tenant_id = Column(String(50), index=True, nullable=True) # Added for tenant isolation
     technician_name = Column(String(100), nullable=False)
     technician_skill = Column(String(100), nullable=False)
     technician_location = Column(String(150), nullable=False)
     technician_status = Column(String(30), default="AVAILABLE")
     current_jobs = Column(Integer, default=0)
     max_jobs = Column(Integer, default=5)
+    last_ping = Column(DateTime(timezone=True), nullable=True) # Added for heartbeat
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

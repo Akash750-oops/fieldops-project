@@ -74,6 +74,10 @@ class TechnicianCreate(BaseModel):
 class TechnicianAvailabilityUpdate(BaseModel):
     technician_status: Literal["Available", "Busy", "Offline"]
 
+class TechnicianStatusUpdate(BaseModel):
+    technician_id: int
+    status: Literal["AVAILABLE", "BUSY", "OFFLINE"]
+
 class TechnicianResponse(BaseModel):
     technician_id: int
     technician_name: str

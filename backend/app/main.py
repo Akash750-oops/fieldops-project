@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from starlette import status
 
 from .database import Base, engine
-from .routes import jobs, technicians, assignment, planning
+from .routes import jobs, technicians, assignment, planning, dispatch
 from . import models
 
 
@@ -70,12 +70,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"Warning: Could not create tables on startup: {e}")
 
 app.include_router(jobs.router)
 app.include_router(assignment.router)
 app.include_router(technicians.router)
 app.include_router(planning.router)
+app.include_router(dispatch.router)
 
 
 @app.get("/")

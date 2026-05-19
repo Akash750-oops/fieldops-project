@@ -15,6 +15,9 @@ def update_schema():
     queries = [
         "ALTER TABLE technicians ADD COLUMN IF NOT EXISTS current_jobs INTEGER DEFAULT 0;",
         "ALTER TABLE technicians ADD COLUMN IF NOT EXISTS max_jobs INTEGER DEFAULT 5;",
+        "ALTER TABLE technicians ADD COLUMN IF NOT EXISTS tech_id VARCHAR(36) UNIQUE;",
+        "ALTER TABLE technicians ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(50);",
+        "ALTER TABLE technicians ADD COLUMN IF NOT EXISTS last_ping TIMESTAMP WITH TIME ZONE;",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS required_skill VARCHAR(100);",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS assigned_technician_id INTEGER REFERENCES technicians(technician_id);",
         "ALTER TABLE technicians ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;",
