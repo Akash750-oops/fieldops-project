@@ -37,6 +37,7 @@ const priorityColors = {
   MEDIUM: "#eab308",
   LOW: "#22c55e",
   P1: "#ef4444",
+};
 
 const priorityMap = { P1: "CRITICAL", P2: "HIGH", P3: "MEDIUM", P4: "LOW", P5: "LOW" };
 
@@ -52,19 +53,24 @@ function JobCreationForm() {
   const [loading, setLoading] = useState(false);
   const [jobsLoading, setJobsLoading] = useState(false);
 
+  // Missing state variables for list rendering and filtering
+  const [jobs, setJobs] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [priorityFilter, setPriorityFilter] = useState("ALL");
+  const [serviceFilter, setServiceFilter] = useState("ALL");
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingJobId, setEditingJobId] = useState(null);
 
-  const [popup, setPopup] = useState({
   const [popup, setPopup] = useState({ show: false, title: "", message: "", jobId: "" });
   const [isFormOpen, setIsFormOpen] = useState(false);
-
 
   const fetchJobs = async () => {
     try {
       setJobsLoading(true);
       const response = await axios.get(API_URL);
+      setJobs(response.data);
     } catch (error) {
       console.error(error);
       setApiError("Unable to fetch jobs. Please check backend API.");
@@ -150,7 +156,8 @@ function JobCreationForm() {
       fetchJobs();
     } catch (error) {
       console.error(error);
-      setApiError(error.response?.data?.detail || "Unable to save job. Please check backend API.");
+      const errorMsg = error.response?.data?.error || error.response?.data?.detail || "Unable to save job. Please check backend API.";
+      setApiError(errorMsg);
     } finally {
       setLoading(false);
     }

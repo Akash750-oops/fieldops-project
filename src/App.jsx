@@ -1,6 +1,7 @@
 import { useState } from "react";
 import JobCreationForm from "./components/JobCreationForm.jsx";
 import TechnicianList from "./components/TechnicianList.jsx";
+import TechnicianListPage from "./components/TechnicianListPage.jsx";
 import PlanningDashboard from "./components/PlanningDashboard.jsx";
 import logo from "./assets/logo.png";
 import "./App.css";
@@ -28,19 +29,25 @@ function App() {
             className={`nav-item ${activeTab === "jobs" ? "nav-active" : ""}`}
             onClick={() => setActiveTab("jobs")}
           >
-            <span className="nav-icon">📋</span>Jobs
+            <span className="nav-icon"></span>Jobs
           </button>
           <button
             className={`nav-item ${activeTab === "technicians" ? "nav-active" : ""}`}
             onClick={() => setActiveTab("technicians")}
           >
-            <span className="nav-icon">👷</span>Technicians
+            <span className="nav-icon"></span>Technicians
+          </button>
+          <button
+            className={`nav-item ${activeTab === "techboard" ? "nav-active" : ""}`}
+            onClick={() => setActiveTab("techboard")}
+          >
+            <span className="nav-icon"></span>Tech Dashboard
           </button>
           <button
             className={`nav-item ${activeTab === "planning" ? "nav-active" : ""}`}
             onClick={() => setActiveTab("planning")}
           >
-            <span className="nav-icon">📅</span>Planning
+            <span className="nav-icon"></span>Planning
           </button>
         </nav>
 
@@ -59,23 +66,21 @@ function App() {
         {/* Top Header */}
         <header className="top-header">
           <span className="header-title">
-            {activeTab === "jobs" ? "Job Management" :
-              activeTab === "technicians" ? "Technician Management" :
-                "Planning Dashboard"}
+            {activeTab === "jobs"        ? "Job Management" :
+             activeTab === "technicians" ? "Technician Management" :
+             activeTab === "techboard"   ? "Technician Dashboard" :
+                                          "Planning Dashboard"}
           </span>
           <div className="header-actions">
-            <div className="status-pill">
-              <span className="status-dot" />
-              System Online
-            </div>
           </div>
         </header>
 
         {/* Page */}
         <main className="page-wrap">
-          {activeTab === "jobs" && <JobCreationForm />}
+          {activeTab === "jobs"        && <JobCreationForm />}
           {activeTab === "technicians" && <TechnicianList />}
-          {activeTab === "planning" && <PlanningDashboard />}
+          {activeTab === "techboard"   && <TechnicianListPage />}
+          {activeTab === "planning"    && <PlanningDashboard />}
         </main>
       </div>
     </div>
