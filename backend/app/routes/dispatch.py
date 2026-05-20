@@ -86,6 +86,19 @@ def technician_heartbeat(
 
     return cache_data
 
+@router.get("/metrics")
+def get_metrics(redis_client = Depends(get_redis_client)):
+    now = datetime.now(timezone.utc)
+    hour_str = now.strftime("%Y-%m-%d-%H")
+    metric_key = f"metrics:offline_events:{hour_str}"
+    
+    val = redis_client.get(metric_key)
+    offline_events = int(val) if val else 0
+    
+    return {
+        "offline_events_current_hour": offline_events
+    }
+
 @router.get("/{id}/availability", response_model=AvailabilityResponse)
 def get_technician_availability(
     id: str,

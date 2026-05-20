@@ -82,6 +82,17 @@ app.include_router(planning.router)
 app.include_router(dispatch.router)
 
 
+from .worker import start_scheduler, stop_scheduler
+
+@app.on_event("startup")
+def on_startup():
+    start_scheduler()
+
+@app.on_event("shutdown")
+def on_shutdown():
+    stop_scheduler()
+
+
 @app.get("/")
 def home():
     return {

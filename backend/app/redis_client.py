@@ -41,6 +41,13 @@ class RedisCacheManager:
         result = self._execute_with_retry(self.client.delete, key)
         return result is not None
 
+    def incr(self, key: str, amount: int = 1) -> Optional[int]:
+        return self._execute_with_retry(self.client.incrby, key, amount)
+
+    def expire(self, key: str, time_seconds: int) -> bool:
+        result = self._execute_with_retry(self.client.expire, key, time_seconds)
+        return result is not None
+
 redis_manager = None
 
 def get_redis_client():
