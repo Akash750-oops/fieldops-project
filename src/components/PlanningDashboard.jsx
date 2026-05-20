@@ -226,7 +226,7 @@ function PlanningDashboard() {
           onClick={fetchAllData}
           disabled={isGlobalLoading}
         >
-          {isGlobalLoading ? "Refreshing..." : "⟳ Refresh"}
+          {isGlobalLoading ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
@@ -248,7 +248,7 @@ function PlanningDashboard() {
               <LoadingSpinner message="Loading pending jobs..." />
             ) : pendingJobs.length === 0 ? (
               <div className="empty-state">
-                <span className="empty-icon">📂</span>
+                <span className="empty-icon"></span>
                 <h3>No pending jobs</h3>
                 <p>All jobs are either assigned or completed.</p>
               </div>
@@ -333,7 +333,7 @@ function PlanningDashboard() {
               <LoadingSpinner message="Loading technicians..." />
             ) : allTechsStatus.length === 0 ? (
               <div className="empty-state">
-                <span className="empty-icon">👷</span>
+                <span className="empty-icon"></span>
                 <h3>No technicians found</h3>
                 <p>No technicians are registered in the system.</p>
               </div>
@@ -347,13 +347,13 @@ function PlanningDashboard() {
                     <div className="tech-status-info">
                       <span className="tech-status-name">{tech.technician}</span>
                       <span className="tech-skill-label">{tech.skill}</span>
-                      <span className="tech-location-label">📍 {tech.location}</span>
+                      <span className="tech-location-label">{tech.location}</span>
                       <div className="tech-status-tags">
                         <span className={getStatusBadgeClass(tech.status)}>
                           {tech.status || "Unknown"}
                         </span>
                         {tech.eligible_for_assignment && (
-                          <span className="eligible-tag">✓ Ready</span>
+                          <span className="eligible-tag">Ready</span>
                         )}
                         <span className="workload-mini">
                           {tech.current_jobs}/{tech.max_jobs} jobs
@@ -393,7 +393,7 @@ function PlanningDashboard() {
             <LoadingSpinner message="Loading assignments..." />
           ) : plannedAssignments.length === 0 ? (
             <div className="empty-state">
-              <span className="empty-icon">📋</span>
+              <span className="empty-icon"></span>
               <h3>No planned assignments</h3>
               <p>No jobs have been assigned to technicians yet.</p>
             </div>

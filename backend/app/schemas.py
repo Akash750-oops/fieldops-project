@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 from pydantic import BaseModel, field_validator
 
 
@@ -76,7 +76,7 @@ class TechnicianAvailabilityUpdate(BaseModel):
 
 class TechnicianStatusUpdate(BaseModel):
     technician_id: int
-    status: Literal["AVAILABLE", "BUSY", "OFFLINE"]
+    status: str
 
 class TechnicianResponse(BaseModel):
     technician_id: int
@@ -127,8 +127,9 @@ class AvailableTechnicianResponse(BaseModel):
 
 
 class TechnicianAssignment(BaseModel):
-    job_id: int
-    technician_id: int
+    job_id: Union[int, str]
+    technician_id: Optional[int] = None
+    job_type: Optional[str] = None
 
 
 class NearestTechnicianResponse(BaseModel):
