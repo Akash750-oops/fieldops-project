@@ -45,9 +45,15 @@ def technician_heartbeat(
 
     # Rate limiting: max 1 per 30 seconds
     rate_limit_key = f"rate_limit:{x_tenant_id}:{id}"
-    if redis_client.get(rate_limit_key):
-        logger.warning("Rate limit exceeded for heartbeat", extra=log_extra)
-        raise HTTPException(status_code=429, detail="Too Many Requests")
+    try:
+        # Atomic set with NX (Not eXists) and EX (expire in seconds)
+        if not redis_client.set(rate_limit_key, "1", ex=30, nx=True):
+            logger.warning("Rate limit exceeded for heartbeat", extra=log_extra)
+            raise HTTPException(status_code=429, detail="Too Many Requests")
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        logger.warning(f"Redis error checking rate limit: {e}", extra=log_extra)
     
     # Verify tenant isolation and existence
     tech = db.query(Technician).filter(Technician.tech_id == id).first()
@@ -77,10 +83,10 @@ def technician_heartbeat(
 
     # Update Redis cache with 60s TTL
     heartbeat_key = f"tech:availability:{x_tenant_id}:{id}"
-    redis_client.setex(heartbeat_key, 60, json.dumps(cache_data))
-    
-    # Set rate limit key
-    redis_client.setex(rate_limit_key, 30, "1")
+    try:
+        redis_client.setex(heartbeat_key, 60, json.dumps(cache_data))
+    except Exception as e:
+        logger.warning(f"Redis error caching heartbeat: {e}", extra=log_extra)
 
     logger.info("Heartbeat processed and cached successfully", extra=log_extra)
 
@@ -112,11 +118,14 @@ def get_technician_availability(
     log_extra = {"correlation_id": correlation_id, "tenant_id": x_tenant_id, "tech_id": id}
 
     heartbeat_key = f"tech:availability:{x_tenant_id}:{id}"
-    cached_data = redis_client.get(heartbeat_key)
-
-    if cached_data:
-        logger.info("Cache hit for availability", extra=log_extra)
-        return json.loads(cached_data)
+    try:
+        cached_data = redis_client.get(heartbeat_key)
+    
+        if cached_data:
+            logger.info("Cache hit for availability", extra=log_extra)
+            return json.loads(cached_data)
+    except Exception as e:
+        logger.warning(f"Redis error checking availability cache: {e}", extra=log_extra)
 
     logger.info("Cache miss for availability, falling back to database", extra=log_extra)
     
