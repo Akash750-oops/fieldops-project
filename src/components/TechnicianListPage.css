@@ -15,10 +15,11 @@
 /* ─── Page Header ──────────────────────────────────────────────────────── */
 .tld-header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  justify-content: flex-end;
+  align-items: center;
   flex-wrap: wrap;
   gap: 12px;
+  margin-bottom: 16px;
 }
 .tld-header-left h1 {
   font-size: 22px;
@@ -195,6 +196,23 @@
 }
 
 /* ─── Table Card ───────────────────────────────────────────────────────── */
+.tld-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px; padding-bottom: 14px;
+  border-bottom: 1px solid #E3ECE7;
+}
+.tld-section-badge {
+  display: inline-block; background: #DDEEE5; color: #2F4F3E;
+  font-size: 10px; font-weight: 700; padding: 2px 8px;
+  border-radius: 20px; letter-spacing: .05em; text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.tld-card-subtitle { font-size: 12px; color: #6B7280; margin-top: 3px; }
+
 .tld-table-card {
   background: #FFFFFF;
   border: 1px solid #E3ECE7;

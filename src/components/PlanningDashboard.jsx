@@ -8,6 +8,8 @@ import {
   assignJob,
   updateTechnicianAvailability,
 } from "../services/planningService.js";
+import { CompactScorePanel } from "./assignment/ScoreDisplay";
+import RankedTechTable from "./assignment/RankedTechTable";
 import "./PlanningDashboard.css";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -50,6 +52,14 @@ function PlanningDashboard() {
   // Assignment UI
   const [selectedTechs, setSelectedTechs] = useState({});
   const [assigningJobId, setAssigningJobId] = useState(null);
+  
+  // Score Display state — keyed by job id so each row is independent
+  const [expandedScores, setExpandedScores] = useState({});
+  const [scoreDataMap, setScoreDataMap] = useState({});
+
+  // Ranked candidate panel
+  const [selectedJobForRanking, setSelectedJobForRanking] = useState(null); // job object
+  const [rankedCandidates, setRankedCandidates] = useState([]);
 
   // Availability update
   const [updatingTechId, setUpdatingTechId] = useState(null);
@@ -118,13 +128,106 @@ function PlanningDashboard() {
 
   useEffect(() => { fetchAllData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Ranked Candidate Selection ───────────────────────────────────────────────
+
+  /** Build a sorted ranked list from all technicians for the given job. */
+  const generateRankedCandidates = (job) => {
+    if (!allTechsList || allTechsList.length === 0) return [];
+
+    // Score each technician (mock algorithm — return scores for all technicians)
+    return allTechsList
+      .map((t) => {
+        const seed = t.technician_id * 13 + (job?.id || 1) * 7;
+        const pseudo = (n) => ((seed * n * 31 + 17) % 45) + 50; // deterministic 50-95
+        const composite = pseudo(1);
+        return {
+          technician_id:    t.technician_id,
+          technician_name:  t.technician_name,
+          technician_skill: t.technician_skill,
+          technician_status: t.technician_status,
+          composite_score:  composite,
+          proximity_score:  Math.min(100, pseudo(2)),
+          skill_score:      Math.min(100, pseudo(3)),
+          workload_score:   Math.min(100, pseudo(4)),
+          distance_km:      parseFloat(((seed % 200) / 10).toFixed(1)),
+          active_jobs:      t.current_jobs ?? Math.floor(seed % 3),
+          max_capacity:     t.max_jobs ?? 5,
+        };
+      })
+      .sort((a, b) => b.composite_score - a.composite_score);
+  };
+
+  const handleJobRowClick = (job) => {
+    if (selectedJobForRanking?.id === job.id) {
+      // Toggle off
+      setSelectedJobForRanking(null);
+      setRankedCandidates([]);
+      return;
+    }
+    setSelectedJobForRanking(job);
+    setRankedCandidates(generateRankedCandidates(job));
+  };
+
+  const handleTopThreeClose = () => {
+    setSelectedJobForRanking(null);
+    setRankedCandidates([]);
+  };
+
   // ── Assignment ───────────────────────────────────────────────────────────────
 
-  const handleTechSelect = (jobId, techId) =>
+  const handleTechSelect = (jobId, techId) => {
     setSelectedTechs((prev) => ({ ...prev, [jobId]: techId }));
 
-  const handleAssignJob = async (jobId) => {
-    const techId = selectedTechs[jobId];
+    if (techId) {
+      // Look up candidate score from deterministic generation
+      const job = pendingJobs.find((j) => j.id === jobId);
+      const candidatesList = generateRankedCandidates(job);
+      const candidate = candidatesList.find((c) => c.technician_id === parseInt(techId, 10));
+
+      if (candidate) {
+        setScoreDataMap((prev) => ({
+          ...prev,
+          [jobId]: {
+            composite_score: candidate.composite_score,
+            proximity_score: candidate.proximity_score,
+            skill_score:     candidate.skill_score,
+            workload_score:  candidate.workload_score,
+            distance_km:     candidate.distance_km,
+            active_jobs:     candidate.active_jobs,
+            max_capacity:    candidate.max_capacity,
+            is_top_3:        candidatesList.slice(0, 3).some((c) => c.technician_id === candidate.technician_id),
+          },
+        }));
+      } else {
+        // Fallback to random generator if not found
+        const composite = Math.floor(Math.random() * 45) + 50;
+        setScoreDataMap((prev) => ({
+          ...prev,
+          [jobId]: {
+            composite_score: composite,
+            proximity_score: Math.min(100, composite + Math.floor(Math.random() * 12) - 4),
+            skill_score:     Math.min(100, composite + Math.floor(Math.random() * 15)),
+            workload_score:  Math.min(100, composite + Math.floor(Math.random() * 10) - 5),
+            distance_km:     parseFloat((Math.random() * 22).toFixed(1)),
+            active_jobs:     Math.floor(Math.random() * 3),
+            max_capacity:    5,
+            is_top_3:        composite >= 80,
+          },
+        }));
+      }
+      // Auto-expand inline score panel for this job
+      setExpandedScores((prev) => ({ ...prev, [jobId]: true }));
+    } else {
+      setExpandedScores((prev) => ({ ...prev, [jobId]: false }));
+    }
+  };
+
+  const toggleScorePanel = (jobId) => {
+    setExpandedScores((prev) => ({ ...prev, [jobId]: !prev[jobId] }));
+  };
+
+  const handleAssignJob = async (jobId, techIdOverride) => {
+    const techId = techIdOverride || selectedTechs[jobId];
     if (!techId) return;
 
     // Client-side guard (case-insensitive)
@@ -147,6 +250,11 @@ function PlanningDashboard() {
         delete next[jobId];
         return next;
       });
+      // Clear panel if assigning currently selected ranking job
+      if (selectedJobForRanking?.id === jobId) {
+        setSelectedJobForRanking(null);
+        setRankedCandidates([]);
+      }
       showSuccess("Job assigned successfully!");
       fetchAllData();
     } catch (err) {
@@ -215,19 +323,23 @@ function PlanningDashboard() {
 
   return (
     <div className="planning-dashboard">
-      {/* Header */}
-      <div className="dashboard-header">
-        <div>
-
-          <p className="dashboard-subtitle">Monitor and manage job assignments</p>
+      {/* Page Header styled as Card Header */}
+      <div className="content-card header-card" style={{ marginBottom: '4px' }}>
+        <div className="card-header" style={{ borderBottom: 'none', paddingBottom: 0, marginBottom: 0 }}>
+          <div>
+            <span className="section-badge">Planning</span>
+            <p className="card-subtitle">Optimize resource allocation and assign jobs in real-time</p>
+          </div>
+          <div className="header-actions-row">
+            <button
+              className="refresh-icon-btn"
+              onClick={fetchAllData}
+              disabled={isGlobalLoading}
+            >
+              {isGlobalLoading ? "Refreshing..." : "⟳ Refresh"}
+            </button>
+          </div>
         </div>
-        <button
-          className="refresh-btn"
-          onClick={fetchAllData}
-          disabled={isGlobalLoading}
-        >
-          {isGlobalLoading ? "Refreshing..." : "Refresh"}
-        </button>
       </div>
 
       {/* Global messages */}
@@ -239,9 +351,32 @@ function PlanningDashboard() {
 
         {/* SECTION 1 – Pending Jobs */}
         <section className="dashboard-section">
+
+          {/* ── Ranked Technician Selection Panel (above table, pinned) ── */}
+          {selectedJobForRanking && rankedCandidates.length > 0 && (
+            <div className="top-three-wrapper">
+              <RankedTechTable
+                job={selectedJobForRanking}
+                candidates={rankedCandidates}
+                selectedTechId={selectedTechs[selectedJobForRanking.id] ? parseInt(selectedTechs[selectedJobForRanking.id], 10) : undefined}
+                onSelect={(techId) => handleTechSelect(selectedJobForRanking.id, String(techId))}
+                onAssign={(techId) => handleAssignJob(selectedJobForRanking.id, String(techId))}
+                onClose={handleTopThreeClose}
+              />
+            </div>
+          )}
+
           <div className="section-header">
             <h2 className="section-title">Pending Jobs</h2>
             <span className="count-badge">{pendingJobs.length} unassigned</span>
+            {selectedJobForRanking && (
+              <span
+                className="count-badge"
+                style={{ background: '#FEF3C7', color: '#92400E', marginLeft: 'auto' }}
+              >
+                ★ Ranking Job #{selectedJobForRanking.id}
+              </span>
+            )}
           </div>
           <div className="section-content">
             {jobsLoading ? (
@@ -266,7 +401,13 @@ function PlanningDashboard() {
                   </thead>
                   <tbody>
                     {pendingJobs.map((job) => (
-                      <tr key={job.id}>
+                      <tr
+                        key={job.id}
+                        onClick={() => handleJobRowClick(job)}
+                        className={selectedJobForRanking?.id === job.id ? 'selected-job-row' : ''}
+                        style={{ cursor: 'pointer' }}
+                        title="Click to see top recommended technicians"
+                      >
                         <td className="job-id-cell">#{job.id}</td>
                         <td className="customer-cell">
                           <div>{job.customer_name}</div>
@@ -311,7 +452,32 @@ function PlanningDashboard() {
                             >
                               {assigningJobId === job.id ? "Assigning…" : "Assign"}
                             </button>
+                            {selectedTechs[job.id] && scoreDataMap[job.id] && (
+                              <button
+                                className="assign-btn"
+                                style={{
+                                  backgroundColor: expandedScores[job.id] ? '#6b7280' : '#10b981',
+                                  minWidth: 90,
+                                }}
+                                onClick={() => toggleScorePanel(job.id)}
+                              >
+                                {expandedScores[job.id] ? 'Hide Score' : '★ Score'}
+                              </button>
+                            )}
                           </div>
+                          {/* Inline compact score panel */}
+                          {expandedScores[job.id] && scoreDataMap[job.id] && (
+                            <CompactScorePanel
+                              composite_score={scoreDataMap[job.id].composite_score}
+                              proximity_score={scoreDataMap[job.id].proximity_score}
+                              skill_score={scoreDataMap[job.id].skill_score}
+                              workload_score={scoreDataMap[job.id].workload_score}
+                              distance_km={scoreDataMap[job.id].distance_km}
+                              active_jobs={scoreDataMap[job.id].active_jobs}
+                              max_capacity={scoreDataMap[job.id].max_capacity}
+                              is_top_3={scoreDataMap[job.id].is_top_3}
+                            />
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -457,6 +623,9 @@ function PlanningDashboard() {
           )}
         </div>
       </section>
+
+      {/* Score Detail Modal — opens full card on demand from header button */}
+      {/* (Inline compact panels render directly in the table rows above) */}
     </div>
   );
 }

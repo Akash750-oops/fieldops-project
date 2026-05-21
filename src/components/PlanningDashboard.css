@@ -1,30 +1,47 @@
 /* ─── Layout ──────────────────────────────────────────────────────────────── */
 .planning-dashboard {
-  padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
   font-family: 'Inter', sans-serif;
+  background: #EEF4F1;
+  min-height: 100vh;
+  padding: 24px;
+  color: #1F2933;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.dashboard-header {
+/* ── Card Styles ────────────────────────────────────────────────────────── */
+.content-card {
+  background: #FFFFFF; border-radius: 12px;
+  padding: 22px;
+  box-shadow: 0 1px 4px rgba(47,79,62,.07);
+  border: 1px solid #E3ECE7;
+}
+.card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 28px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
+.section-badge {
+  display: inline-block; background: #DDEEE5; color: #2F4F3E;
+  font-size: 10px; font-weight: 700; padding: 2px 8px;
+  border-radius: 20px; letter-spacing: .05em; text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.card-subtitle { font-size: 12px; color: #6B7280; margin-top: 3px; }
 
-.dashboard-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: #2F4F3E;
-  margin: 0;
-}
+.header-actions-row { display: flex; gap: 8px; }
 
-.dashboard-subtitle {
-  font-size: 13px;
-  color: #6B7280;
-  margin-top: 4px;
+.refresh-icon-btn {
+  background: #FFFFFF; border: 1px solid #E3ECE7; color: #2F4F3E;
+  padding: 7px 14px; border-radius: 8px;
+  font-weight: 600; font-size: 12px; cursor: pointer;
+  transition: all .2s; box-shadow: 0 1px 3px rgba(47,79,62,.06);
 }
+.refresh-icon-btn:hover { background: #F6FAF8; border-color: #7AAE8A; }
+.refresh-icon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .refresh-btn {
   background: #FFFFFF;
@@ -65,6 +82,22 @@
 }
 
 .planned-section { margin-bottom: 8px; }
+
+/* ─── Top-3 Highlight Panel wrapper ────────────────────────────────────── */
+.top-three-wrapper {
+  padding: 16px 16px 0;
+}
+
+/* ─── Selected Job Row ─────────────────────────────────────────────────── */
+.selected-job-row td {
+  background: #FFF8E7 !important;
+  border-left: 3px solid #F59E0B;
+}
+
+.dashboard-table tr.selected-job-row:hover td {
+  background: #FFF3D0 !important;
+}
+
 
 .section-header {
   padding: 16px 22px;

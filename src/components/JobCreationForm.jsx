@@ -214,16 +214,6 @@ function JobCreationForm() {
         </div>
       )}
 
-      {/* Page Header */}
-      <div className="page-header">
-        <div>
-          <p className="page-subtitle">Create and manage field service job requests</p>
-        </div>
-        <div className="header-actions-row">
-          <button className="refresh-icon-btn" onClick={fetchJobs} title="Refresh">⟳ Refresh</button>
-          <button className="add-job-btn" onClick={() => setIsFormOpen(true)}>+ Create Job</button>
-        </div>
-      </div>
 
       {/* KPI Cards */}
       <div className="kpi-row">
@@ -265,6 +255,10 @@ function JobCreationForm() {
             <div>
               <span className="section-badge">Dashboard</span>
               <p className="card-subtitle">View and manage all submitted job requests</p>
+            </div>
+            <div className="header-actions-row">
+              <button className="refresh-icon-btn" onClick={fetchJobs} title="Refresh">⟳ Refresh</button>
+              <button className="add-job-btn" onClick={() => setIsFormOpen(true)}>+ Create Job</button>
             </div>
           </div>
 

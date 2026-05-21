@@ -257,47 +257,6 @@ export default function TechnicianListPage(){
       {/* Toast */}
       {toast.msg&&<div className={`tld-toast ${toast.type}`}>{toast.msg}</div>}
 
-      {/* Header */}
-      <div className="tld-header">
-        <div className="tld-header-left">
-          <h1>Technicians</h1>
-          <p>Monitor and manage all field technicians in real-time</p>
-        </div>
-        <div className="tld-header-right">
-          {/* Refresh indicator */}
-          <div className="tld-refresh-bar">
-            {fetching
-              ? <><div className="tld-refresh-spinner"/><span className="tld-refresh-fetching">Refreshing…</span></>
-              : !isTabActive
-                ? <span className="tld-refresh-paused">Paused</span>
-                : <span className="tld-refresh-last">Updated {formatAgo(lastSuccessAt)}</span>
-            }
-            {isStale&&!fetching&&<span className="tld-stale-warning">Data may be outdated</span>}
-            {/* Metrics popover */}
-            <div className="tld-metrics-wrap" ref={metricsRef}>
-              <button className="tld-metrics-trigger" onClick={()=>setShowMetrics(v=>!v)}>
-                Metrics
-              </button>
-              {showMetrics&&<MetricsPanel metrics={metrics} lastSuccessAt={lastSuccessAt}/>}
-            </div>
-          </div>
-
-          <button
-            className="tld-refresh-btn"
-            onClick={handleManualRefresh}
-            disabled={fetching||loading}
-            title="Refresh now"
-          >
-            {fetching||loading
-              ? <><div className="tld-refresh-btn-spinner"/>Refreshing…</>
-              : <>Refresh</>
-            }
-          </button>
-          <button className="tld-add-btn" onClick={()=>showToast("Add Technician coming soon!")}>
-            + Add Technician
-          </button>
-        </div>
-      </div>
 
       {/* Countdown progress rail */}
       {!loading&&technicians.length>0&&(
@@ -370,6 +329,47 @@ export default function TechnicianListPage(){
 
       {/* Table Card */}
       <div className="tld-table-card">
+        <div className="tld-card-header">
+          <div>
+            <span className="tld-section-badge">Dashboard</span>
+            <p className="tld-card-subtitle">Monitor registered technicians, real-time workload, and latency metrics</p>
+          </div>
+          <div className="tld-header-right">
+            {/* Refresh indicator */}
+            <div className="tld-refresh-bar">
+              {fetching
+                ? <><div className="tld-refresh-spinner"/><span className="tld-refresh-fetching">Refreshing…</span></>
+                : !isTabActive
+                  ? <span className="tld-refresh-paused">Paused</span>
+                  : <span className="tld-refresh-last">Updated {formatAgo(lastSuccessAt)}</span>
+              }
+              {isStale&&!fetching&&<span className="tld-stale-warning">Data may be outdated</span>}
+              {/* Metrics popover */}
+              <div className="tld-metrics-wrap" ref={metricsRef}>
+                <button className="tld-metrics-trigger" onClick={()=>setShowMetrics(v=>!v)}>
+                  Metrics
+                </button>
+                {showMetrics&&<MetricsPanel metrics={metrics} lastSuccessAt={lastSuccessAt}/>}
+              </div>
+            </div>
+
+            <button
+              className="tld-refresh-btn"
+              onClick={handleManualRefresh}
+              disabled={fetching||loading}
+              title="Refresh now"
+            >
+              {fetching||loading
+                ? <><div className="tld-refresh-btn-spinner"/>Refreshing…</>
+                : <>Refresh</>
+              }
+            </button>
+            <button className="tld-add-btn" onClick={()=>showToast("Add Technician coming soon!")}>
+              + Add Technician
+            </button>
+          </div>
+        </div>
+
         <div className="tld-table-meta">
           <p className="tld-results-count">
             Showing <strong>{pageSlice.length}</strong> of <strong>{filtered.length}</strong> technician{filtered.length!==1?"s":""}
