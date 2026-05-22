@@ -176,3 +176,9 @@ export default function StatusBadgeStories() {
     </div>
   );
 }
+{ ALL_STATUSES.map(s => <StatusBadge key={s} status={s} />) }
+        </div >
+      </div >
+    </div >
+  );
+}

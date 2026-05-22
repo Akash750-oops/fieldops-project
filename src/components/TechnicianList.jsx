@@ -143,17 +143,6 @@ function TechnicianList() {
         </div>
       )}
 
-      {/* Page Header */}
-      <div className="page-header">
-        <div>
-          <p className="page-subtitle">Manage field technicians and update their availability</p>
-        </div>
-        <div className="header-actions-row">
-          <button className="refresh-icon-btn" onClick={fetchTechnicians}>⟳ Refresh</button>
-          <button className="add-tech-btn" onClick={() => setIsFormOpen(true)}>+ Add Technician</button>
-        </div>
-      </div>
-
       {/* KPI Cards */}
       <div className="kpi-row">
         <div className="kpi-card kpi-blue">
@@ -190,8 +179,20 @@ function TechnicianList() {
       <div className="main-content-row full-grid-layout">
         {/* Technicians Grid & Filters */}
         <div className="content-card grid-card">
+          <div className="card-header">
+            <div>
+              <span className="section-badge">Registry</span>
+              <p className="card-subtitle">Manage field technicians and update their availability</p>
+            </div>
+            <div className="header-actions-row">
+              <button className="refresh-icon-btn" onClick={fetchTechnicians} title="Refresh">⟳ Refresh</button>
+              <button className="add-tech-btn" onClick={() => setIsFormOpen(true)}>+ Add Technician</button>
+            </div>
+          </div>
+
           {/* Filters */}
           <div className="tech-filters-row">
+
             <div className="filter-group">
               <label>Search</label>
               <input

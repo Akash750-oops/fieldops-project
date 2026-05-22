@@ -63,28 +63,16 @@ function App() {
 
       {/* ── Main Area ── */}
       <div className="main-area">
-        {/* Top Header */}
-        <header className="top-header">
-          <span className="header-title">
-            {activeTab === "jobs"        ? "Job Management" :
-             activeTab === "technicians" ? "Technician Management" :
-             activeTab === "techboard"   ? "Technician Dashboard" :
-                                          "Planning Dashboard"}
-          </span>
-          <div className="header-actions">
-          </div>
-        </header>
-
         {/* Page */}
         <main className="page-wrap">
-          {activeTab === "jobs"        && <JobCreationForm />}
+          {activeTab === "jobs" && <JobCreationForm />}
           {activeTab === "technicians" && <TechnicianList />}
-          {activeTab === "techboard"   && <TechnicianListPage />}
-          {activeTab === "planning"    && <PlanningDashboard />}
+          {activeTab === "techboard" && <TechnicianListPage />}
+          {activeTab === "planning" && <PlanningDashboard />}
         </main>
       </div>
     </div>
   );
 }
 
-export default App;
+export default App;
