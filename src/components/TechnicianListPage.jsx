@@ -203,12 +203,7 @@ export default function TechnicianListPage(){
   const safePage   = Math.min(page,totalPages);
   const pageSlice  = filtered.slice((safePage-1)*PAGE_SIZE, safePage*PAGE_SIZE);
 
-  const kpi=useMemo(()=>({
-    total:technicians.length,
-    available:technicians.filter(t=>normalizeStatus(t.status)==="Available").length,
-    busy:technicians.filter(t=>normalizeStatus(t.status)==="Busy").length,
-    offline:technicians.filter(t=>normalizeStatus(t.status)==="Offline").length,
-  }),[technicians]);
+
 
   /* ── Handlers ── */
   function handleSort(key){ if(sortKey===key) setSortDir(d=>d==="asc"?"desc":"asc"); else{setSortKey(key);setSortDir("asc");} setPage(1); }
@@ -273,59 +268,7 @@ export default function TechnicianListPage(){
         </div>
       )}
 
-      {/* KPI Row */}
-      <div className="tld-kpi-row">
-        {[
-          {cls:"blue",icon:"",label:"Total Technicians",val:kpi.total},
-          {cls:"green",icon:"",label:"Available",val:kpi.available},
-          {cls:"amber",icon:"",label:"Busy",val:kpi.busy},
-          {cls:"red",icon:"",label:"Offline",val:kpi.offline},
-        ].map(k=>(
-          <div key={k.label} className={`tld-kpi-card ${k.cls}`}>
-            <span className="tld-kpi-icon">{k.icon}</span>
-            <div className="tld-kpi-info">
-              <span className="tld-kpi-label">{k.label}</span>
-              <span className="tld-kpi-value">{k.val}</span>
-            </div>
-          </div>
-        ))}
-      </div>
 
-      {/* Filter Bar */}
-      <div className="tld-filter-bar">
-        <div className="tld-filter-group search-group">
-          <label>Search</label>
-          <div className="tld-search-wrap">
-            <span className="tld-search-icon"></span>
-            <input id="tech-search" type="text" className="tld-search-input"
-              placeholder="Name, skill, location…" value={search} onChange={e=>setSearch(e.target.value)}/>
-          </div>
-        </div>
-        <div className="tld-filter-group">
-          <label>Status</label>
-          <select id="tech-status-filter" className="tld-select" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
-            <option value="ALL">All Statuses</option>
-            <option value="Available">Available</option>
-            <option value="Busy">Busy</option>
-            <option value="Offline">Offline</option>
-          </select>
-        </div>
-        <div className="tld-filter-group">
-          <label>Zone</label>
-          <select id="tech-zone-filter" className="tld-select" value={zoneFilter} onChange={e=>setZoneFilter(e.target.value)}>
-            <option value="ALL">All Zones</option>
-            {uniqueZones.map(z=><option key={z} value={z}>{z}</option>)}
-          </select>
-        </div>
-        <div className="tld-filter-group">
-          <label>Skill</label>
-          <select id="tech-skill-filter" className="tld-select" value={skillFilter} onChange={e=>setSkillFilter(e.target.value)}>
-            <option value="ALL">All Skills</option>
-            {SKILLS.map(s=><option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-        {hasFilters&&<button className="tld-filter-clear" onClick={clearFilters}>Clear</button>}
-      </div>
 
       {/* Table Card */}
       <div className="tld-table-card">
@@ -368,6 +311,42 @@ export default function TechnicianListPage(){
               + Add Technician
             </button>
           </div>
+        </div>
+
+        {/* Filter Bar */}
+        <div className="tld-filter-bar">
+          <div className="tld-filter-group search-group">
+            <label>Search</label>
+            <div className="tld-search-wrap">
+              <span className="tld-search-icon"></span>
+              <input id="tech-search" type="text" className="tld-search-input"
+                placeholder="Name, skill, location…" value={search} onChange={e=>setSearch(e.target.value)}/>
+            </div>
+          </div>
+          <div className="tld-filter-group">
+            <label>Status</label>
+            <select id="tech-status-filter" className="tld-select" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+              <option value="ALL">All Statuses</option>
+              <option value="Available">Available</option>
+              <option value="Busy">Busy</option>
+              <option value="Offline">Offline</option>
+            </select>
+          </div>
+          <div className="tld-filter-group">
+            <label>Zone</label>
+            <select id="tech-zone-filter" className="tld-select" value={zoneFilter} onChange={e=>setZoneFilter(e.target.value)}>
+              <option value="ALL">All Zones</option>
+              {uniqueZones.map(z=><option key={z} value={z}>{z}</option>)}
+            </select>
+          </div>
+          <div className="tld-filter-group">
+            <label>Skill</label>
+            <select id="tech-skill-filter" className="tld-select" value={skillFilter} onChange={e=>setSkillFilter(e.target.value)}>
+              <option value="ALL">All Skills</option>
+              {SKILLS.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          {hasFilters&&<button className="tld-filter-clear" onClick={clearFilters}>Clear</button>}
         </div>
 
         <div className="tld-table-meta">

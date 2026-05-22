@@ -21,6 +21,7 @@ def create_job(job: JobCreate, db: Session = Depends(get_db)):
             service_type=job.service_type,
             contact_number=job.contact_number,
             preferred_service_date=job.preferred_service_date,
+            status=job.status,
         )
 
         db.add(new_job)
@@ -55,6 +56,7 @@ def update_job(job_id: int, job: JobCreate, db: Session = Depends(get_db)):
     existing_job.service_type = job.service_type
     existing_job.contact_number = job.contact_number
     existing_job.preferred_service_date = job.preferred_service_date
+    existing_job.status = job.status
 
     db.commit()
     db.refresh(existing_job)

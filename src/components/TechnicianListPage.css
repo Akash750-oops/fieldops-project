@@ -104,15 +104,16 @@
 
 /* ─── Filter Bar ───────────────────────────────────────────────────────── */
 .tld-filter-bar {
-  background: #FFFFFF;
-  border: 1px solid #E3ECE7;
-  border-radius: 12px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
   padding: 16px 20px;
   display: flex;
   align-items: flex-end;
   gap: 12px;
   flex-wrap: wrap;
-  box-shadow: 0 1px 4px rgba(47,79,62,.05);
+  box-shadow: none;
+  border-bottom: 1px solid #E3ECE7;
 }
 .tld-filter-group {
   display: flex;
@@ -202,8 +203,9 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 16px; padding-bottom: 14px;
+  padding: 20px 20px 14px;
   border-bottom: 1px solid #E3ECE7;
+  margin-bottom: 0;
 }
 .tld-section-badge {
   display: inline-block; background: #DDEEE5; color: #2F4F3E;

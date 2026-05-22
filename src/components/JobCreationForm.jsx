@@ -83,9 +83,12 @@ function JobCreationForm() {
 
   // KPI calculations
   const totalJobs = jobs.length;
-  const activeJobs = jobs.filter(j => (j.status || "").toLowerCase() === "active").length;
-  const inProgressJobs = jobs.filter(j => (j.status || "").toLowerCase() === "in progress").length;
-  const completedJobs = jobs.filter(j => (j.status || "").toLowerCase() === "completed").length;
+  const activeJobs = jobs.filter(j => (j.status || "").toLowerCase().trim() === "active").length;
+  const inProgressJobs = jobs.filter(j => {
+    const s = (j.status || "").toLowerCase().trim().replace(" ", "");
+    return s === "inprogress" || s === "in-progress";
+  }).length;
+  const completedJobs = jobs.filter(j => (j.status || "").toLowerCase().trim() === "completed").length;
 
   const validateForm = () => {
     const newErrors = {};
@@ -123,6 +126,13 @@ function JobCreationForm() {
     setIsEditing(true);
     setEditingJobId(job.id);
     setApiError("");
+    let jobStatus = job.status || "active";
+    const statusLower = jobStatus.toLowerCase().trim();
+    if (statusLower === "inprogress") {
+      jobStatus = "in progress";
+    } else if (statusLower === "canceled") {
+      jobStatus = "cancelled";
+    }
     setFormData({
       customer_name: job.customer_name || "",
       location: job.location || "",
@@ -131,7 +141,7 @@ function JobCreationForm() {
       service_type: job.service_type || "",
       contact_number: job.contact_number || "",
       preferred_service_date: job.preferred_service_date || "",
-      status: job.status || "active",
+      status: jobStatus,
       required_skill: job.required_skill || "",
     });
     setIsFormOpen(true);
@@ -179,7 +189,14 @@ function JobCreationForm() {
   };
 
   const filteredJobs = jobs
-    .filter(j => statusFilter === "ALL" || (j.status || "").toLowerCase() === statusFilter.toLowerCase())
+    .filter(j => {
+      if (statusFilter === "ALL") return true;
+      const jobStatus = (j.status || "active").toLowerCase().trim().replace(" ", "");
+      const filterStatus = statusFilter.toLowerCase().trim().replace(" ", "");
+      const normJS = jobStatus === "canceled" ? "cancelled" : jobStatus;
+      const normFS = filterStatus === "canceled" ? "cancelled" : filterStatus;
+      return normJS === normFS;
+    })
     .filter(j => {
       if (priorityFilter === "ALL") return true;
       return normalizeP(j.priority) === priorityFilter;
@@ -194,8 +211,18 @@ function JobCreationForm() {
       );
     });
 
+  const formatStatus = (status) => {
+    const s = (status || "active").toLowerCase().trim();
+    if (s === "inprogress" || s === "in progress") return "In Progress";
+    if (s === "canceled" || s === "cancelled") return "Cancelled";
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  };
+
   const getStatusClass = (status) => {
-    const s = (status || "").toLowerCase().replace(" ", "-");
+    let s = (status || "").toLowerCase().trim();
+    if (s === "inprogress") s = "in-progress";
+    else if (s === "canceled") s = "cancelled";
+    else s = s.replace(" ", "-");
     return `status-badge status-${s}`;
   };
 
@@ -324,7 +351,7 @@ function JobCreationForm() {
                   <div className="job-item-header">
                     <div className="job-item-title">
                       <h4>{job.customer_name}</h4>
-                      <span className={getStatusClass(job.status)}>{job.status || "active"}</span>
+                      <span className={getStatusClass(job.status)}>{formatStatus(job.status)}</span>
                     </div>
                     <span
                       className="priority-dot"
@@ -433,6 +460,22 @@ function JobCreationForm() {
               />
               {errors.preferred_service_date && <span className="field-error">{errors.preferred_service_date}</span>}
             </div>
+
+            {isEditing && (
+              <div className="form-group">
+                <label>Status <span className="req">*</span></label>
+                <select
+                  name="status"
+                  value={formData.status}
+                  onChange={handleChange}
+                >
+                  <option value="active">Active</option>
+                  <option value="in progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+            )}
 
             <div className="form-group">
               <label>Issue Description <span className="req">*</span></label>
