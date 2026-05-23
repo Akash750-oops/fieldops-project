@@ -5,8 +5,8 @@ import uuid
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
 from sqlalchemy.orm import Session
-from .logger import logger
-from .models import Technician, SMSDelivery
+from ..logger import logger
+from ..models import Technician, SMSDelivery
 from ..redis_client import get_redis_client
 from .preferences import get_technician_preferences
 

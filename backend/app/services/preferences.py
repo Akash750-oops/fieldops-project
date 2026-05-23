@@ -2,7 +2,7 @@ import json
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from ..models import Technician, PreferenceAuditLog
-from .logger import logger
+from ..logger import logger
 from ..redis_client import get_redis_client
 
 DEFAULT_PREFS = {

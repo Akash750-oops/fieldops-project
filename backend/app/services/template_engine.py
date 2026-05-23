@@ -4,7 +4,7 @@ import jwt
 from jinja2 import Environment, BaseLoader, DebugUndefined
 from sqlalchemy.orm import Session
 from ..models import NotificationTemplate
-from .logger import logger
+from ..logger import logger
 
 APP_SECRET = os.getenv('APP_SECRET', 'local_dummy_secret_do_not_use_in_prod')
 BASE_API_URL = os.getenv('BASE_API_URL', 'https://api.fieldops.io/v1')
