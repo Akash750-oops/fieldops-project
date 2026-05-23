@@ -230,3 +230,71 @@ def update_technician_availability(
             "technician_status": tech.technician_status
         }
     }
+
+from ..schemas import NotificationPreferencesInput, PreferencesUpdateResponse
+from ..services.preferences import get_technician_preferences, update_technician_preferences, DEFAULT_PREFS
+from .dispatch import verify_jwt_token
+from datetime import datetime, timezone
+
+@router.get("/{id}/preferences")
+async def get_preferences(
+    id: str,
+    db: Session = Depends(get_db),
+    authorization: str = Depends(verify_jwt_token)
+):
+    prefs = get_technician_preferences(db, id)
+    return {
+        "tech_id": id,
+        "preferences": prefs,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": "self"
+    }
+
+@router.patch("/{id}/preferences", response_model=PreferencesUpdateResponse)
+async def update_preferences(
+    id: str,
+    payload: NotificationPreferencesInput,
+    db: Session = Depends(get_db),
+    authorization: str = Depends(verify_jwt_token)
+):
+    try:
+        updated_prefs = update_technician_preferences(
+            db=db,
+            tech_id=id,
+            new_prefs=payload.model_dump(),
+            updated_by="self"
+        )
+        if not updated_prefs:
+            raise HTTPException(status_code=404, detail="Technician not found")
+            
+        return {
+            "tech_id": id,
+            "preferences": updated_prefs,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": "self"
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"error": "VALIDATION_FAILED", "message": str(e)})
+
+@router.post("/{id}/preferences/reset", response_model=PreferencesUpdateResponse)
+async def reset_preferences(
+    id: str,
+    db: Session = Depends(get_db),
+    authorization: str = Depends(verify_jwt_token)
+):
+    updated_prefs = update_technician_preferences(
+        db=db,
+        tech_id=id,
+        new_prefs=DEFAULT_PREFS,
+        updated_by="admin_reset"
+    )
+    if not updated_prefs:
+        raise HTTPException(status_code=404, detail="Technician not found")
+        
+    return {
+        "tech_id": id,
+        "preferences": updated_prefs,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": "admin_reset"
+    }
+

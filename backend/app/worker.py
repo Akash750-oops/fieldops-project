@@ -4,7 +4,7 @@ from sqlalchemy import func
 import json
 
 from .database import SessionLocal
-from .models import Technician, AuditEvent, DispatcherNotification
+from .models import Technician, AuditEvent, DispatcherNotification, InAppNotification
 from .redis_client import get_redis_client
 from .logger import logger
 
@@ -114,9 +114,33 @@ def check_technician_heartbeats():
     finally:
         db.close()
 
+def cleanup_old_notifications():
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        threshold = now - timedelta(days=30)
+        
+        updated = db.query(InAppNotification).filter(
+            InAppNotification.created_at < threshold,
+            InAppNotification.status != 'DISMISSED'
+        ).update({
+            "status": "DISMISSED",
+            "dismissed_at": now
+        }, synchronize_session=False)
+        
+        db.commit()
+        if updated > 0:
+            logger.info(f"Cleaned up {updated} old in-app notifications (soft deleted).")
+    except Exception as e:
+        logger.error(f"Error in background notification cleanup job: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 def start_scheduler():
     if not scheduler.running:
         scheduler.add_job(check_technician_heartbeats, 'interval', seconds=60, id='heartbeat_checker')
+        scheduler.add_job(cleanup_old_notifications, 'cron', hour=0, minute=0, id='notification_cleanup')
         scheduler.start()
         logger.info("Background heartbeat scheduler started.")
 

@@ -163,4 +163,154 @@ class AvailabilityResponse(BaseModel):
     active_jobs: int
     last_lat: Optional[float] = None
     last_lng: Optional[float] = None
+
+class DisqualifiedTechnician(BaseModel):
+    tech_id: str
+    name: str
+    reason: str
+    details: Optional[list[str]] = None
+    message: str
+
+class RankedTechnician(BaseModel):
+    rank: int
+    tech_id: str
+    name: str
+    proximity_score: float
+    skill_score: float
+    workload_score: float
+    composite_score: float
+    distance_km: Optional[float] = None
+    active_jobs: int
+    max_capacity: int = 3
+    is_top_3: bool = False
+    is_recommended: bool = False
+    estimated_arrival: Optional[str] = None
+
+class ScoringWeights(BaseModel):
+    proximity: float
+    skill: float
+    workload: float
+
+class PlanResponse(BaseModel):
+    job_id: str
+    job_title: str
+    status: str
+    ranked_technicians: list[RankedTechnician]
+    disqualified_technicians: list[DisqualifiedTechnician]
+    scoring_weights: ScoringWeights
+    cache_ttl_seconds: int
+
+class FCMTokenRegistration(BaseModel):
+    token: str
+    device_type: Literal["android", "ios"]
+
+class NotificationSendRequest(BaseModel):
+    job_id: str
+    tech_ids: list[str]
+
+class NotificationSendResponse(BaseModel):
+    sent: int
+    failed: int
+    delivery_ids: list[int]
+
+class SMSSendRequest(BaseModel):
+    job_id: str
+    tech_ids: list[str]
+
+class InAppNotificationResponse(BaseModel):
+    id: str
+    tech_id: str
+    job_id: Optional[str] = None
+    type: str
+    title: str
+    body: Optional[str] = None
+    status: str
+    action_url: Optional[str] = None
+    action_type: Optional[str] = None
+    priority: str
+    created_at: datetime
+    read_at: Optional[datetime] = None
+    dismissed_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    notification_metadata: Optional[dict] = None
+
+    class Config:
+        from_attributes = True
+
+class PaginatedNotificationsResponse(BaseModel):
+    notifications: list[InAppNotificationResponse]
+    unread_count: int
+    total: int
+
+class BatchReadRequest(BaseModel):
+    notification_ids: list[str]
+
+class TemplateCreate(BaseModel):
+    name: str
+    type: str
+    channel: str
+    locale: Optional[str] = "en"
+    format: Optional[str] = "text"
+    title_template: Optional[str] = None
+    body_template: str
+
+class TemplateResponse(TemplateCreate):
+    id: int
+    version: int
+    is_active: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class TemplatePreviewRequest(BaseModel):
+    title_template: Optional[str] = None
+    body_template: str
+    mock_context: dict
+
+class TemplatePreviewResponse(BaseModel):
+    rendered_title: Optional[str] = None
+    rendered_body: str
+
+class NotificationPreferences(BaseModel):
+    sms_enabled: bool = True
+    push_enabled: bool = True
+    inapp_enabled: bool = True
+    email_enabled: bool = False
+
+    @field_validator('sms_enabled', 'push_enabled', 'inapp_enabled', 'email_enabled', mode='before')
+    @classmethod
+    def require_at_least_one(cls, v, info):
+        # We will do a model_validator for the whole object instead
+        return v
+
+    @classmethod
+    def validate_minimum_channels(cls, values):
+        if not values.get('sms_enabled') and not values.get('push_enabled') and not values.get('inapp_enabled'):
+            raise ValueError("At least one notification channel must be enabled")
+        return values
+
+from pydantic import model_validator
+
+class NotificationPreferencesInput(BaseModel):
+    sms_enabled: bool
+    push_enabled: bool
+    inapp_enabled: bool
+    email_enabled: Optional[bool] = False
+
+    @model_validator(mode='after')
+    def check_at_least_one(self) -> 'NotificationPreferencesInput':
+        if not self.sms_enabled and not self.push_enabled and not self.inapp_enabled:
+            raise ValueError("At least one notification channel must be enabled")
+        return self
+
+class PreferencesUpdateResponse(BaseModel):
+    tech_id: str
+    preferences: dict
+    updated_at: datetime
+    updated_by: str
+
+
+
+
 

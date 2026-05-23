@@ -1,14 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, status, Request, Body
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 import uuid
 import json
 
 from ..database import get_db
-from ..models import Technician
+from ..models import Technician, Job, AuditEvent
 from ..redis_client import get_redis_client
 from ..logger import logger
 from ..schemas import HeartbeatPayload, AvailabilityResponse
+
+class OverrideRequest(BaseModel):
+    technician_id: str
+    justification: str
 
 router = APIRouter(
     prefix="/technicians",
@@ -167,3 +172,38 @@ def invalidate_technician_cache(
     else:
         logger.info("Cache invalidation attempted but key not found", extra=log_extra)
         return {"message": "Cache key not found"}
+
+@router.post("/assignments/{job_id}/override")
+def admin_override_assignment(
+    job_id: int,
+    request: OverrideRequest,
+    req: Request,
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    authorization: str = Depends(verify_jwt_token),
+    db: Session = Depends(get_db)
+):
+    correlation_id = req.headers.get("X-Correlation-ID", str(uuid.uuid4()))
+    log_extra = {"correlation_id": correlation_id, "tenant_id": x_tenant_id, "job_id": job_id}
+    
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    tech = db.query(Technician).filter(Technician.tech_id == request.technician_id).first()
+    if not tech:
+        raise HTTPException(status_code=404, detail="Technician not found")
+        
+    audit = AuditEvent(
+        tech_id=request.technician_id,
+        tenant_id=x_tenant_id,
+        event_type="ADMIN_OVERRIDE",
+        old_status=request.justification[:30],
+        new_status="OVERRIDDEN"
+    )
+    db.add(audit)
+    
+    job.assigned_technician_id = tech.technician_id
+    db.commit()
+    
+    logger.info("Admin override applied", extra=log_extra)
+    return {"message": "Override applied successfully", "job_id": job_id, "technician_id": request.technician_id}
