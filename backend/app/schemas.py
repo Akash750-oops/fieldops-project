@@ -58,6 +58,7 @@ class JobResponse(BaseModel):
 
 
 class TechnicianCreate(BaseModel):
+    tech_id: Optional[str] = None
     technician_name: str
     technician_skill: str
     technician_location: str
@@ -80,6 +81,7 @@ class TechnicianStatusUpdate(BaseModel):
 
 class TechnicianResponse(BaseModel):
     technician_id: int
+    tech_id: Optional[str] = None
     technician_name: str
     technician_skill: str
     technician_location: str

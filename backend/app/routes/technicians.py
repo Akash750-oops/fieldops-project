@@ -5,6 +5,7 @@ from typing import List, Union
 
 from ..database import get_db
 from .. import models, schemas
+import uuid
 
 router = APIRouter(
     prefix="/technicians",
@@ -39,6 +40,7 @@ def create_technician(technician: Union[schemas.TechnicianCreate, List[schemas.T
                 continue
 
             new_tech = models.Technician(
+                tech_id=tech_data.tech_id or f"tech-{uuid.uuid4().hex[:8]}", # Use provided or auto-generate
                 technician_name=tech_data.technician_name,
                 technician_skill=tech_data.technician_skill,
                 technician_location=tech_data.technician_location,

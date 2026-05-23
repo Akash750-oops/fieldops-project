@@ -1,5 +1,5 @@
 import socketio
-from .logger import logger
+from ..logger import logger
 
 # Initialize AsyncServer for ASGI
 # We allow all origins for the sake of the example, but in production this should be locked down.

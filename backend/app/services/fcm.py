@@ -3,8 +3,8 @@ from firebase_admin import credentials, messaging
 import asyncio
 import uuid
 from sqlalchemy.orm import Session
-from .logger import logger
-from .models import Technician, NotificationDelivery
+from ..logger import logger
+from ..models import Technician, NotificationDelivery
 from .preferences import get_technician_preferences
 
 # Initialize Firebase Admin with default credentials if available
