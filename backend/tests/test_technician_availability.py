@@ -112,7 +112,7 @@ def test_assignment_reflects_status_changes(client, db_session, sample_tech):
     })
 
     # 2. Try to assign the job to this tech
-    response = client.post("/assign-job", json={
+    response = client.post("/assign-technician", json={
         "job_id": job.id,
         "technician_id": sample_tech.technician_id
     })
@@ -126,7 +126,7 @@ def test_assignment_reflects_status_changes(client, db_session, sample_tech):
     })
 
     # 4. Try to assign again (should succeed)
-    response = client.post("/assign-job", json={
+    response = client.post("/assign-technician", json={
         "job_id": job.id,
         "technician_id": sample_tech.technician_id
     })
@@ -157,7 +157,7 @@ def test_unavailable_technicians_are_rejected(client, db_session, sample_tech):
     })
 
     # Try manual assignment
-    response = client.post("/assign-job", json={
+    response = client.post("/assign-technician", json={
         "job_id": job.id,
         "technician_id": sample_tech.technician_id
     })
@@ -174,3 +174,53 @@ def test_database_updates_correctly(client, db_session, sample_tech):
     # Query database directly to verify persistence
     updated_tech = db_session.query(models.Technician).filter(models.Technician.technician_id == sample_tech.technician_id).first()
     assert updated_tech.technician_status == "OFFLINE"
+
+def test_get_available_technicians_filters_correctly(client, db_session, sample_tech):
+    """Verify GET /technicians/available returns only AVAILABLE techs and skips BUSY/OFFLINE"""
+    # sample_tech is AVAILABLE initially
+    
+    # Create a BUSY tech
+    busy_tech = models.Technician(
+        technician_name="Busy Tech",
+        technician_skill="Testing",
+        technician_location="Lab",
+        technician_status="BUSY",
+        current_jobs=1,
+        max_jobs=5
+    )
+    # Create an OFFLINE tech
+    offline_tech = models.Technician(
+        technician_name="Offline Tech",
+        technician_skill="Testing",
+        technician_location="Lab",
+        technician_status="OFFLINE",
+        current_jobs=0,
+        max_jobs=5
+    )
+    db_session.add(busy_tech)
+    db_session.add(offline_tech)
+    db_session.commit()
+    
+    response = client.get("/technicians/available")
+    assert response.status_code == 200
+    techs = response.json()
+    
+    # Ensure only AVAILABLE tech is returned
+    tech_names = [t["technician"] for t in techs]
+    assert sample_tech.technician_name in tech_names
+    assert "Busy Tech" not in tech_names
+    assert "Offline Tech" not in tech_names
+
+def test_no_technician_available_condition(client, db_session, sample_tech):
+    """Verify empty list or specific response when no one is available"""
+    # Change sample_tech to BUSY so no one is AVAILABLE
+    client.put("/technicians/update-status", json={
+        "technician_id": sample_tech.technician_id,
+        "status": "BUSY"
+    })
+    
+    response = client.get("/technicians/available")
+    assert response.status_code == 200
+    techs = response.json()
+    
+    assert len(techs) == 0
