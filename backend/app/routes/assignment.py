@@ -60,7 +60,7 @@ def get_nearest_technician(job_id: int, db: Session = Depends(get_db)):
         "distance": min_dist
     }
 
-@router.post("/assign-job")
+@router.post("/assign-technician")
 def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(get_db)):
     """
     Assign a technician to a job with full validation.

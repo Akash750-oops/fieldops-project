@@ -170,16 +170,19 @@ def validate_technician_workload_api(technician_id: int, db: Session = Depends(g
 @router.get("/available", response_model=List[schemas.AvailableTechnicianResponse])
 def get_available_technicians(db: Session = Depends(get_db)):
     """
-    Retrieve all technicians with their availability status and workload details.
-    Returns all technicians but marks eligibility for assignment.
+    Retrieve only available technicians with their workload details.
+    Excludes BUSY and OFFLINE technicians from the result entirely.
     """
-    techs = db.query(models.Technician).all()
+    # Fetch only technicians with AVAILABLE status (case-insensitive)
+    techs = db.query(models.Technician).filter(
+        models.Technician.technician_status.ilike("AVAILABLE")
+    ).all()
+    
     result = []
     
     for tech in techs:
-        # Eligible if status is AVAILABLE (case-insensitive) and under workload limit
-        is_available_status = tech.technician_status.upper() == "AVAILABLE"
-        is_eligible = is_available_status and tech.current_jobs < tech.max_jobs
+        # Eligible if under workload limit
+        is_eligible = tech.current_jobs < tech.max_jobs
         
         result.append({
             "technician_id": tech.technician_id,
