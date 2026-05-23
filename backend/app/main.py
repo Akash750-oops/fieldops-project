@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from starlette import status
 
 from .database import Base, engine
-from .routes import jobs, technicians, assignment, planning, dispatch
+from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates
 from . import models
 
 
@@ -80,6 +80,12 @@ app.include_router(assignment.router)
 app.include_router(technicians.router)
 app.include_router(planning.router)
 app.include_router(dispatch.router)
+app.include_router(notifications.router)
+app.include_router(in_app_notifications.router)
+app.include_router(templates.router)
+
+from .services.socket_manager import sio_app
+app.mount("/socket.io", sio_app)
 
 
 from .worker import start_scheduler, stop_scheduler
