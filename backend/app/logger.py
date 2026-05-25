@@ -9,8 +9,8 @@ def setup_logger(name="fieldops"):
     # Avoid adding multiple handlers if logger is already set up
     if not logger.handlers:
         logHandler = logging.StreamHandler()
-        formatter = jsonlogger.JsonFormatter(
-            '%(asctime)s %(levelname)s %(name)s %(message)s'
+        formatter = logging.Formatter(
+            '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
         )
         logHandler.setFormatter(formatter)
         logger.addHandler(logHandler)
