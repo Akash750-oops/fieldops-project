@@ -71,7 +71,7 @@ def update_job(job_id: int, job: JobCreate, db: Session = Depends(get_db)):
     existing_job.preferred_service_date = job.preferred_service_date
     existing_job.status = job.status
 
-    db.commit()aa
+    db.commit()
     db.refresh(existing_job)
 
     return existing_job
@@ -80,6 +80,7 @@ def update_job(job_id: int, job: JobCreate, db: Session = Depends(get_db)):
 async def plan_job_assignment(
     job_id: int,
     request: Request,
+    admin_override: bool = False,
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
     authorization: str = Depends(verify_jwt_token),
     db: Session = Depends(get_db),
@@ -91,11 +92,12 @@ async def plan_job_assignment(
     # Rate limit check (max 10 requests per minute)
     rate_limit_key = f"rate_limit:job_plan:{x_tenant_id}:{job_id}"
     req_count = redis_client.incr(rate_limit_key)
-    if req_count == 1:
-        redis_client.expire(rate_limit_key, 60)
-    if req_count > 10:
-        logger.warning("Rate limit exceeded for job plan", extra=log_extra)
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    if req_count is not None:
+        if req_count == 1:
+            redis_client.expire(rate_limit_key, 60)
+        if req_count > 10:
+            logger.warning("Rate limit exceeded for job plan", extra=log_extra)
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     # Cache check (30s TTL)
     cache_key = f"cache:job_plan:{x_tenant_id}:{job_id}"
@@ -147,21 +149,51 @@ async def plan_job_assignment(
         
     for tech in technicians:
         # 1. Hard Constraints
-        cert_res = validator.validate_certifications(job, tech, db)
-        if not cert_res.get("qualified"):
+        warnings_list = []
+        if admin_override:
+            # Check pseudo-JWT for admin/dispatcher roles
+            if "admin" not in authorization.lower() and "dispatcher" not in authorization.lower():
+                raise HTTPException(status_code=403, detail="Admin or Dispatcher role required for override")
+            # Bypass certification logic, just log the override
+            audit = AuditEvent(
+                tech_id=tech.tech_id or f"id-{tech.technician_id}",
+                tenant_id=x_tenant_id,
+                event_type="CERT_OVERRIDE",
+                old_status="DISQUALIFIED_POTENTIAL",
+                new_status="OVERRIDDEN"
+            )
+            db.add(audit)
+            warnings_list.append("Certification constraints bypassed via Admin Override")
+        else:
+            cert_res = validator.validate_certifications(job, tech, db)
+            if not cert_res.get("qualified"):
+                disq = DisqualifiedTechnician(
+                    tech_id=tech.tech_id or str(tech.technician_id),
+                    name=tech.technician_name,
+                    reason=cert_res.get("reason", "unknown"),
+                    details=cert_res.get("details", []),
+                    message=cert_res.get("message", "Disqualified")
+                )
+                disqualified.append(disq)
+                validator.log_disqualification(db, job_id, tech, cert_res)
+                continue
+            if cert_res.get("warnings"):
+                warnings_list.extend(cert_res["warnings"])
+            
+        # 2. Scoring
+        skill_res = skill_service.calculate_skill_score(job.required_skill or "", tech.technician_skill or "", db)
+        if not skill_res.get("qualified"):
             disq = DisqualifiedTechnician(
                 tech_id=tech.tech_id or str(tech.technician_id),
                 name=tech.technician_name,
-                reason=cert_res.get("reason", "unknown"),
-                details=cert_res.get("details", []),
-                message=cert_res.get("message", "Disqualified")
+                reason="missing_prerequisite",
+                message=skill_res.get("reason", "Missing required skills")
             )
             disqualified.append(disq)
-            validator.log_disqualification(db, job_id, tech, cert_res)
             continue
             
-        # 2. Scoring
-        skill_score = skill_service.calculate_skill_score(job.required_skill or "", tech.technician_skill or "", db)
+        skill_score = skill_res["score"]
+        
         workload_res = workload_service.calculate_workload_score(db, tech.technician_id, 3)
         if workload_res["score"] == 0.0 and workload_res["active_jobs"] >= 3:
             disq = DisqualifiedTechnician(
@@ -199,7 +231,8 @@ async def plan_job_assignment(
             "skill_score": skill_score,
             "workload_score": workload_res["score"],
             "distance_km": dist_km,
-            "active_jobs": workload_res["active_jobs"]
+            "active_jobs": workload_res["active_jobs"],
+            "warnings": warnings_list
         })
         
     db.commit() 
@@ -209,6 +242,7 @@ async def plan_job_assignment(
     for q in qualified:
         comp = composite_service.composite_score(q["proximity_score"], q["skill_score"], q["workload_score"], weights)
         q["composite_score"] = comp["composite_score"]
+        q["score_breakdown"] = comp["breakdown"]
         
     ranked = composite_service.rank_technicians(qualified)
     
@@ -222,6 +256,8 @@ async def plan_job_assignment(
             skill_score=r["skill_score"],
             workload_score=r["workload_score"],
             composite_score=r["composite_score"],
+            score_breakdown=r.get("score_breakdown"),
+            warnings=r.get("warnings"),
             distance_km=r["distance_km"],
             active_jobs=r["active_jobs"],
             max_capacity=3,

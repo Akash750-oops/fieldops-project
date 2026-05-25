@@ -8,23 +8,27 @@ from ..models import Technician, Job, AuditEvent
 logger = logging.getLogger(__name__)
 
 class CertificationValidator:
-    def get_expired_certifications(self, technician: Technician) -> List[str]:
+    def get_expired_and_expiring_certifications(self, technician: Technician) -> Dict[str, List[str]]:
         if not technician.certifications_data:
-            return []
+            return {"expired": [], "expiring_soon": []}
             
         expired = []
+        expiring_soon = []
         now = datetime.now()
+        thirty_days = now.timestamp() + (30 * 24 * 60 * 60)
         
         for skill, exp_date_str in technician.certifications_data.items():
             try:
                 exp_date = datetime.fromisoformat(exp_date_str)
                 if exp_date < now:
                     expired.append(skill.upper())
+                elif exp_date.timestamp() < thirty_days:
+                    expiring_soon.append(skill.upper())
             except ValueError:
                 logger.error(f"Invalid date format for {skill} on technician {technician.tech_id}")
                 expired.append(skill.upper())
                 
-        return expired
+        return {"expired": expired, "expiring_soon": expiring_soon}
 
     def get_prerequisites(self, skill: str, visited: set = None) -> List[str]:
         if visited is None:
@@ -83,7 +87,12 @@ class CertificationValidator:
                     }
                     
         # Check expiration dates
-        expired = self.get_expired_certifications(technician)
+        date_checks = self.get_expired_and_expiring_certifications(technician)
+        expired = date_checks["expired"]
+        expiring_soon = date_checks["expiring_soon"]
+        
+        warnings = []
+        
         if expired:
             needed_skills = required.copy()
             for r in required:
@@ -98,7 +107,15 @@ class CertificationValidator:
                     "message": f"Expired certifications: {', '.join(expired_needed)}"
                 }
                 
-        return {"qualified": True}
+        if expiring_soon:
+            needed_skills = required.copy()
+            for r in required:
+                needed_skills.update(self.get_prerequisites(r))
+            expiring_needed = [s for s in expiring_soon if s in needed_skills]
+            if expiring_needed:
+                warnings.append(f"Certifications expiring soon (<30 days): {', '.join(expiring_needed)}")
+                
+        return {"qualified": True, "warnings": warnings}
 
     def log_disqualification(self, db: Session, job_id: int, technician: Technician, reason_data: Dict[str, Any]):
         """Create an immutable AuditEvent for rejection."""

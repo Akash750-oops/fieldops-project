@@ -181,6 +181,8 @@ class RankedTechnician(BaseModel):
     skill_score: float
     workload_score: float
     composite_score: float
+    score_breakdown: Optional[dict] = None
+    warnings: Optional[list[str]] = None
     distance_km: Optional[float] = None
     active_jobs: int
     max_capacity: int = 3

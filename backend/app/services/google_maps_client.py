@@ -23,6 +23,9 @@ class CircuitBreaker:
 
     def record_failure(self):
         failures = self.redis.incr(self.key_failures)
+        if failures is None:
+            return
+            
         if failures == 1:
             self.redis.expire(self.key_failures, CB_RECOVERY_TIMEOUT)
         
@@ -48,6 +51,9 @@ class RateLimiter:
         key = f"rate_limit:gmaps:{current_minute}"
         
         count = self.redis.incr(key)
+        if count is None:
+            return True
+            
         if count == 1:
             self.redis.expire(key, self.window + 10)
             
