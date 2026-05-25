@@ -71,7 +71,7 @@ def update_job(job_id: int, job: JobCreate, db: Session = Depends(get_db)):
     existing_job.preferred_service_date = job.preferred_service_date
     existing_job.status = job.status
 
-    db.commit()
+    db.commit()aa
     db.refresh(existing_job)
 
     return existing_job
