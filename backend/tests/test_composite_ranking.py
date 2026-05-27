@@ -1,5 +1,6 @@
 import pytest
 from hypothesis import given, settings
+import hypothesis.strategies as st
 from app.services.composite import CompositeScoringService
 
 @pytest.fixture
