@@ -29,8 +29,8 @@ def validate_phone_number(phone_number: str) -> bool:
     """Validate E.164 phone number format (e.g., +919876543210)"""
     if not phone_number:
         return False
-    # Regex: '+' followed by 1 to 15 digits
-    pattern = r"^\+[1-9]\d{1,14}$"
+    # Regex: '+' followed by 7 to 15 digits (min 7 digits to avoid too short formats like +123)
+    pattern = r"^\+[1-9]\d{6,14}$"
     return bool(re.match(pattern, phone_number))
 
 def generate_sms_template(job_title: str, address: str, priority: str, job_id: str) -> str:
@@ -47,9 +47,9 @@ def generate_sms_template(job_title: str, address: str, priority: str, job_id: s
     # Base text is ~80 chars. We need to truncate title and address if they are too long.
     short_url = f"api.fieldops.io/j/{str(job_id)[:8]}" # using short url mock
     
-    # Trim title to 20 chars, address to 30 chars max to be safe.
-    t_title = (job_title[:17] + '...') if len(job_title) > 20 else job_title
-    t_address = (address[:27] + '...') if len(address) > 30 else address
+    # Trim title to 15 chars, address to 20 chars max to be safe.
+    t_title = (job_title[:12] + '...') if len(job_title) > 15 else job_title
+    t_address = (address[:17] + '...') if len(address) > 20 else address
     
     message = (
         f"FieldOps: New job '{t_title}' at {t_address}. "
