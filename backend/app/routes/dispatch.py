@@ -11,6 +11,8 @@ from ..models import Technician, Job, AuditEvent
 from ..redis_client import get_redis_client
 from ..logger import logger
 from ..schemas import HeartbeatPayload, AvailabilityResponse
+from ..services.timer_service import TimerService
+from ..services.cooldown_service import CooldownService
 
 class OverrideRequest(BaseModel):
     technician_id: str
@@ -204,7 +206,12 @@ def admin_override_assignment(
     db.add(audit)
     
     job.assigned_technician_id = tech.technician_id
+    job.status = "ASSIGNED"
     db.commit()
+    
+    redis_client = get_redis_client()
+    TimerService.start_timer(redis_client, str(job.id), str(tech.tech_id))
+    CooldownService.clear_cooldown(redis_client, str(job.id), str(tech.tech_id))
     
     logger.info("Admin override applied", extra=log_extra)
     return {"message": "Override applied successfully", "job_id": job_id, "technician_id": request.technician_id}

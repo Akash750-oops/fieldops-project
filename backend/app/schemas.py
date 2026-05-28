@@ -172,6 +172,10 @@ class DisqualifiedTechnician(BaseModel):
     reason: str
     details: Optional[list[str]] = None
     message: str
+    cooldown_expires_at: Optional[str] = None
+    remaining_seconds: Optional[int] = None
+    rejected_at: Optional[str] = None
+    rejection_reason: Optional[str] = None
 
 class RankedTechnician(BaseModel):
     rank: int
@@ -315,6 +319,190 @@ class PreferencesUpdateResponse(BaseModel):
     updated_by: str
 
 
+class TechnicianAcceptResponse(BaseModel):
+    tech_id: str
+    name: str
+    status: str
 
+class JobAcceptResponse(BaseModel):
+    job_id: str
+    status: str
+    previous_status: str
+    technician: TechnicianAcceptResponse
+    accepted_at: datetime
+    eta_to_customer: Optional[datetime] = None
+    tracking_enabled: bool = True
 
+from pydantic import Field
+
+class JobRejectRequest(BaseModel):
+    reason: str = Field(..., min_length=10)
+
+class RejectionDetail(BaseModel):
+    reason: str
+    rejected_at: datetime
+    rejected_by: str
+
+class CooldownDetail(BaseModel):
+    tech_id: str
+    expires_at: datetime
+    duration_seconds: int
+
+class ReDispatchDetail(BaseModel):
+    triggered: bool
+    priority_bump: bool
+    estimated_dispatch_time: Optional[datetime] = None
+
+class JobRejectResponse(BaseModel):
+    job_id: str
+    status: str
+    previous_status: str
+    rejection: RejectionDetail
+    cooldown: CooldownDetail
+    re_dispatch: ReDispatchDetail
+
+class JobReassignRequest(BaseModel):
+    new_tech_id: str
+    reason: str
+
+class PreviousTechnicianDetail(BaseModel):
+    tech_id: str
+    name: str
+
+class NewTechnicianDetail(BaseModel):
+    tech_id: str
+    name: str
+    notified_at: datetime
+
+class ReassignmentDetail(BaseModel):
+    reason: str
+    reassigned_at: datetime
+
+class AcceptanceWindowDetail(BaseModel):
+    expires_at: datetime
+    duration_minutes: int
+
+class JobReassignResponse(BaseModel):
+    job_id: str
+    status: str
+    previous_technician: PreviousTechnicianDetail
+    new_technician: NewTechnicianDetail
+    reassignment: ReassignmentDetail
+    acceptance_window: AcceptanceWindowDetail
+
+class ExcludedTechDetail(BaseModel):
+    name: str
+    reason: str
+
+class DispatcherAlertResponse(BaseModel):
+    alert_id: str
+    type: str
+    severity: str
+    job_id: str
+    job_title: str
+    attempt_count: int
+    max_attempts: int
+    excluded_technicians: list[ExcludedTechDetail]
+    recommended_action: str
+    created_at: datetime
+    acknowledged: bool
+
+class AlertAcknowledgeRequest(BaseModel):
+    acknowledged: bool = True
+
+class DirectAssignRequest(BaseModel):
+    tech_id: str
+    justification: str
+    skip_skill_check: bool = False
+    skip_workload_check: bool = False
+
+class AssignmentDetail(BaseModel):
+    tech_id: str
+    name: str
+    assigned_at: datetime
+    assigned_by: str
+    assigned_by_name: str
+
+class OverrideDetail(BaseModel):
+    justification: str
+    planning_agent_bypassed: bool = True
+    cooldown_bypassed: bool = True
+    skill_check_enforced: bool
+    workload_check_enforced: bool
+
+class NotificationDetail(BaseModel):
+    channels: list[str]
+    sent_at: datetime
+
+class DirectAssignResponse(BaseModel):
+    job_id: str
+    status: str
+    previous_status: str
+    assignment: AssignmentDetail
+    override: OverrideDetail
+    acceptance_window: AcceptanceWindowDetail
+    notification: NotificationDetail
+
+class OverrideAuditResponse(BaseModel):
+    id: str
+    event_type: str
+    actor_id: str
+    actor_role: str
+    actor_name: Optional[str] = None
+    job_id: int
+    action: str
+    before_state: dict
+    after_state: dict
+    justification: str
+    reason: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    correlation_id: Optional[str] = None
+    tenant_id: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class SLADetail(BaseModel):
+    deadline: Optional[datetime]
+    minutes_remaining: Optional[float]
+    risk_level: str
+
+class QueueTechnicianDetail(BaseModel):
+    tech_id: str
+    name: str
+    status: str
+
+class DispatchQueueJob(BaseModel):
+    job_id: str
+    title: str
+    status: str
+    priority: str
+    customer: str
+    location: str
+    technician: Optional[QueueTechnicianDetail] = None
+    sla: SLADetail
+    assigned_at: Optional[datetime] = None
+    acceptance_expires_at: Optional[datetime] = None
+
+class DispatchQueuePagination(BaseModel):
+    next_cursor: Optional[str]
+    has_more: bool
+
+class DispatchQueueResponse(BaseModel):
+    data: list[DispatchQueueJob]
+    pagination: DispatchQueuePagination
+
+class TodayMetrics(BaseModel):
+    jobs_dispatched: int
+    avg_acceptance_time_minutes: float
+    re_dispatch_rate: float
+    sla_compliance_rate: float
+
+class DispatchMetricsResponse(BaseModel):
+    today: TodayMetrics
+    status_breakdown: dict[str, int]
+    priority_breakdown: dict[str, int]
+    technician_utilization: float
 
