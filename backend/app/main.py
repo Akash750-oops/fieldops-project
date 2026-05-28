@@ -5,8 +5,9 @@ from fastapi.responses import JSONResponse
 from starlette import status
 
 from .database import Base, engine
-from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates
+from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics
 from . import models
+from .services.justification_validator import JustificationValidationError
 
 
 app = FastAPI(
@@ -35,6 +36,20 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": str(exc.detail)}
+    )
+
+@app.exception_handler(JustificationValidationError)
+async def justification_validation_exception_handler(request: Request, exc: JustificationValidationError):
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "error": "VALIDATION_FAILED",
+            "field": "justification",
+            "message": exc.message,
+            "current_length": exc.current_length,
+            "min_length": exc.min_length,
+            "max_length": exc.max_length
+        }
     )
 
 
@@ -85,6 +100,11 @@ app.include_router(dispatch.router)
 app.include_router(notifications.router)
 app.include_router(in_app_notifications.router)
 app.include_router(templates.router)
+app.include_router(escalations.router)
+app.include_router(alerts.router)
+app.include_router(audit.router)
+app.include_router(dispatch_queue.router)
+app.include_router(dispatch_metrics.router)
 
 from .services.socket_manager import sio_app
 app.mount("/socket.io", sio_app)
