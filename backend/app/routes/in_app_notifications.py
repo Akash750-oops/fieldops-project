@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
 
 from .dispatch import verify_jwt_token
@@ -20,6 +20,7 @@ router = APIRouter(
 async def get_technician_notifications(
     id: str,
     status: Optional[str] = None,
+    type: Optional[str] = None,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     authorization: str = Depends(verify_jwt_token),
@@ -35,8 +36,17 @@ async def get_technician_notifications(
         InAppNotification.status != 'DISMISSED'
     )
 
+    now = datetime.now(timezone.utc)
+    # Filter out expired notifications
+    query = query.filter(
+        (InAppNotification.expires_at == None) | (InAppNotification.expires_at > now)
+    )
+
     if status:
         query = query.filter(InAppNotification.status == status.upper())
+        
+    if type:
+        query = query.filter(InAppNotification.type == type)
 
     total = query.count()
     
@@ -94,8 +104,8 @@ async def batch_mark_read(
     db.commit()
     return {"updated": updated}
 
-@router.delete("/notifications/{id}", status_code=204)
-async def delete_notification(
+@router.patch("/notifications/{id}/dismiss")
+async def dismiss_notification(
     id: str,
     authorization: str = Depends(verify_jwt_token),
     db: Session = Depends(get_db)
@@ -104,9 +114,18 @@ async def delete_notification(
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found")
         
-    # Soft delete
     notification.status = 'DISMISSED'
     notification.dismissed_at = datetime.now(timezone.utc)
     db.commit()
     
+    return {"status": "DISMISSED", "dismissed_at": notification.dismissed_at.isoformat() if notification.dismissed_at else None}
+
+@router.delete("/notifications/system/cleanup", status_code=204)
+async def cleanup_notifications(
+    db: Session = Depends(get_db)
+):
+    # Auto-delete notifications older than 30 days
+    threshold = datetime.now(timezone.utc) - timedelta(days=30)
+    db.query(InAppNotification).filter(InAppNotification.created_at < threshold).delete(synchronize_session=False)
+    db.commit()
     return None
