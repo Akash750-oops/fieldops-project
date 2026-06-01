@@ -4,9 +4,16 @@ from sqlalchemy import func
 import json
 
 from .database import SessionLocal
-from .models import Technician, AuditEvent, DispatcherNotification, InAppNotification
+from .models import Technician, AuditEvent, DispatcherNotification, InAppNotification, Job, SLAEscalation
 from .redis_client import get_redis_client
 from .logger import logger
+from .services.timer_service import TimerService
+from .services.dispatch_agent import DispatchAgent
+from .services.distributed_lock_service import with_job_lock
+from .services.re_dispatch_trigger import ReDispatchTriggerService
+from .services.re_dispatch_queue import ReDispatchQueueService
+from .services.sla_escalation_service import SLAEscalationService
+from fastapi import HTTPException
 
 scheduler = BackgroundScheduler()
 
@@ -137,10 +144,153 @@ def cleanup_old_notifications():
     finally:
         db.close()
 
+def check_assignment_timers():
+    db = SessionLocal()
+    redis_client = get_redis_client()
+    if not redis_client:
+        db.close()
+        return
+
+    try:
+        assigned_jobs = db.query(Job).filter(func.upper(Job.status) == 'ASSIGNED').all()
+        now_utc = datetime.now(timezone.utc)
+        
+        for job in assigned_jobs:
+            timer_key = f"job:timer:{job.id}"
+            warning_key = f"job:timer_warning:{job.id}"
+            warned_key = f"job:timer_warned:{job.id}"
+            
+            timer_exists = redis_client.exists(timer_key)
+            warning_exists = redis_client.exists(warning_key)
+            has_warned = redis_client.exists(warned_key)
+            
+            timer_ttl = redis_client.ttl(timer_key) if hasattr(redis_client, 'ttl') else 0
+            # handling if redis client returns None for ttl or -1/-2
+            if timer_ttl < 0:
+                timer_ttl = 0
+            
+            tech = db.query(Technician).filter(Technician.technician_id == job.assigned_technician_id).first()
+            
+            trigger = ReDispatchTriggerService.detect_trigger(job, tech, timer_exists, timer_ttl)
+            
+            if trigger:
+                try:
+                    with with_job_lock(str(job.id)):
+                        if trigger["type"] == "trigger":
+                            logger.info(f"ReDispatch: Triggering re-dispatch for job {job.id} (Reason: {trigger['reason']})")
+                            tech_id_str = tech.tech_id if tech else str(job.assigned_technician_id)
+                            tenant_id_str = tech.tenant_id if tech and tech.tenant_id else "system"
+                            
+                            queue_result = ReDispatchQueueService.enqueue_failed_job(
+                                db=db,
+                                redis_client=redis_client,
+                                job=job,
+                                tenant_id=tenant_id_str,
+                                reason=f"Triggered by: {trigger['reason']}",
+                                tech_id=tech_id_str
+                            )
+                            
+                            if tech:
+                                notif = DispatcherNotification(
+                                    tech_id=tech.tech_id,
+                                    tenant_id=tenant_id_str,
+                                    message=f"Job {job.id} assignment revoked for {tech.technician_name}. Reason: {trigger['reason']}."
+                                )
+                                db.add(notif)
+                                db.commit()
+                            
+                            DispatchAgent.trigger_redispatch(str(job.id))
+                            TimerService.cancel_timer(redis_client, str(job.id))
+                            
+                        elif trigger["type"] == "pre_alert" and not has_warned:
+                            logger.info(f"ReDispatch: PRE-ALERT for job {job.id}")
+                            if tech:
+                                notif = DispatcherNotification(
+                                    tech_id=tech.tech_id,
+                                    tenant_id=tech.tenant_id or "system",
+                                    message=f"WARNING: Job {job.id} assignment for {tech.technician_name} is nearing timeout!"
+                                )
+                                db.add(notif)
+                                db.commit()
+                            
+                            redis_client.setex(warned_key, 120, "1")
+                except HTTPException as e:
+                    if e.status_code == 409:
+                        logger.warning(f"ReDispatch: Concurrency conflict handling job {job.id}, skipping.")
+                        continue
+                    else:
+                        raise e
+
+    except Exception as e:
+        logger.error(f"Error checking assignment timers: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+def check_sla_escalations():
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        threshold = now + timedelta(minutes=30)
+
+        bind_engine = db.get_bind()
+        is_sqlite = bind_engine.url.drivername.startswith("sqlite")
+        
+        query_threshold = threshold
+        if is_sqlite:
+            query_threshold = threshold.replace(tzinfo=None)
+
+        queued_jobs = db.query(Job).filter(
+            func.upper(Job.status) == 'QUEUED',
+            Job.priority.in_(['P1', 'P2']),
+            Job.sla_deadline <= query_threshold
+        ).all()
+
+        for job in queued_jobs:
+            SLAEscalationService.trigger_escalation(db, job)
+
+    except Exception as e:
+        logger.error(f"Error checking SLA escalations: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+def check_cto_escalations():
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        threshold = now - timedelta(minutes=15)
+
+        bind_engine = db.get_bind()
+        is_sqlite = bind_engine.url.drivername.startswith("sqlite")
+        
+        query_threshold = threshold
+        if is_sqlite:
+            query_threshold = threshold.replace(tzinfo=None)
+
+        escalations = db.query(SLAEscalation).filter(
+            SLAEscalation.manager_responded_at.is_(None),
+            SLAEscalation.cto_notified_at.is_(None),
+            SLAEscalation.manager_notified_at <= query_threshold
+        ).all()
+
+        for esc in escalations:
+            SLAEscalationService.escalate_to_cto(db, esc)
+
+    except Exception as e:
+        logger.error(f"Error checking CTO escalations: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def start_scheduler():
     if not scheduler.running:
         scheduler.add_job(check_technician_heartbeats, 'interval', seconds=60, id='heartbeat_checker')
         scheduler.add_job(cleanup_old_notifications, 'cron', hour=0, minute=0, id='notification_cleanup')
+        scheduler.add_job(check_assignment_timers, 'interval', seconds=5, id='timer_checker')
+        scheduler.add_job(check_sla_escalations, 'interval', seconds=10, id='sla_escalation_checker')
+        scheduler.add_job(check_cto_escalations, 'interval', seconds=30, id='cto_escalation_checker')
         scheduler.start()
         logger.info("Background heartbeat scheduler started.")
 

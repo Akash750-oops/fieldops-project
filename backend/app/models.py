@@ -38,6 +38,7 @@ class Job(Base):
     __tablename__ = "jobs"  
 
     id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String(50), index=True, nullable=True) # Added for tenant isolation
     customer_name = Column(String(100), nullable=False)
     location = Column(String(150), nullable=False)
     issue_description = Column(Text, nullable=False)
@@ -48,6 +49,10 @@ class Job(Base):
     required_skill = Column(String(100), nullable=True) # My addition
     status = Column(String(30), default="active")
     assigned_technician_id = Column(Integer, ForeignKey("technicians.technician_id"), nullable=True) # My addition
+    sla_deadline = Column(DateTime(timezone=True), nullable=True) # Added for SLA tracking
+    attempt_count = Column(Integer, default=0)
+    previous_priority = Column(String(20), nullable=True)
+    bumped_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -63,6 +68,7 @@ class AuditEvent(Base):
     event_type = Column(String(50), nullable=False)
     old_status = Column(String(30), nullable=True)
     new_status = Column(String(30), nullable=False)
+    reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -184,3 +190,62 @@ def prevent_audit_event_update(mapper, connection, target):
 @event.listens_for(AuditEvent, "before_delete")
 def prevent_audit_event_delete(mapper, connection, target):
     raise ValueError("AuditEvent is immutable")
+
+class SLAEscalation(Base):
+    __tablename__ = "sla_escalations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    manager_notified_at = Column(DateTime(timezone=True), nullable=True)
+    manager_responded_at = Column(DateTime(timezone=True), nullable=True)
+    cto_notified_at = Column(DateTime(timezone=True), nullable=True)
+    action_taken = Column(String(100), nullable=True)
+    status = Column(String(50), default="ESCALATED")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class DispatcherAlert(Base):
+    __tablename__ = "dispatcher_alerts"
+
+    id = Column(String(36), primary_key=True)
+    type = Column(String(50), nullable=False)
+    severity = Column(String(20), nullable=False)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    attempt_count = Column(Integer, nullable=False)
+    max_attempts = Column(Integer, nullable=False)
+    excluded_technicians = Column(JSON, nullable=True)
+    recommended_action = Column(Text, nullable=True)
+    acknowledged = Column(Integer, default=0) # 0 for false, 1 for true
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class OverrideAuditEvent(Base):
+    __tablename__ = "override_audit_events"
+
+    id = Column(String(36), primary_key=True)
+    event_type = Column(String(50), nullable=False, default="manual_override")
+    actor_id = Column(String(36), nullable=False, index=True)
+    actor_role = Column(String(50), nullable=False)
+    actor_name = Column(String(200), nullable=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    action = Column(String(50), nullable=False)
+    
+    before_state = Column(JSON, nullable=False)
+    after_state = Column(JSON, nullable=False)
+    
+    justification = Column(Text, nullable=False)
+    reason = Column(Text, nullable=True)
+    
+    ip_address = Column(String(50), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    correlation_id = Column(String(36), nullable=True)
+    
+    tenant_id = Column(String(50), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+@event.listens_for(OverrideAuditEvent, "before_update")
+def prevent_override_audit_event_update(mapper, connection, target):
+    raise ValueError("OverrideAuditEvent is immutable (BR-009)")
+
+@event.listens_for(OverrideAuditEvent, "before_delete")
+def prevent_override_audit_event_delete(mapper, connection, target):
+    raise ValueError("OverrideAuditEvent is immutable (BR-009)")
+
