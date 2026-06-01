@@ -5,11 +5,11 @@
   font-family: 'Inter', sans-serif;
   background: #EEF4F1;
   min-height: 100vh;
-  padding: 24px;
+  padding: 14px;
   color: #1F2933;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
 }
 
 /* ─── Page Header ──────────────────────────────────────────────────────── */
@@ -96,7 +96,7 @@
   letter-spacing: .05em;
 }
 .tld-kpi-value {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   color: #2F4F3E;
   line-height: 1.1;
@@ -202,8 +202,8 @@
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
-  padding: 20px 20px 14px;
+  gap: 10px;
+  padding: 12px 14px 10px;
   border-bottom: 1px solid #E3ECE7;
   margin-bottom: 0;
 }
@@ -256,9 +256,9 @@ table.tld-table {
   border-bottom: 2px solid #E3ECE7;
 }
 .tld-table th {
-  padding: 11px 16px;
+  padding: 8px 12px;
   text-align: left;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: #6B7280;
   text-transform: uppercase;
@@ -289,8 +289,8 @@ table.tld-table {
 .tld-table tbody tr:last-child { border-bottom: none; }
 .tld-table tbody tr:hover { background: #F6FAF8; }
 .tld-table td {
-  padding: 13px 16px;
-  font-size: 13px;
+  padding: 9px 12px;
+  font-size: 12px;
   color: #1F2933;
   vertical-align: middle;
 }
@@ -473,10 +473,10 @@ table.tld-table {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
+  padding: 8px 14px;
   border-top: 1px solid #E3ECE7;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   background: #FAFCFB;
 }
 .tld-page-info {

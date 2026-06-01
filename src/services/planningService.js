@@ -1,7 +1,6 @@
 /**
  * planningService.js
  * Centralized API service for the Planning Dashboard.
- * All Planning Dashboard API calls should go through this file.
  */
 
 import axios from "axios";
@@ -10,43 +9,111 @@ const BASE_URL = "http://localhost:8000";
 
 const api = axios.create({
   baseURL: BASE_URL,
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
-/**
- * Fetch all technicians (all statuses) for the assignment dropdown.
- */
-export const getTechnicians = () => api.get("/technicians/");
+// Common error handler
+const handleApiError = (error) => {
+  console.error("API Error:", error?.response?.data || error.message);
+  throw error;
+};
 
 /**
- * Fetch all technicians with availability/workload details for the status panel.
- * Returns all technicians but marks which ones are eligible for assignment.
+ * Fetch all technicians.
  */
-export const getAvailableTechnicians = () => api.get("/technicians/available");
+export const getTechnicians = async () => {
+  try {
+    return await api.get("/technicians");
+  } catch (error) {
+    handleApiError(error);
+  }
+};
 
 /**
- * Update a technician's availability status.
- * @param {number} technicianId
- * @param {string} technician_status - "Available" | "Busy" | "Offline"
+ * Fetch available technicians.
  */
-export const updateTechnicianAvailability = (technicianId, technician_status) =>
-  api.put(`/technicians/${technicianId}/availability`, { technician_status });
+export const getAvailableTechnicians = async () => {
+  try {
+    return await api.get("/technicians/available");
+  } catch (error) {
+    handleApiError(error);
+  }
+};
 
 /**
- * Fetch all pending / unassigned jobs for planning.
+ * Update technician availability.
  */
-export const getPendingJobs = () => api.get("/jobs/pending");
+export const updateTechnicianAvailability = async (
+  technicianId,
+  technician_status
+) => {
+  try {
+    return await api.put(`/technicians/${technicianId}/availability`, {
+      technician_status,
+    });
+  } catch (error) {
+    handleApiError(error);
+  }
+};
 
 /**
- * Fetch all planned (assigned) job-technician assignments.
+ * Fetch pending jobs.
  */
-export const getPlannedAssignments = () => api.get("/planned-assignments");
+export const getPendingJobs = async () => {
+  try {
+    return await api.get("/jobs/pending");
+  } catch (error) {
+    handleApiError(error);
+  }
+};
 
 /**
- * Assign a technician to a job.
- * Backend will block if the technician is Busy or Offline.
- * @param {number} jobId
- * @param {number} technicianId
+ * Fetch planned assignments.
  */
-export const assignJob = (jobId, technicianId) =>
-  api.post("/assign-job", { job_id: jobId, technician_id: technicianId });
+export const getPlannedAssignments = async () => {
+  try {
+    return await api.get("/planned-assignments");
+  } catch (error) {
+    handleApiError(error);
+  }
+};
+
+/**
+ * Assign technician to job.
+ */
+export const assignJob = async (jobId, technicianId) => {
+  try {
+    return await api.post("/assign-job", {
+      job_id: jobId,
+      technician_id: technicianId,
+    });
+  } catch (error) {
+    handleApiError(error);
+  }
+};
+
+/**
+ * Fetch dashboard stats.
+ */
+export const getDashboardStats = async () => {
+  try {
+    return await api.get("/jobs/stats");
+  } catch (error) {
+    handleApiError(error);
+  }
+};
+
+/**
+ * Fetch all jobs.
+ */
+export const getJobs = async () => {
+  try {
+    return await api.get("/jobs");
+  } catch (error) {
+    handleApiError(error);
+  }
+};
+
+export default api;

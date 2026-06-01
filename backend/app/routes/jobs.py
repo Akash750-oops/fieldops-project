@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 import json
@@ -21,6 +22,66 @@ router = APIRouter(
     prefix="/jobs",
     tags=["Jobs"]
 )
+
+
+@router.get("/stats")
+def get_jobs_stats(db: Session = Depends(get_db)):
+    try:
+        # Total Jobs
+        total_jobs = db.query(Job).count()
+
+        # Jobs counts by status
+        completed_count = db.query(Job).filter(func.lower(Job.status) == "completed").count()
+        in_progress_count = db.query(Job).filter(func.lower(Job.status) == "in progress").count()
+        active_count = db.query(Job).filter(func.lower(Job.status) == "active", Job.assigned_technician_id.isnot(None)).count()
+        pending_count = db.query(Job).filter(func.lower(Job.status) == "active", Job.assigned_technician_id.is_(None)).count()
+
+        # Technician availability counts
+        tech_available = db.query(Technician).filter(func.lower(Technician.technician_status) == "available").count()
+        tech_busy = db.query(Technician).filter(
+            (func.lower(Technician.technician_status) == "busy") | 
+            (func.lower(Technician.technician_status) == "on job") | 
+            (func.lower(Technician.technician_status) == "on job / busy")
+        ).count()
+        tech_break = db.query(Technician).filter(func.lower(Technician.technician_status) == "break").count()
+        tech_offline = db.query(Technician).filter(func.lower(Technician.technician_status) == "offline").count()
+
+        # Category splits based on service type
+        hvac_count = db.query(Job).filter(func.lower(Job.service_type).like("%hvac%")).count()
+        electrical_count = db.query(Job).filter(func.lower(Job.service_type).like("%elec%")).count()
+        plumbing_count = db.query(Job).filter(func.lower(Job.service_type).like("%plumb%")).count()
+        mechanical_count = db.query(Job).filter(func.lower(Job.service_type).like("%mech%")).count()
+        other_count = total_jobs - (hvac_count + electrical_count + plumbing_count + mechanical_count)
+        if other_count < 0:
+            other_count = 0
+
+        return {
+            "jobs": {
+                "total": total_jobs,
+                "active": active_count,
+                "in_progress": in_progress_count,
+                "completed": completed_count,
+                "pending": pending_count
+            },
+            "technicians": {
+                "available": tech_available,
+                "busy": tech_busy,
+                "break": tech_break,
+                "offline": tech_offline
+            },
+            "categories": {
+                "hvac": hvac_count,
+                "electrical": electrical_count,
+                "plumbing": plumbing_count,
+                "mechanical": mechanical_count,
+                "other": other_count
+            }
+        }
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch dashboard stats: {str(error)}"
+        )
 
 
 @router.post("/", response_model=JobResponse, status_code=201)
@@ -54,6 +115,19 @@ def create_job(job: JobCreate, db: Session = Depends(get_db)):
 @router.get("/", response_model=list[JobResponse])
 def get_jobs(db: Session = Depends(get_db)):
     return db.query(Job).order_by(Job.id.desc()).all()
+
+@router.get("/pending", response_model=list[JobResponse])
+def get_pending_jobs(db: Session = Depends(get_db)):
+    """
+    Retrieve all unassigned/pending jobs.
+    """
+    try:
+        return db.query(Job).filter(Job.assigned_technician_id.is_(None)).order_by(Job.id.desc()).all()
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch pending jobs: {str(error)}"
+        )
 
 @router.put("/{job_id}", response_model=JobResponse)
 def update_job(job_id: int, job: JobCreate, db: Session = Depends(get_db)):
