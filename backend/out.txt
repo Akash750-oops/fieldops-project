@@ -1,0 +1,315 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.5, pytest-8.1.1, pluggy-1.6.0
+benchmark: 4.0.0 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: C:\Users\Arjun\Documents\fieldops-projects\backend
+plugins: anyio-4.13.0, Faker-40.18.0, hypothesis-6.98.15, langsmith-0.7.1, locust-2.44.0, asyncio-1.3.0, benchmark-4.0.0, cov-4.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 8 items
+
+tests\test_redispatch_trigger.py FFF....F                                [100%]
+
+================================== FAILURES ===================================
+_____________________ test_rejection_triggers_redispatch ______________________
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.IntegrityError: NOT NULL constraint failed: technicians.technician_skill
+
+The above exception was the direct cause of the following exception:
+tests\test_redispatch_trigger.py:78: in test_rejection_triggers_redispatch
+    db.commit()
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:2030: in commit
+    trans.commit(_to_root=True)
+<string>:2: in commit
+    ???
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:1311: in commit
+    self._prepare_impl()
+<string>:2: in _prepare_impl
+    ???
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:1286: in _prepare_impl
+    self.session.flush()
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:4331: in flush
+    self._flush(objects)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:4466: in _flush
+    with util.safe_reraise():
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\util\langhelpers.py:121: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:4427: in _flush
+    flush_context.execute()
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\unitofwork.py:466: in execute
+    rec.execute(self)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\unitofwork.py:642: in execute
+    util.preloaded.orm_persistence.save_obj(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\persistence.py:93: in save_obj
+    _emit_insert_statements(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\persistence.py:1233: in _emit_insert_statements
+    result = connection.execute(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: technicians.technician_skill
+E   [SQL: INSERT INTO technicians (tech_id, tenant_id, technician_name, technician_skill, technician_location, technician_status, current_jobs, max_jobs, last_ping, fcm_token, device_type, phone_number, sms_opt_out, notification_preferences) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING technician_id, created_at, updated_at]
+E   [parameters: ('tech-123', None, 'John', None, None, 'BUSY', 1, 5, None, None, None, None, 0, '{"sms_enabled": true, "push_enabled": true, "inapp_enabled": true, "email_enabled": false}')]
+E   (Background on this error at: https://sqlalche.me/e/20/gkpj)
+______________________ test_timeout_triggers_redispatch _______________________
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.IntegrityError: NOT NULL constraint failed: technicians.technician_skill
+
+The above exception was the direct cause of the following exception:
+tests\test_redispatch_trigger.py:110: in test_timeout_triggers_redispatch
+    db.commit()
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:2030: in commit
+    trans.commit(_to_root=True)
+<string>:2: in commit
+    ???
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:1311: in commit
+    self._prepare_impl()
+<string>:2: in _prepare_impl
+    ???
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:1286: in _prepare_impl
+    self.session.flush()
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:4331: in flush
+    self._flush(objects)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:4466: in _flush
+    with util.safe_reraise():
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\util\langhelpers.py:121: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:4427: in _flush
+    flush_context.execute()
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\unitofwork.py:466: in execute
+    rec.execute(self)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\unitofwork.py:642: in execute
+    util.preloaded.orm_persistence.save_obj(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\persistence.py:93: in save_obj
+    _emit_insert_statements(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\persistence.py:1233: in _emit_insert_statements
+    result = connection.execute(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: technicians.technician_skill
+E   [SQL: INSERT INTO technicians (tech_id, tenant_id, technician_name, technician_skill, technician_location, technician_status, current_jobs, max_jobs, last_ping, fcm_token, device_type, phone_number, sms_opt_out, notification_preferences) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING technician_id, created_at, updated_at]
+E   [parameters: ('tech-123', None, 'John', None, None, 'AVAILABLE', 0, 5, None, None, None, None, 0, '{"sms_enabled": true, "push_enabled": true, "inapp_enabled": true, "email_enabled": false}')]
+E   (Background on this error at: https://sqlalche.me/e/20/gkpj)
+______________________ test_offline_triggers_redispatch _______________________
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.IntegrityError: NOT NULL constraint failed: technicians.technician_skill
+
+The above exception was the direct cause of the following exception:
+tests\test_redispatch_trigger.py:136: in test_offline_triggers_redispatch
+    db.commit()
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:2030: in commit
+    trans.commit(_to_root=True)
+<string>:2: in commit
+    ???
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:1311: in commit
+    self._prepare_impl()
+<string>:2: in _prepare_impl
+    ???
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:1286: in _prepare_impl
+    self.session.flush()
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:4331: in flush
+    self._flush(objects)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:4466: in _flush
+    with util.safe_reraise():
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\util\langhelpers.py:121: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:4427: in _flush
+    flush_context.execute()
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\unitofwork.py:466: in execute
+    rec.execute(self)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\unitofwork.py:642: in execute
+    util.preloaded.orm_persistence.save_obj(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\persistence.py:93: in save_obj
+    _emit_insert_statements(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\persistence.py:1233: in _emit_insert_statements
+    result = connection.execute(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: technicians.technician_skill
+E   [SQL: INSERT INTO technicians (tech_id, tenant_id, technician_name, technician_skill, technician_location, technician_status, current_jobs, max_jobs, last_ping, fcm_token, device_type, phone_number, sms_opt_out, notification_preferences) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING technician_id, created_at, updated_at]
+E   [parameters: ('tech-123', None, 'John', None, None, 'OFFLINE', 0, 5, None, None, None, None, 0, '{"sms_enabled": true, "push_enabled": true, "inapp_enabled": true, "email_enabled": false}')]
+E   (Background on this error at: https://sqlalche.me/e/20/gkpj)
+________________________ test_no_trigger_for_accepted _________________________
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.IntegrityError: NOT NULL constraint failed: technicians.technician_skill
+
+The above exception was the direct cause of the following exception:
+tests\test_redispatch_trigger.py:239: in test_no_trigger_for_accepted
+    db.commit()
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:2030: in commit
+    trans.commit(_to_root=True)
+<string>:2: in commit
+    ???
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:1311: in commit
+    self._prepare_impl()
+<string>:2: in _prepare_impl
+    ???
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:1286: in _prepare_impl
+    self.session.flush()
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:4331: in flush
+    self._flush(objects)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:4466: in _flush
+    with util.safe_reraise():
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\util\langhelpers.py:121: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\session.py:4427: in _flush
+    flush_context.execute()
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\unitofwork.py:466: in execute
+    rec.execute(self)
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\unitofwork.py:642: in execute
+    util.preloaded.orm_persistence.save_obj(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\persistence.py:93: in save_obj
+    _emit_insert_statements(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\persistence.py:1233: in _emit_insert_statements
+    result = connection.execute(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: technicians.technician_skill
+E   [SQL: INSERT INTO technicians (tech_id, tenant_id, technician_name, technician_skill, technician_location, technician_status, current_jobs, max_jobs, last_ping, fcm_token, device_type, phone_number, sms_opt_out, notification_preferences) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING technician_id, created_at, updated_at]
+E   [parameters: ('tech-123', None, 'John', None, None, 'EN_ROUTE', 0, 5, None, None, None, None, 0, '{"sms_enabled": true, "push_enabled": true, "inapp_enabled": true, "email_enabled": false}')]
+E   (Background on this error at: https://sqlalche.me/e/20/gkpj)
+============================== warnings summary ===============================
+app\schemas.py:41
+  C:\Users\Arjun\Documents\fieldops-projects\backend\app\schemas.py:41: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class JobResponse(BaseModel):
+
+app\schemas.py:82
+  C:\Users\Arjun\Documents\fieldops-projects\backend\app\schemas.py:82: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class TechnicianResponse(BaseModel):
+
+app\schemas.py:117
+  C:\Users\Arjun\Documents\fieldops-projects\backend\app\schemas.py:117: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class AvailableTechnicianResponse(BaseModel):
+
+app\schemas.py:141
+  C:\Users\Arjun\Documents\fieldops-projects\backend\app\schemas.py:141: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class PlannedAssignmentResponse(BaseModel):
+
+app\schemas.py:228
+  C:\Users\Arjun\Documents\fieldops-projects\backend\app\schemas.py:228: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class InAppNotificationResponse(BaseModel):
+
+app\schemas.py:265
+  C:\Users\Arjun\Documents\fieldops-projects\backend\app\schemas.py:265: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class TemplateResponse(TemplateCreate):
+
+app\schemas.py:446
+  C:\Users\Arjun\Documents\fieldops-projects\backend\app\schemas.py:446: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class OverrideAuditResponse(BaseModel):
+
+app\main.py:115
+  C:\Users\Arjun\Documents\fieldops-projects\backend\app\main.py:115: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4598
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4598
+  C:\Users\Arjun\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4598: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+app\main.py:119
+  C:\Users\Arjun\Documents\fieldops-projects\backend\app\main.py:119: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_redispatch_trigger.py::test_rejection_triggers_redispatch
+FAILED tests/test_redispatch_trigger.py::test_timeout_triggers_redispatch - s...
+FAILED tests/test_redispatch_trigger.py::test_offline_triggers_redispatch - s...
+FAILED tests/test_redispatch_trigger.py::test_no_trigger_for_accepted - sqlal...
+================== 4 failed, 4 passed, 11 warnings in 21.97s ==================
