@@ -6,11 +6,12 @@ from app.main import app
 from app.models import Job, Technician, AuditEvent, DispatcherNotification
 from app.database import Base, get_db
 from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 from app.redis_client import get_redis_client
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_reassign.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+SQLALCHEMY_DATABASE_URL = "sqlite://"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def override_get_db():
@@ -20,7 +21,6 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
 class MockRedis:
@@ -54,10 +54,10 @@ mock_redis = MockRedis()
 def override_get_redis():
     return mock_redis
 
-app.dependency_overrides[get_redis_client] = override_get_redis
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     
@@ -70,8 +70,17 @@ def setup_db():
     mock_redis.data = {}
     
     yield db
-    Base.metadata.drop_all(bind=engine)
+    db.close()
 
+
+
+@pytest.fixture(autouse=True)
+def apply_overrides():
+    app.dependency_overrides[get_db] = override_get_db
+    if "override_get_redis" in globals():
+        app.dependency_overrides[get_redis_client] = override_get_redis
+    yield
+    app.dependency_overrides.clear()
 
 def test_reassign_succeeds_with_eligible_new_tech(setup_db):
     db = setup_db

@@ -12,6 +12,7 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+  timeout: 8000,
 });
 
 // Common error handler
@@ -111,6 +112,57 @@ export const getDashboardStats = async () => {
 export const getJobs = async () => {
   try {
     return await api.get("/jobs");
+  } catch (error) {
+    handleApiError(error);
+  }
+};
+
+export const manualAssign = async (jobId, technicianId) => {
+  try {
+    return await api.post(`/jobs/${jobId}/manual-assign`, {
+      technician_id: technicianId,
+    });
+  } catch (error) {
+    handleApiError(error);
+  }
+};
+
+/**
+ * Force assign a technician to a job, bypassing planning constraints.
+ */
+export const forceAssignJob = async (jobId, technicianId, justification, role = "dispatcher") => {
+  try {
+    return await api.post(`/technicians/assignments/${jobId}/override`, {
+      technician_id: String(technicianId),
+      justification: justification
+    }, {
+      headers: {
+        "Authorization": `Bearer ${role}`,
+        "X-Tenant-ID": "tenant-1"
+      }
+    });
+  } catch (error) {
+    handleApiError(error);
+  }
+};
+
+/**
+ * Fetch a single job by ID.
+ */
+export const getJob = async (jobId) => {
+  try {
+    return await api.get(`/jobs/${jobId}`);
+  } catch (error) {
+    handleApiError(error);
+  }
+};
+
+/**
+ * Fetch manual override history for a job.
+ */
+export const getOverrideHistory = async (jobId) => {
+  try {
+    return await api.get(`/jobs/${jobId}/override-history`);
   } catch (error) {
     handleApiError(error);
   }

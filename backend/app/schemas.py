@@ -73,11 +73,11 @@ class TechnicianCreate(BaseModel):
 
 
 class TechnicianAvailabilityUpdate(BaseModel):
-    technician_status: Literal["Available", "Busy", "Offline"]
+    technician_status: Literal["Available", "Busy", "Assigned", "Offline", "AVAILABLE", "BUSY", "ASSIGNED", "OFFLINE"]
 
 class TechnicianStatusUpdate(BaseModel):
     technician_id: int
-    status: str
+    status: Literal["Available", "Busy", "Assigned", "Offline", "AVAILABLE", "BUSY", "ASSIGNED", "OFFLINE"]
 
 class TechnicianResponse(BaseModel):
     technician_id: int
@@ -505,4 +505,4 @@ class DispatchMetricsResponse(BaseModel):
     status_breakdown: dict[str, int]
     priority_breakdown: dict[str, int]
     technician_utilization: float
-
+

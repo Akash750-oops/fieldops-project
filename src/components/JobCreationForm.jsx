@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { Eye, Pencil, Trash2 } from "lucide-react";
+import LoadingSpinner from "./LoadingSpinner.jsx";
 import "./JobCreationForm.css";
 
 const API_URL = "http://localhost:8000/jobs";
+const JOBS_PAGE_SIZE = 8;
 
 const initialFormData = {
   customer_name: "",
@@ -46,6 +49,15 @@ function normalizeP(p) {
   return priorityMap[up] || up;
 }
 
+const getPriorityClass = (priority) => {
+  const p = (priority || "").toUpperCase();
+  if (p === "CRITICAL" || p === "P1") return "badge-critical";
+  if (p === "HIGH" || p === "P2") return "badge-high";
+  if (p === "MEDIUM" || p === "P3") return "badge-medium";
+  if (p === "LOW" || p === "P4" || p === "P5") return "badge-low";
+  return "badge-default";
+};
+
 function JobCreationForm() {
   const [formData, setFormData] = useState(initialFormData);
   const [errors, setErrors] = useState({});
@@ -59,14 +71,65 @@ function JobCreationForm() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [priorityFilter, setPriorityFilter] = useState("ALL");
   const [serviceFilter, setServiceFilter] = useState("ALL");
+  const [jobsPage, setJobsPage] = useState(1);
 
-  const uniqueServiceTypes = Array.from(new Set(jobs.map(j => j.service_type).filter(Boolean)));
+  useEffect(() => {
+    setJobsPage(1);
+  }, [searchTerm, statusFilter, priorityFilter, serviceFilter]);
+
+  const getFilterServiceTypes = () => {
+    const seenNormal = new Set();
+    const result = [];
+    jobs.forEach(j => {
+      if (j.service_type) {
+        const val = j.service_type;
+        const normalized = val.toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim();
+        if (!seenNormal.has(normalized)) {
+          seenNormal.add(normalized);
+          const predefined = serviceTypes.find(s => (s.value || "").toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim() === normalized);
+          result.push({
+            value: predefined ? predefined.value : val,
+            label: predefined ? predefined.label : val.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
+          });
+        }
+      }
+    });
+    return result;
+  };
+
+  const getFormServiceTypes = () => {
+    const list = [...serviceTypes];
+    const seenNormal = new Set(list.map(s => (s.value || "").toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim()));
+
+    const tryAdd = (val) => {
+      if (!val) return;
+      const normalized = val.toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim();
+      if (!seenNormal.has(normalized)) {
+        seenNormal.add(normalized);
+        const label = val.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+        list.push({ label, value: val });
+      }
+    };
+
+    jobs.forEach(j => {
+      if (j.service_type) {
+        tryAdd(j.service_type);
+      }
+    });
+
+    if (formData.service_type) {
+      tryAdd(formData.service_type);
+    }
+
+    return list;
+  };
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingJobId, setEditingJobId] = useState(null);
 
   const [popup, setPopup] = useState({ show: false, title: "", message: "", jobId: "" });
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [viewJob, setViewJob] = useState(null);
 
   const fetchJobs = async () => {
     try {
@@ -152,13 +215,22 @@ function JobCreationForm() {
   const handleCancelEdit = () => { resetForm(); setApiError(""); };
   const closePopup = () => setPopup({ show: false, title: "", message: "", jobId: "" });
 
+  const handleCreateNew = () => {
+    setFormData(initialFormData);
+    setErrors({});
+    setIsEditing(false);
+    setEditingJobId(null);
+    setApiError("");
+    setIsFormOpen(true);
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!validateForm()) return;
     try {
       setLoading(true);
       if (isEditing) {
-        const response = await axios.put(`${API_URL}${editingJobId}`, formData);
+        const response = await axios.put(`${API_URL}/${editingJobId}`, formData);
         setPopup({ show: true, title: "Job Updated Successfully", message: "The job details have been updated successfully.", jobId: response.data?.id ?? editingJobId });
       } else {
         const response = await axios.post(API_URL, formData);
@@ -176,10 +248,12 @@ function JobCreationForm() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this job?")) return;
+    const job = jobs.find(j => j.id === id);
+    const name = job?.customer_name || `Job #${id}`;
+    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
     try {
       setJobsLoading(true);
-      await axios.delete(`${API_URL}${id}`);
+      await axios.delete(`${API_URL}/${id}`);
       setPopup({ show: true, title: "Job Deleted", message: "The job has been removed successfully.", jobId: id });
       fetchJobs();
     } catch (error) {
@@ -203,7 +277,11 @@ function JobCreationForm() {
       if (priorityFilter === "ALL") return true;
       return normalizeP(j.priority) === priorityFilter;
     })
-    .filter(j => serviceFilter === "ALL" || j.service_type === serviceFilter)
+    .filter(j => {
+      if (serviceFilter === "ALL") return true;
+      const norm = (val) => (val || "").toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim();
+      return norm(j.service_type) === norm(serviceFilter);
+    })
     .filter(j => {
       const s = searchTerm.toLowerCase();
       return (
@@ -212,6 +290,26 @@ function JobCreationForm() {
         (j.issue_description && j.issue_description.toLowerCase().includes(s))
       );
     });
+
+  const jobsTotalPages = Math.max(1, Math.ceil(filteredJobs.length / JOBS_PAGE_SIZE));
+  const safeJobsPage = Math.min(jobsPage, jobsTotalPages);
+  const paginatedJobs = filteredJobs.slice((safeJobsPage - 1) * JOBS_PAGE_SIZE, safeJobsPage * JOBS_PAGE_SIZE);
+
+  useEffect(() => {
+    const total = Math.max(1, Math.ceil(filteredJobs.length / JOBS_PAGE_SIZE));
+    if (jobsPage > total) {
+      setJobsPage(total);
+    }
+  }, [filteredJobs.length, jobsPage]);
+
+  const getJobsPageNums = () => {
+    const nums = [];
+    const delta = 2;
+    for (let i = Math.max(1, safeJobsPage - delta); i <= Math.min(jobsTotalPages, safeJobsPage + delta); i++) {
+      nums.push(i);
+    }
+    return nums;
+  };
 
   const formatStatus = (status) => {
     const s = (status || "active").toLowerCase().trim();
@@ -254,7 +352,7 @@ function JobCreationForm() {
             </div>
             <div className="header-actions-row">
               <button className="refresh-icon-btn" onClick={fetchJobs} title="Refresh">⟳ Refresh</button>
-              <button className="add-job-btn" onClick={() => setIsFormOpen(true)}>+ Create Job</button>
+              <button className="add-job-btn" onClick={handleCreateNew}>+ Create Job</button>
             </div>
           </div>
 
@@ -294,9 +392,9 @@ function JobCreationForm() {
               <label>Service</label>
               <select value={serviceFilter} onChange={e => setServiceFilter(e.target.value)} className="filter-select">
                 <option value="ALL">All Services</option>
-                {uniqueServiceTypes.map(st => (
-                  <option key={st} value={st}>
-                    {serviceTypes.find(s => s.value === st)?.label || st.replace(/_/g, " ")}
+                {getFilterServiceTypes().map(st => (
+                  <option key={st.value} value={st.value}>
+                    {st.label}
                   </option>
                 ))}
               </select>
@@ -306,60 +404,142 @@ function JobCreationForm() {
           {/* Jobs Count */}
           <p className="results-count">{filteredJobs.length} job{filteredJobs.length !== 1 ? "s" : ""} found</p>
 
-          {/* Job List */}
-          <div className="job-list-scroll">
+          {/* Job Table */}
+          <div className="table-container">
             {jobsLoading ? (
-              <div className="empty-state">
-                <p>Loading jobs...</p>
-              </div>
+              <LoadingSpinner message="Loading jobs..." />
             ) : filteredJobs.length === 0 ? (
               <div className="empty-state">
                 <p>No jobs found. Create your first job.</p>
               </div>
             ) : (
-              filteredJobs.map(job => (
-                <div key={job.id} className="job-item-card">
-                  <div className="job-item-header">
-                    <div className="job-item-title">
-                      <h4>{job.customer_name}</h4>
-                      <span className={getStatusClass(job.status)}>{formatStatus(job.status)}</span>
-                    </div>
-                    <span
-                      className="priority-dot"
-                      style={{ background: priorityColors[normalizeP(job.priority)] || "#94a3b8" }}
-                      title={normalizeP(job.priority)}
-                    >
-                      {normalizeP(job.priority)}
-                    </span>
-                  </div>
-
-                  <p className="job-item-desc">{job.issue_description}</p>
-
-                  <div className="job-item-meta">
-                    {job.location && <span>{job.location}</span>}
-                    {job.service_type && <span>{job.service_type.replace(/_/g, " ")}</span>}
-                    {job.contact_number && <span>{job.contact_number}</span>}
-                    {job.preferred_service_date && <span>{job.preferred_service_date}</span>}
-                  </div>
-
-                  <div className="job-item-actions">
-                    <button className="btn-edit" onClick={() => handleEdit(job)}>Edit</button>
-                    <button className="btn-delete" onClick={() => handleDelete(job.id)}>Delete</button>
-                  </div>
-                </div>
-              ))
+              <table className="dashboard-table">
+                <thead>
+                  <tr>
+                    <th>Job ID</th>
+                    <th>Customer</th>
+                    <th>Location</th>
+                    <th>Priority</th>
+                    <th>Service Type</th>
+                    <th>Preferred Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedJobs.map(job => (
+                    <tr key={job.id}>
+                      <td className="job-id-cell">#{job.id}</td>
+                      <td className="customer-cell">
+                        <div><strong>{job.customer_name}</strong></div>
+                        {job.issue_description && (
+                          <div className="issue-sub">{job.issue_description}</div>
+                        )}
+                      </td>
+                      <td>{job.location}</td>
+                      <td>
+                        <span className={`priority-badge ${getPriorityClass(job.priority)}`}>
+                          {normalizeP(job.priority)}
+                        </span>
+                      </td>
+                      <td>{job.service_type?.replace(/_/g, " ")}</td>
+                      <td>{job.preferred_service_date}</td>
+                      <td>
+                        <span className={getStatusClass(job.status)}>{formatStatus(job.status)}</span>
+                      </td>
+                      <td>
+                        <div className="job-item-actions" style={{ border: "none", padding: 0, margin: 0 }}>
+                          <button
+                            className="icon-action-btn icon-view"
+                            onClick={() => setViewJob(job)}
+                            title="View job details"
+                            aria-label="View job"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <button
+                            className="icon-action-btn icon-edit"
+                            onClick={() => handleEdit(job)}
+                            title="Edit job"
+                            aria-label="Edit job"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            className="icon-action-btn icon-delete"
+                            onClick={() => handleDelete(job.id)}
+                            title="Delete job"
+                            aria-label="Delete job"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
+          {/* Pagination */}
+          {!jobsLoading && (
+            <div className="jobs-pagination">
+              <span className="jobs-page-info">
+                Page <strong>{safeJobsPage}</strong> of <strong>{jobsTotalPages}</strong> · {filteredJobs.length} results
+              </span>
+              <div className="jobs-page-controls">
+                <button className="jobs-page-btn" type="button" onClick={() => setJobsPage(1)} disabled={safeJobsPage === 1}>«</button>
+                <button className="jobs-page-btn" type="button" onClick={() => setJobsPage(p => Math.max(1, p - 1))} disabled={safeJobsPage === 1}>‹ Prev</button>
+                <div className="jobs-page-numbers">
+                  {getJobsPageNums().map(n => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`jobs-page-num${n === safeJobsPage ? " active" : ""}`}
+                      onClick={() => setJobsPage(n)}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <button className="jobs-page-btn" type="button" onClick={() => setJobsPage(p => Math.min(jobsTotalPages, p + 1))} disabled={safeJobsPage === jobsTotalPages}>Next ›</button>
+                <button className="jobs-page-btn" type="button" onClick={() => setJobsPage(jobsTotalPages)} disabled={safeJobsPage === jobsTotalPages}>»</button>
+              </div>
+            </div>
+          )}
+           </div>
         </div>
-      </div>
 
-      {/* Sliding Sidebar for Job Form */}
+      {/* View Job Modal */}
+      {viewJob && (
+        <div className="popup-overlay" onClick={() => setViewJob(null)}>
+          <div className="view-job-modal" onClick={e => e.stopPropagation()}>
+            <div className="view-modal-header">
+              <h3>Job Details</h3>
+              <button onClick={() => setViewJob(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#6b7280' }}>×</button>
+            </div>
+            <div className="view-modal-body">
+              <div className="view-detail-row"><span className="view-label">Job ID</span><span className="view-value">#{viewJob.id}</span></div>
+              <div className="view-detail-row"><span className="view-label">Customer</span><span className="view-value">{viewJob.customer_name}</span></div>
+              <div className="view-detail-row"><span className="view-label">Location</span><span className="view-value">{viewJob.location}</span></div>
+              <div className="view-detail-row"><span className="view-label">Priority</span><span className={`priority-badge ${getPriorityClass(viewJob.priority)}`}>{normalizeP(viewJob.priority)}</span></div>
+              <div className="view-detail-row"><span className="view-label">Service Type</span><span className="view-value">{viewJob.service_type?.replace(/_/g, ' ')}</span></div>
+              <div className="view-detail-row"><span className="view-label">Contact</span><span className="view-value">{viewJob.contact_number}</span></div>
+              <div className="view-detail-row"><span className="view-label">Preferred Date</span><span className="view-value">{viewJob.preferred_service_date}</span></div>
+              <div className="view-detail-row"><span className="view-label">Status</span><span className={getStatusClass(viewJob.status)}>{formatStatus(viewJob.status)}</span></div>
+              {viewJob.issue_description && <div className="view-detail-row col"><span className="view-label">Issue</span><span className="view-value">{viewJob.issue_description}</span></div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sliding Sidebar for Job Form — rendered outside main div to avoid overflow:hidden clipping */}
       <div className={`job-form-sidebar ${isFormOpen ? "open" : ""}`}>
         <div className="sidebar-header">
           <h3>{isEditing ? "Edit Job" : "Create New Job"}</h3>
           <button className="close-sidebar" onClick={() => setIsFormOpen(false)}>×</button>
         </div>
-        <div className="sidebar-content">
+        <div className="sidebar-body">
           {apiError && <div className="alert-error">{apiError}</div>}
           <form onSubmit={handleSubmit} className="job-form">
             <div className="form-group">
@@ -401,15 +581,9 @@ function JobCreationForm() {
               <label>Service Type <span className="req">*</span></label>
               <select name="service_type" value={formData.service_type} onChange={handleChange} className={errors.service_type ? "input-error" : ""}>
                 <option value="">Select service type</option>
-                {serviceTypes.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                {uniqueServiceTypes.filter(st => st && !serviceTypes.some(s => s.value === st)).map(st => (
-                  <option key={st} value={st}>{st.replace(/_/g, " ")}</option>
+                {getFormServiceTypes().map(st => (
+                  <option key={st.value} value={st.value}>{st.label}</option>
                 ))}
-                {formData.service_type && 
-                 !serviceTypes.some(s => s.value === formData.service_type) && 
-                 !uniqueServiceTypes.includes(formData.service_type) && (
-                  <option value={formData.service_type}>{formData.service_type.replace(/_/g, " ")}</option>
-                )}
               </select>
               {errors.service_type && <span className="field-error">{errors.service_type}</span>}
             </div>

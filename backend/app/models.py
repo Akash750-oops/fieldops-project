@@ -248,4 +248,20 @@ def prevent_override_audit_event_update(mapper, connection, target):
 @event.listens_for(OverrideAuditEvent, "before_delete")
 def prevent_override_audit_event_delete(mapper, connection, target):
     raise ValueError("OverrideAuditEvent is immutable (BR-009)")
-
+
+
+class AssignmentOverride(Base):
+    __tablename__ = "assignment_overrides"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    actor_name = Column(String(100), nullable=False)
+    actor_role = Column(String(30), nullable=False)
+    justification = Column(Text, nullable=False)
+    previous_technician_id = Column(Integer, ForeignKey("technicians.technician_id"), nullable=True)
+    previous_technician_name = Column(String(100), nullable=True)
+    new_technician_id = Column(Integer, ForeignKey("technicians.technician_id"), nullable=False)
+    new_technician_name = Column(String(100), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+

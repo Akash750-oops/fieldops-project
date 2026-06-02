@@ -173,9 +173,9 @@ def get_available_technicians(db: Session = Depends(get_db)):
     Retrieve only available technicians with their workload details.
     Excludes BUSY and OFFLINE technicians from the result entirely.
     """
-    # Fetch only technicians with AVAILABLE status (case-insensitive)
+    # Fetch technicians with AVAILABLE or ASSIGNED status (case-insensitive)
     techs = db.query(models.Technician).filter(
-        models.Technician.technician_status.ilike("AVAILABLE")
+        models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"])
     ).all()
     
     result = []
@@ -302,4 +302,74 @@ async def reset_preferences(
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": "admin_reset"
     }
+
+@router.put("/{technician_id}", response_model=schemas.TechnicianResponse)
+def update_technician(technician_id: int, technician: schemas.TechnicianCreate, db: Session = Depends(get_db)):
+    """
+    Update a technician's details.
+    """
+    tech = db.query(models.Technician).filter(models.Technician.technician_id == technician_id).first()
+    if not tech:
+        raise HTTPException(status_code=404, detail="Technician not found")
+    
+    tech.technician_name = technician.technician_name
+    tech.technician_skill = technician.technician_skill
+    tech.technician_location = technician.technician_location
+    tech.technician_status = technician.technician_status
+    
+    try:
+        db.commit()
+        db.refresh(tech)
+        return tech
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@router.delete("/{technician_id}", status_code=status.HTTP_200_OK)
+def delete_technician(technician_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a technician.
+    """
+    tech = db.query(models.Technician).filter(models.Technician.technician_id == technician_id).first()
+    if not tech:
+        raise HTTPException(status_code=404, detail="Technician not found")
+    
+    try:
+        db.delete(tech)
+        db.commit()
+        return {"message": "Technician deleted successfully"}
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@router.put("/{technician_id}/status")
+def update_technician_status_by_id(
+    technician_id: int,
+    update_data: schemas.TechnicianAvailabilityUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    Update the status of a technician.
+    """
+    tech = db.query(models.Technician).filter(models.Technician.technician_id == technician_id).first()
+    if not tech:
+        raise HTTPException(status_code=404, detail="Technician not found")
+    
+    tech.technician_status = update_data.technician_status
+    
+    try:
+        db.commit()
+        db.refresh(tech)
+        return {
+            "message": "Technician status updated successfully",
+            "technician": {
+                "id": tech.technician_id,
+                "name": tech.technician_name,
+                "technician_status": tech.technician_status
+            }
+        }
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
 

@@ -166,11 +166,6 @@ function Dashboard({ onViewTab, unreadCount, isBellAnimated, onOpenBellDrawer })
     fetchData();
   }, []);
 
-  // Wait until backend data is loaded
-  if (loading || stats === null) {
-    return <LoadingSpinner message="Assembling Operations Center Dashboard..." />;
-  }
-
   if (statsError) {
     return (
       <div className="ops-dashboard">
@@ -179,6 +174,11 @@ function Dashboard({ onViewTab, unreadCount, isBellAnimated, onOpenBellDrawer })
         </div>
       </div>
     );
+  }
+
+  // Wait until backend data is loaded
+  if (loading || stats === null) {
+    return <LoadingSpinner message="Assembling Operations Center Dashboard..." />;
   }
 
   // Extract jobs counts — safe to access because stats is guaranteed non-null here
@@ -230,6 +230,7 @@ function Dashboard({ onViewTab, unreadCount, isBellAnimated, onOpenBellDrawer })
         </div>
 
         <div className="header-controls-area">
+          <PermissionRequest compact={true} />
           <div className="dropdown-calendar-wrap">
             <Calendar size={14} className="dropdown-calendar-icon" />
             <select className="dropdown-this-week" defaultValue="week">
@@ -252,12 +253,6 @@ function Dashboard({ onViewTab, unreadCount, isBellAnimated, onOpenBellDrawer })
             onClick={onOpenBellDrawer}
             isAnimated={isBellAnimated}
           />
-
-          <div className="dashboard-profile-pill">
-            <div className="profile-avatar-c">R</div>
-            <span className="profile-name-c">Rajesh</span>
-            <ChevronDown size={14} className="profile-arrow-lucide" />
-          </div>
         </div>
       </header>
 

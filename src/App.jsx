@@ -12,7 +12,6 @@ import { ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, LayoutDashboard
 import NotificationBell from "./components/notifications/NotificationBell";
 import NotificationDrawer from "./components/notifications/NotificationDrawer";
 import NotificationDetail from "./components/notifications/NotificationDetail";
-import PermissionRequest from "./components/notifications/PermissionRequest";
 import {
   fetchNotifications,
   markNotificationAsRead,
@@ -169,7 +168,7 @@ function App() {
         required_skills: ["AC Repair", "Electrical", "Customer Support"]
       }
     };
-    
+
     setNotifications((prev) => [newNotif, ...prev]);
     setUnreadCount((prev) => prev + 1);
     setIsBellAnimated(true);
@@ -226,7 +225,7 @@ function App() {
                   {isTechGroupOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </span>
               </button>
-              
+
               {isTechGroupOpen && (
                 <div className="nav-group-items">
                   <button
@@ -291,7 +290,7 @@ function App() {
                   background: "#FFFFFF",
                   border: "1px solid #E3ECE7",
                   borderRadius: "6px",
-                  cursor: "pointer",
+                  curso: "pointer",
                   color: "#374151",
                   fontWeight: 600,
                   transition: "all 0.2s"
@@ -301,7 +300,6 @@ function App() {
               >
                 Simulate Alert
               </button>
-              <PermissionRequest compact={true} />
             </div>
           </div>
 

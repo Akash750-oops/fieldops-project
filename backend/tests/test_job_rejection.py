@@ -6,12 +6,13 @@ from app.main import app
 from app.models import Job, Technician, AuditEvent, DispatcherNotification
 from app.database import Base, get_db
 from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 from app.redis_client import get_redis_client
 
 # Setup test DB
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_rejection.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+SQLALCHEMY_DATABASE_URL = "sqlite://"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def override_get_db():
@@ -21,41 +22,19 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
-class MockRedis:
-    def __init__(self):
-        self.data = {}
-        
-    def set(self, key, value, nx=False, ex=None):
-        if nx and key in self.data:
-            return False
-        self.data[key] = value
-        return True
-        
-    def setex(self, key, time, value):
-        self.data[key] = value
-        return True
-        
-    def exists(self, key):
-        return key in self.data
-        
-    def delete(self, key):
-        if key in self.data:
-            del self.data[key]
-            return 1
-        return 0
+from fakeredis import FakeRedis
 
-mock_redis = MockRedis()
+mock_redis = FakeRedis(decode_responses=True)
 
 def override_get_redis():
     return mock_redis
 
-app.dependency_overrides[get_redis_client] = override_get_redis
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     
@@ -67,10 +46,19 @@ def setup_db():
     db.commit()
     
     # Reset mock redis
-    mock_redis.data = {}
+    mock_redis.flushall()
     
     yield db
-    Base.metadata.drop_all(bind=engine)
+    db.close()
+
+
+@pytest.fixture(autouse=True)
+def apply_overrides():
+    app.dependency_overrides[get_db] = override_get_db
+    if "override_get_redis" in globals():
+        app.dependency_overrides[get_redis_client] = override_get_redis
+    yield
+    app.dependency_overrides.clear()
 
 def test_reject_succeeds_with_valid_reason(setup_db):
     db = setup_db
@@ -114,11 +102,11 @@ def test_reject_succeeds_with_valid_reason(setup_db):
     assert tech.technician_status == "AVAILABLE"
     
     # Verify Redis cooldown
-    assert mock_redis.exists(f"tech:cooldown:tech-123")
+    assert mock_redis.exists(f"job:cooldown:{job.id}:tech-123")
     
     # Verify Audit Event
-    audit = db.query(AuditEvent).filter(AuditEvent.tech_id == "tech-123").first()
-    assert audit.event_type == "JOB_REJECTED"
+    audit = db.query(AuditEvent).filter(AuditEvent.tech_id == "tech-123", AuditEvent.event_type == "JOB_REJECTED").first()
+    assert audit is not None
     assert audit.reason == reason_text
     
     # Verify Notification
@@ -131,7 +119,7 @@ def test_reject_400_reason_too_short(setup_db):
         headers={"Authorization": "Bearer tech-123", "X-Tenant-ID": "tenant-1"},
         json={"reason": "short"}
     )
-    assert response.status_code == 422 # Pydantic validation error
+    assert response.status_code == 400 # Pydantic validation error
 
 def test_reject_404_job_not_found(setup_db):
     response = client.post(

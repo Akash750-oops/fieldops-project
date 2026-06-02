@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { Eye, Pencil, Trash2 } from "lucide-react";
+import LoadingSpinner from "./LoadingSpinner.jsx";
+import StatusBadge from "./common/StatusBadge";
 import "./TechnicianList.css";
 
 const API_BASE_URL = "http://localhost:8000/technicians";
+const TECH_PAGE_SIZE = 8;
 
 const initialTechFormData = {
   technician_name: "",
@@ -27,6 +31,14 @@ function TechnicianList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [techPage, setTechPage] = useState(1);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingTechId, setEditingTechId] = useState(null);
+  const [viewTech, setViewTech] = useState(null);
+
+  useEffect(() => {
+    setTechPage(1);
+  }, [searchTerm, statusFilter]);
 
   const fetchTechnicians = async () => {
     try {
@@ -89,18 +101,61 @@ function TechnicianList() {
     setFormErrors(prev => ({ ...prev, [name]: "" }));
   };
 
+  const resetForm = () => {
+    setTechFormData(initialTechFormData);
+    setFormErrors({});
+    setIsEditing(false);
+    setEditingTechId(null);
+    setIsFormOpen(false);
+  };
+
+  const handleEdit = (tech) => {
+    setIsEditing(true);
+    setEditingTechId(tech.technician_id);
+    setTechFormData({
+      technician_name: tech.technician_name || "",
+      technician_skill: tech.technician_skill || "",
+      technician_location: tech.technician_location || "",
+      technician_status: normalizeStatus(tech.technician_status) || "Available",
+    });
+    setIsFormOpen(true);
+  };
+
+  const handleDelete = async (id) => {
+    const tech = technicians.find(t => t.technician_id === id);
+    const name = tech?.technician_name || `Technician #${id}`;
+    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
+    try {
+      setLoading(true);
+      await axios.delete(`${API_BASE_URL}/${id}`);
+      showMessage("Technician deleted successfully", "success");
+      fetchTechnicians();
+    } catch (error) {
+      console.error(error);
+      const errorMsg = error.response?.data?.error || error.response?.data?.detail || "Unable to delete technician. Please try again.";
+      showMessage(errorMsg, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
     try {
       setFormLoading(true);
-      await axios.post(`${API_BASE_URL}/`, techFormData);
-      showMessage("Technician added successfully", "success");
-      setTechFormData(initialTechFormData);
+      if (isEditing) {
+        await axios.put(`${API_BASE_URL}/${editingTechId}`, techFormData);
+        showMessage("Technician updated successfully", "success");
+      } else {
+        await axios.post(`${API_BASE_URL}/`, techFormData);
+        showMessage("Technician added successfully", "success");
+      }
+      resetForm();
       fetchTechnicians();
     } catch (error) {
       console.error(error);
-      const errorMsg = error.response?.data?.error || error.response?.data?.detail || "Unable to add technician. Please try again.";
+      const errorMsg = error.response?.data?.error || error.response?.data?.detail || "Unable to save technician. Please try again.";
       showMessage(errorMsg, "error");
     } finally {
       setFormLoading(false);
@@ -111,6 +166,7 @@ function TechnicianList() {
     const s = (status || "").toLowerCase();
     if (s === "available") return "tech-badge badge-available";
     if (s === "busy") return "tech-badge badge-busy";
+    if (s === "assigned") return "tech-badge badge-assigned";
     if (s === "offline") return "tech-badge badge-offline";
     return "tech-badge";
   };
@@ -119,6 +175,7 @@ function TechnicianList() {
     const lower = (s || "").toLowerCase();
     if (lower === "available") return "Available";
     if (lower === "busy") return "Busy";
+    if (lower === "assigned") return "Assigned";
     if (lower === "offline") return "Offline";
     return s;
   };
@@ -133,6 +190,26 @@ function TechnicianList() {
         (t.technician_location && t.technician_location.toLowerCase().includes(s))
       );
     });
+
+  const techTotalPages = Math.max(1, Math.ceil(filteredTechnicians.length / TECH_PAGE_SIZE));
+  const safeTechPage = Math.min(techPage, techTotalPages);
+  const paginatedTechnicians = filteredTechnicians.slice((safeTechPage - 1) * TECH_PAGE_SIZE, safeTechPage * TECH_PAGE_SIZE);
+
+  useEffect(() => {
+    const total = Math.max(1, Math.ceil(filteredTechnicians.length / TECH_PAGE_SIZE));
+    if (techPage > total) {
+      setTechPage(total);
+    }
+  }, [filteredTechnicians.length, techPage]);
+
+  const getTechPageNums = () => {
+    const nums = [];
+    const delta = 2;
+    for (let i = Math.max(1, safeTechPage - delta); i <= Math.min(techTotalPages, safeTechPage + delta); i++) {
+      nums.push(i);
+    }
+    return nums;
+  };
 
   return (
     <div className="tech-page">
@@ -154,7 +231,7 @@ function TechnicianList() {
             </div>
             <div className="header-actions-row">
               <button className="refresh-icon-btn" onClick={fetchTechnicians} title="Refresh">⟳ Refresh</button>
-              <button className="add-tech-btn" onClick={() => setIsFormOpen(true)}>+ Add Technician</button>
+              <button className="add-tech-btn" onClick={() => { resetForm(); setIsFormOpen(true); }}>+ Add Technician</button>
             </div>
           </div>
 
@@ -177,6 +254,7 @@ function TechnicianList() {
                 <option value="ALL">All Statuses</option>
                 <option value="Available">Available</option>
                 <option value="Busy">Busy</option>
+                <option value="Assigned">Assigned</option>
                 <option value="Offline">Offline</option>
               </select>
             </div>
@@ -187,86 +265,163 @@ function TechnicianList() {
           {fetchError && <div className="alert-error">{fetchError}</div>}
 
           {loading ? (
-            <div className="empty-state">
-              <p>Loading technicians...</p>
-            </div>
+            <LoadingSpinner message="Loading technicians..." />
           ) : filteredTechnicians.length === 0 ? (
             <div className="empty-state">
               <p>No technicians found.</p>
             </div>
           ) : (
-            <div className="tech-grid">
-              {filteredTechnicians.map(tech => (
-                <div key={tech.technician_id} className="tech-card">
-                  <div className="tech-card-header">
-                    <div className="tech-avatar">
-                      {tech.technician_name.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <h3 className="tech-name">{tech.technician_name}</h3>
-                      <span className={getStatusClass(tech.technician_status)}>
-                        {normalizeStatus(tech.technician_status)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="tech-details">
-                    <div className="tech-detail-row">
-                      <span>{tech.technician_skill}</span>
-                    </div>
-                    <div className="tech-detail-row">
-                      <span>{tech.technician_location}</span>
-                    </div>
-                    <div className="tech-detail-row">
-                      <span>Jobs: {tech.current_jobs} / {tech.max_jobs}</span>
-                    </div>
-                  </div>
-
-                  {/* Workload Bar */}
-                  <div className="workload-bar-track">
-                    <div
-                      className="workload-bar-fill"
-                      style={{
-                        width: `${Math.min((tech.current_jobs / tech.max_jobs) * 100, 100)}%`,
-                        background: tech.current_jobs >= tech.max_jobs ? "#D96C6C" : "#7AAE8A"
-                      }}
-                    />
-                  </div>
-
-                  {/* Availability Dropdown */}
-                  <div className="availability-control">
-                    <label>Availability</label>
-                    <div className="select-wrapper">
-                      <select
-                        value={normalizeStatus(tech.technician_status)}
-                        onChange={e => handleStatusChange(tech.technician_id, e.target.value)}
-                        disabled={updatingId === tech.technician_id}
-                        className={`status-select status-${normalizeStatus(tech.technician_status).toLowerCase()}`}
-                      >
-                        <option value="Available">Available</option>
-                        <option value="Busy">Busy</option>
-                        <option value="Offline">Offline</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="tech-card-actions">
-                    <button className="btn-view" onClick={() => alert("Details feature coming soon!")}>View</button>
-                    <button className="btn-edit-tech" onClick={() => alert("Edit feature coming soon!")}>Edit</button>
-                  </div>
-                </div>
-              ))}
+          <div className="table-container">
+            <table className="dashboard-table">
+              <thead>
+                <tr>
+                  <th>Technician</th>
+                  <th>Skill</th>
+                  <th>Location</th>
+                  <th>Status</th>
+                  <th>Workload</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedTechnicians.map(tech => {
+                  const pct = tech.max_jobs > 0 ? Math.min((tech.current_jobs / tech.max_jobs) * 100, 100) : 0;
+                  return (
+                    <tr key={tech.technician_id}>
+                      <td>
+                        <div className="tech-info" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <div className="tech-avatar" style={{ margin: 0, width: "30px", height: "30px", fontSize: "11px" }}>
+                            {tech.technician_name.charAt(0).toUpperCase()}
+                          </div>
+                          <strong>{tech.technician_name}</strong>
+                        </div>
+                      </td>
+                      <td>{tech.technician_skill}</td>
+                      <td>{tech.technician_location}</td>
+                      <td>
+                        <div className="availability-control" style={{ margin: 0, padding: 0 }}>
+                          <div className="select-wrapper">
+                            <select
+                              value={normalizeStatus(tech.technician_status)}
+                              onChange={e => handleStatusChange(tech.technician_id, e.target.value)}
+                              disabled={updatingId === tech.technician_id}
+                              className={`status-select status-${normalizeStatus(tech.technician_status).toLowerCase()}`}
+                              style={{ padding: "4px 8px", fontSize: "11px" }}
+                            >
+                              <option value="Available">Available</option>
+                              <option value="Busy">Busy</option>
+                              <option value="Assigned">Assigned</option>
+                              <option value="Offline">Offline</option>
+                            </select>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="workload-info" style={{ display: "flex", flexDirection: "column", gap: "4px", width: "120px" }}>
+                          <div className="workload-bar" style={{ background: "#E3ECE7", height: "6px", borderRadius: "3px", overflow: "hidden" }}>
+                            <div
+                              className="workload-fill"
+                              style={{
+                                width: `${pct}%`,
+                                height: "100%",
+                                background: tech.current_jobs >= tech.max_jobs ? "#D96C6C" : "#7AAE8A"
+                              }}
+                            />
+                          </div>
+                          <span className="workload-text" style={{ fontSize: "10px", color: "#6B7280" }}>
+                            {tech.current_jobs}/{tech.max_jobs} jobs
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="tech-card-actions" style={{ display: "flex", gap: "6px", border: "none", padding: 0, background: "none", margin: 0 }}>
+                          <button
+                            className="icon-action-btn icon-view"
+                            onClick={() => setViewTech(tech)}
+                            title="View technician details"
+                            aria-label="View technician"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <button
+                            className="icon-action-btn icon-edit"
+                            onClick={() => handleEdit(tech)}
+                            title="Edit technician"
+                            aria-label="Edit technician"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            className="icon-action-btn icon-delete"
+                            onClick={() => handleDelete(tech.technician_id)}
+                            title="Delete technician"
+                            aria-label="Delete technician"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {/* Pagination */}
+        {!loading && (
+          <div className="tech-pagination">
+            <span className="tech-page-info">
+              Page <strong>{safeTechPage}</strong> of <strong>{techTotalPages}</strong> · {filteredTechnicians.length} results
+            </span>
+            <div className="tech-page-controls">
+              <button className="tech-page-btn" type="button" onClick={() => setTechPage(1)} disabled={safeTechPage === 1}>«</button>
+              <button className="tech-page-btn" type="button" onClick={() => setTechPage(p => Math.max(1, p - 1))} disabled={safeTechPage === 1}>‹ Prev</button>
+              <div className="tech-page-numbers">
+                {getTechPageNums().map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    className={`tech-page-num${n === safeTechPage ? " active" : ""}`}
+                    onClick={() => setTechPage(n)}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <button className="tech-page-btn" type="button" onClick={() => setTechPage(p => Math.min(techTotalPages, p + 1))} disabled={safeTechPage === techTotalPages}>Next ›</button>
+              <button className="tech-page-btn" type="button" onClick={() => setTechPage(techTotalPages)} disabled={safeTechPage === techTotalPages}>»</button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
+    </div>
+
+      {/* View Technician Modal */}
+      {viewTech && (
+        <div className="popup-overlay" onClick={() => setViewTech(null)}>
+          <div className="view-job-modal" onClick={e => e.stopPropagation()}>
+            <div className="view-modal-header">
+              <h3>Technician Details</h3>
+              <button onClick={() => setViewTech(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#6b7280' }}>×</button>
+            </div>
+            <div className="view-modal-body">
+              <div className="view-detail-row"><span className="view-label">Technician ID</span><span className="view-value">#{viewTech.technician_id}</span></div>
+              <div className="view-detail-row"><span className="view-label">Name</span><span className="view-value">{viewTech.technician_name}</span></div>
+              <div className="view-detail-row"><span className="view-label">Skill</span><span className="view-value">{viewTech.technician_skill}</span></div>
+              <div className="view-detail-row"><span className="view-label">Location / Zone</span><span className="view-value">{viewTech.technician_location}</span></div>
+              <div className="view-detail-row"><span className="view-label">Status</span><StatusBadge status={viewTech.technician_status} size="md" /></div>
+              <div className="view-detail-row"><span className="view-label">Active Jobs</span><span className="view-value">{viewTech.current_jobs} / {viewTech.max_jobs}</span></div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sliding Sidebar for Technician Form */}
       <div className={`tech-form-sidebar ${isFormOpen ? "open" : ""}`}>
         <div className="sidebar-header">
-          <h3>Add New Technician</h3>
-          <button className="close-sidebar" onClick={() => setIsFormOpen(false)}>×</button>
+          <h3>{isEditing ? "Edit Technician" : "Add New Technician"}</h3>
+          <button className="close-sidebar" onClick={resetForm}>×</button>
         </div>
         <div className="sidebar-content">
           <form className="tech-form" onSubmit={(e) => {
@@ -317,7 +472,7 @@ function TechnicianList() {
             </div>
 
             <div className="form-group">
-              <label>Initial Status</label>
+              <label>{isEditing ? "Status" : "Initial Status"}</label>
               <select
                 name="technician_status"
                 value={techFormData.technician_status}
@@ -326,22 +481,23 @@ function TechnicianList() {
               >
                 <option value="Available">Available</option>
                 <option value="Busy">Busy</option>
+                <option value="Assigned">Assigned</option>
                 <option value="Offline">Offline</option>
               </select>
             </div>
 
             <div className="form-actions">
               <button type="submit" className="btn-primary" disabled={formLoading}>
-                {formLoading ? "Saving..." : "Add Technician"}
+                {formLoading ? "Saving..." : isEditing ? "Update Technician" : "Add Technician"}
               </button>
-              <button type="button" className="btn-secondary" onClick={() => setIsFormOpen(false)}>
+              <button type="button" className="btn-secondary" onClick={resetForm}>
                 Cancel
               </button>
             </div>
           </form>
         </div>
       </div>
-      {isFormOpen && <div className="sidebar-overlay" onClick={() => setIsFormOpen(false)}></div>}
+      {isFormOpen && <div className="sidebar-overlay" onClick={resetForm}></div>}
     </div>
   );
 }

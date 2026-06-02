@@ -10,6 +10,7 @@ from app.main import app
 from app.models import Job, Technician, AuditEvent, DispatcherNotification
 from app.database import Base, get_db
 from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 from app.redis_client import get_redis_client
 from app.services.exclusion_service import ExclusionService
@@ -17,8 +18,8 @@ from app.services.cooldown_service import CooldownService
 from app.services.re_dispatch_queue import ReDispatchQueueService
 
 # Setup test DB
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_exclusion.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+SQLALCHEMY_DATABASE_URL = "sqlite://"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def override_get_db():
@@ -28,7 +29,6 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
 fake_redis = FakeRedis(decode_responses=True)
@@ -36,7 +36,6 @@ fake_redis = FakeRedis(decode_responses=True)
 def override_get_redis():
     return fake_redis
 
-app.dependency_overrides[get_redis_client] = override_get_redis
 
 @contextmanager
 def dummy_job_lock(*args, **kwargs):
@@ -44,6 +43,7 @@ def dummy_job_lock(*args, **kwargs):
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     
@@ -58,7 +58,16 @@ def setup_db():
     fake_redis.flushall()
     
     yield db
-    Base.metadata.drop_all(bind=engine)
+    db.close()
+
+
+@pytest.fixture(autouse=True)
+def apply_overrides():
+    app.dependency_overrides[get_db] = override_get_db
+    if "override_get_redis" in globals():
+        app.dependency_overrides[get_redis_client] = override_get_redis
+    yield
+    app.dependency_overrides.clear()
 
 def test_rejected_tech_excluded_during_cooldown(setup_db):
     db = setup_db

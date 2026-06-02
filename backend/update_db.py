@@ -55,8 +55,12 @@ def update_schema():
         "ALTER TABLE technicians ADD COLUMN IF NOT EXISTS notification_preferences JSON DEFAULT '{\"sms_enabled\": true, \"push_enabled\": true, \"inapp_enabled\": true, \"email_enabled\": false}';",
         "CREATE TABLE IF NOT EXISTS audit_events (id SERIAL PRIMARY KEY, tech_id VARCHAR(36) NOT NULL, tenant_id VARCHAR(50) NOT NULL, event_type VARCHAR(50) NOT NULL, old_status VARCHAR(30), new_status VARCHAR(30) NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);",
         "CREATE TABLE IF NOT EXISTS dispatcher_notifications (id SERIAL PRIMARY KEY, tech_id VARCHAR(36) NOT NULL, tenant_id VARCHAR(50) NOT NULL, message TEXT NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);",
+        "CREATE TABLE IF NOT EXISTS redispatch_attempts (id SERIAL PRIMARY KEY, job_id INTEGER NOT NULL, attempt_number INTEGER NOT NULL, technician_id INTEGER, technician_name VARCHAR(100), event_type VARCHAR(30) NOT NULL, reason VARCHAR(255), queue_position INTEGER DEFAULT 1, next_dispatch_eta TIMESTAMP WITH TIME ZONE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);",
+        "CREATE TABLE IF NOT EXISTS assignment_overrides (id SERIAL PRIMARY KEY, job_id INTEGER NOT NULL REFERENCES jobs(id), actor_name VARCHAR(100) NOT NULL, actor_role VARCHAR(30) NOT NULL, justification TEXT NOT NULL, previous_technician_id INTEGER REFERENCES technicians(technician_id), previous_technician_name VARCHAR(100), new_technician_id INTEGER NOT NULL REFERENCES technicians(technician_id), new_technician_name VARCHAR(100) NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);",
         "CREATE INDEX IF NOT EXISTS idx_audit_events_tech_id ON audit_events(tech_id);",
-        "CREATE INDEX IF NOT EXISTS idx_dispatcher_notifications_tech_id ON dispatcher_notifications(tech_id);"
+        "CREATE INDEX IF NOT EXISTS idx_dispatcher_notifications_tech_id ON dispatcher_notifications(tech_id);",
+        "CREATE INDEX IF NOT EXISTS idx_redispatch_attempts_job_id ON redispatch_attempts(job_id);",
+        "CREATE INDEX IF NOT EXISTS idx_assignment_overrides_job_id ON assignment_overrides(job_id);"
     ]
     
     with engine.connect() as connection:
