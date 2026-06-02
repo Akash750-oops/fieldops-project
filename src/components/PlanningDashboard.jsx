@@ -1,5 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import LoadingSpinner from "./LoadingSpinner.jsx";
+import { Eye, Trash2, History } from "lucide-react";
+import OverrideModal from "./notifications/OverrideModal";
+import OverrideHistory from "./notifications/OverrideHistory";
+import OverrideWarning from "./notifications/OverrideWarning";
 import {
   getTechnicians,
   getAvailableTechnicians,
@@ -7,10 +11,16 @@ import {
   getPlannedAssignments,
   assignJob,
   updateTechnicianAvailability,
+  manualAssign,
+  getOverrideHistory,
 } from "../services/planningService.js";
 import { CompactScorePanel } from "./assignment/ScoreDisplay";
 import RankedTechTable from "./assignment/RankedTechTable";
+import ReDispatchHistory from "./notifications/ReDispatchHistory";
+import AlertBanner from "./notifications/AlertBanner";
 import "./PlanningDashboard.css";
+
+const PAGE_SIZE = 8;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -29,11 +39,12 @@ const getStatusBadgeClass = (status) => {
   const s = normalizeStatus(status);
   if (s === "available") return "status-pill available";
   if (s === "busy") return "status-pill busy";
+  if (s === "assigned") return "status-pill assigned";
   if (s === "offline") return "status-pill offline";
   return "status-pill unknown";
 };
 
-const AVAILABILITY_OPTIONS = ["Available", "Busy", "Offline"];
+const AVAILABILITY_OPTIONS = ["Available", "Busy", "Assigned", "Offline"];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -67,6 +78,35 @@ function PlanningDashboard() {
   // Messages
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [assignSuccessMsg, setAssignSuccessMsg] = useState("");
+
+  // Re-dispatch & Override states
+  const [showHistoryJobId, setShowHistoryJobId] = useState(null);
+  const [showHistoryJobTitle, setShowHistoryJobTitle] = useState("");
+  const [forceAssignJob, setForceAssignJob] = useState(null);
+  const [showOverrideHistoryForJob, setShowOverrideHistoryForJob] = useState(null);
+  const [viewAssignmentOverride, setViewAssignmentOverride] = useState(null);
+  const [showOverrideHistoryForView, setShowOverrideHistoryForView] = useState(false);
+
+  const handleManualAssign = async (jobId, techId) => {
+    try {
+      await manualAssign(jobId, techId);
+      showAssignSuccess("Job assigned manually successfully!");
+      fetchAllData();
+    } catch (err) {
+      const msg = err.response?.data?.detail || "Failed to manually assign job.";
+      setError(msg);
+    }
+  };
+
+  // Tab navigation
+  const [activeTab, setActiveTab] = useState("pending");
+
+  // Pagination states
+  const [pendingPage, setPendingPage] = useState(1);
+  const [plannedPage, setPlannedPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewAssignment, setViewAssignment] = useState(null);
 
   // ── Fetchers ────────────────────────────────────────────────────────────────
 
@@ -127,6 +167,25 @@ function PlanningDashboard() {
   };
 
   useEffect(() => { fetchAllData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (viewAssignment) {
+      getOverrideHistory(viewAssignment.job_id)
+        .then(res => {
+          if (res && res.data && res.data.length > 0) {
+            setViewAssignmentOverride(res.data[0]);
+          } else {
+            setViewAssignmentOverride(null);
+          }
+        })
+        .catch(err => {
+          console.warn("Failed to fetch override history for view modal", err);
+          setViewAssignmentOverride(null);
+        });
+    } else {
+      setViewAssignmentOverride(null);
+    }
+  }, [viewAssignment]);
 
   // ── Ranked Candidate Selection ───────────────────────────────────────────────
 
@@ -234,9 +293,9 @@ function PlanningDashboard() {
     const tech = allTechsList.find(
       (t) => t.technician_id === parseInt(techId, 10)
     );
-    if (tech && normalizeStatus(tech.technician_status) !== "available") {
+    if (tech && normalizeStatus(tech.technician_status) !== "available" && normalizeStatus(tech.technician_status) !== "assigned") {
       setError(
-        `Cannot assign: ${tech.technician_name} is currently ${tech.technician_status}. Please select an Available technician.`
+        `Cannot assign: ${tech.technician_name} is currently ${tech.technician_status}. Please select an Available or Assigned technician.`
       );
       return;
     }
@@ -255,7 +314,8 @@ function PlanningDashboard() {
         setSelectedJobForRanking(null);
         setRankedCandidates([]);
       }
-      showSuccess("Job assigned successfully!");
+      const techName = tech ? tech.technician_name : "Technician";
+      showAssignSuccess(`${techName} has been assigned to this work.`);
       fetchAllData();
     } catch (err) {
       const msg =
@@ -283,7 +343,7 @@ function PlanningDashboard() {
               ...t,
               status: newStatus,
               eligible_for_assignment:
-                newStatus === "Available" && t.current_jobs < t.max_jobs,
+                (newStatus === "Available" || newStatus === "Assigned") && t.current_jobs < t.max_jobs,
             }
             : t
         )
@@ -313,43 +373,182 @@ function PlanningDashboard() {
     setTimeout(() => setSuccessMsg(""), 3500);
   };
 
+  const showAssignSuccess = (msg) => {
+    setAssignSuccessMsg(msg);
+    setTimeout(() => setAssignSuccessMsg(""), 4500);
+  };
+
   const isGlobalLoading = jobsLoading || assignmentsLoading || techStatusLoading;
 
   const availableCount = allTechsStatus.filter(
     (t) => normalizeStatus(t.status) === "available"
   ).length;
 
+  // Filtered lists for search
+  const filteredPendingJobs = useMemo(() => {
+    if (!searchQuery.trim()) return pendingJobs;
+    const q = searchQuery.toLowerCase().trim();
+    return pendingJobs.filter(
+      (job) =>
+        String(job.id).includes(q) ||
+        (job.customer_name && job.customer_name.toLowerCase().includes(q)) ||
+        (job.location && job.location.toLowerCase().includes(q)) ||
+        (job.issue_description && job.issue_description.toLowerCase().includes(q)) ||
+        (job.priority && job.priority.toLowerCase().includes(q))
+    );
+  }, [pendingJobs, searchQuery]);
+
+  const filteredPlannedAssignments = useMemo(() => {
+    if (!searchQuery.trim()) return plannedAssignments;
+    const q = searchQuery.toLowerCase().trim();
+    return plannedAssignments.filter(
+      (item) =>
+        String(item.job_id).includes(q) ||
+        (item.technician && item.technician.toLowerCase().includes(q)) ||
+        (item.skill && item.skill.toLowerCase().includes(q)) ||
+        (item.customer && item.customer.toLowerCase().includes(q)) ||
+        (item.location && item.location.toLowerCase().includes(q)) ||
+        (item.priority && item.priority.toLowerCase().includes(q))
+    );
+  }, [plannedAssignments, searchQuery]);
+
+  // Reset page when search query changes
+  useEffect(() => {
+    setPendingPage(1);
+    setPlannedPage(1);
+  }, [searchQuery]);
+
+  // Clamp page to total pages when data changes to prevent empty page views
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filteredPendingJobs.length / PAGE_SIZE));
+    if (pendingPage > totalPages) {
+      setPendingPage(totalPages);
+    }
+  }, [filteredPendingJobs.length, pendingPage]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filteredPlannedAssignments.length / PAGE_SIZE));
+    if (plannedPage > totalPages) {
+      setPlannedPage(totalPages);
+    }
+  }, [filteredPlannedAssignments.length, plannedPage]);
+
+  // Pagination logic
+  const pendingTotalPages = Math.max(1, Math.ceil(filteredPendingJobs.length / PAGE_SIZE));
+  const safePendingPage = Math.min(pendingPage, pendingTotalPages);
+  const paginatedPendingJobs = filteredPendingJobs.slice((safePendingPage - 1) * PAGE_SIZE, safePendingPage * PAGE_SIZE);
+
+  const plannedTotalPages = Math.max(1, Math.ceil(filteredPlannedAssignments.length / PAGE_SIZE));
+  const safePlannedPage = Math.min(plannedPage, plannedTotalPages);
+  const paginatedPlannedAssignments = filteredPlannedAssignments.slice((safePlannedPage - 1) * PAGE_SIZE, safePlannedPage * PAGE_SIZE);
+
+  const getPageNums = (currentPage, totalPages) => {
+    const nums = [];
+    const delta = 2;
+    for (let i = Math.max(1, currentPage - delta); i <= Math.min(totalPages, currentPage + delta); i++) {
+      nums.push(i);
+    }
+    return nums;
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
     <div className="planning-dashboard">
-      {/* Page Header styled as Card Header */}
-      <div className="content-card header-card" style={{ marginBottom: '4px' }}>
-        <div className="card-header" style={{ borderBottom: 'none', paddingBottom: 0, marginBottom: 0 }}>
-          <div>
-            <span className="section-badge">Planning</span>
-            <p className="card-subtitle">Optimize resource allocation and assign jobs in real-time</p>
+      <AlertBanner
+        onViewHistory={(jobId, jobTitle) => {
+          setShowHistoryJobId(jobId);
+          setShowHistoryJobTitle(jobTitle);
+        }}
+        onManualAssignClick={(jobId, jobTitle) => {
+          setForceAssignJob({ id: jobId, title: jobTitle });
+        }}
+        currentUserRole="dispatcher"
+      />
+      {/* Global messages */}
+      {error && (
+        <div className="alert-error">
+          <span>{error}</span>
+          <button
+            onClick={() => setError("")}
+            className="alert-close-btn"
+            aria-label="Dismiss error"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+      {successMsg && (
+        <div className="alert-success">
+          <span>{successMsg}</span>
+          <button
+            onClick={() => setSuccessMsg("")}
+            className="alert-close-btn"
+            aria-label="Dismiss success message"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+      {assignSuccessMsg && (
+        <div className="alert-success alert-left-bottom">
+          <span>{assignSuccessMsg}</span>
+          <button
+            onClick={() => setAssignSuccessMsg("")}
+            className="alert-close-btn"
+            aria-label="Dismiss success message"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
+      {/* ── Tab Navigation ── */}
+      <div className="planning-tabs">
+        <div style={{ display: "flex", gap: "24px" }}>
+          <button
+            className={`planning-tab ${activeTab === 'pending' ? 'planning-tab-active' : ''}`}
+            onClick={() => setActiveTab('pending')}
+          >
+            <span className="planning-tab-dot pending-dot"></span>
+            <span>Pending Jobs</span>
+            <span className="planning-tab-count">{pendingJobs.length}</span>
+          </button>
+          <button
+            className={`planning-tab ${activeTab === 'planned' ? 'planning-tab-active' : ''}`}
+            onClick={() => setActiveTab('planned')}
+          >
+            <span className="planning-tab-dot planned-dot"></span>
+            <span>Planned Assignments</span>
+            <span className="planning-tab-count">{plannedAssignments.length}</span>
+          </button>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
+          <div className="planning-header-search-wrap">
+            <span className="planning-search-icon">🔍</span>
+            <input
+              type="text"
+              placeholder="Search jobs, customers, locations..."
+              className="planning-search-input"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-          <div className="header-actions-row">
-            <button
-              className="refresh-icon-btn"
-              onClick={fetchAllData}
-              disabled={isGlobalLoading}
-            >
-              {isGlobalLoading ? "Refreshing..." : "⟳ Refresh"}
-            </button>
-          </div>
+          <button
+            className="refresh-icon-btn"
+            onClick={fetchAllData}
+            disabled={isGlobalLoading}
+            style={{ marginBottom: 0 }}
+          >
+            {isGlobalLoading ? "Refreshing..." : "⟳ Refresh"}
+          </button>
         </div>
       </div>
 
-      {/* Global messages */}
-      {error && <div className="alert-error">{error}</div>}
-      {successMsg && <div className="alert-success">{successMsg}</div>}
+      {/* ── Tab Content ── */}
 
-      {/* ── Top Grid: Pending Jobs + Technician Status ── */}
-      <div className="dashboard-grid">
-
-        {/* SECTION 1 – Pending Jobs */}
+      {/* PENDING JOBS TAB */}
+      {activeTab === 'pending' && (
         <section className="dashboard-section">
 
           {/* ── Ranked Technician Selection Panel (above table, pinned) ── */}
@@ -366,266 +565,387 @@ function PlanningDashboard() {
             </div>
           )}
 
-          <div className="section-header">
-            <h2 className="section-title">Pending Jobs</h2>
-            <span className="count-badge">{pendingJobs.length} unassigned</span>
-            {selectedJobForRanking && (
-              <span
-                className="count-badge"
-                style={{ background: '#FEF3C7', color: '#92400E', marginLeft: 'auto' }}
-              >
-                ★ Ranking Job #{selectedJobForRanking.id}
-              </span>
-            )}
-          </div>
           <div className="section-content">
             {jobsLoading ? (
               <LoadingSpinner message="Loading pending jobs..." />
-            ) : pendingJobs.length === 0 ? (
-              <div className="empty-state">
-                <span className="empty-icon"></span>
-                <h3>No pending jobs</h3>
-                <p>All jobs are either assigned or completed.</p>
-              </div>
             ) : (
               <div className="table-container">
-                <table className="dashboard-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Customer</th>
-                      <th>Location</th>
-                      <th>Priority</th>
-                      <th>Assign Technician</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pendingJobs.map((job) => (
-                      <tr
-                        key={job.id}
-                        onClick={() => handleJobRowClick(job)}
-                        className={selectedJobForRanking?.id === job.id ? 'selected-job-row' : ''}
-                        style={{ cursor: 'pointer' }}
-                        title="Click to see top recommended technicians"
-                      >
-                        <td className="job-id-cell">#{job.id}</td>
-                        <td className="customer-cell">
-                          <div>{job.customer_name}</div>
-                          {job.issue_description && (
-                            <div className="issue-sub">{job.issue_description}</div>
-                          )}
-                        </td>
-                        <td>{job.location}</td>
-                        <td>
-                          <span className={`priority-badge ${getPriorityClass(job.priority)}`}>
-                            {job.priority || "UNKNOWN"}
-                          </span>
-                        </td>
-                        <td className="assignment-action-cell">
-                          <div className="assignment-ui">
-                            <select
-                              className="tech-select"
-                              value={selectedTechs[job.id] || ""}
-                              onChange={(e) => handleTechSelect(job.id, e.target.value)}
-                              disabled={assigningJobId === job.id}
-                            >
-                              <option value="" disabled>Select Technician</option>
-                              {allTechsList.map((tech) => {
-                                const unavail =
-                                  normalizeStatus(tech.technician_status) !== "available";
-                                return (
-                                  <option
-                                    key={tech.technician_id}
-                                    value={tech.technician_id}
-                                    disabled={unavail}
-                                  >
-                                    {tech.technician_name} – {tech.technician_skill}
-                                    {unavail ? ` (Unavailable – ${tech.technician_status})` : ""}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                            <button
-                              className="assign-btn"
-                              onClick={() => handleAssignJob(job.id)}
-                              disabled={!selectedTechs[job.id] || assigningJobId === job.id}
-                            >
-                              {assigningJobId === job.id ? "Assigning…" : "Assign"}
-                            </button>
-                            {selectedTechs[job.id] && scoreDataMap[job.id] && (
+                {filteredPendingJobs.length === 0 ? (
+                  <div className="empty-state">
+                    <span className="empty-icon"></span>
+                    <h3>{searchQuery.trim() ? "No jobs match your search" : "No pending jobs"}</h3>
+                    <p>{searchQuery.trim() ? "Try adjusting your search terms." : "All jobs are either assigned or completed."}</p>
+                  </div>
+                ) : (
+                  <table className="dashboard-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Customer</th>
+                        <th>Location</th>
+                        <th>Priority</th>
+                        <th>Assign Technician</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedPendingJobs.map((job) => (
+                        <tr
+                          key={job.id}
+                          onClick={() => handleJobRowClick(job)}
+                          className={selectedJobForRanking?.id === job.id ? 'selected-job-row' : ''}
+                          style={{ cursor: 'pointer' }}
+                          title="Click to see top recommended technicians"
+                        >
+                          <td className="job-id-cell">#{job.id}</td>
+                          <td className="customer-cell">
+                            <div>{job.customer_name}</div>
+                            {job.issue_description && (
+                              <div className="issue-sub">{job.issue_description}</div>
+                            )}
+                          </td>
+                          <td>{job.location}</td>
+                          <td>
+                            <span className={`priority-badge ${getPriorityClass(job.priority)}`}>
+                              {job.priority || "UNKNOWN"}
+                            </span>
+                          </td>
+                          <td className="assignment-action-cell">
+                            <div className="assignment-ui">
+                              <select
+                                className="tech-select"
+                                value={selectedTechs[job.id] || ""}
+                                onChange={(e) => handleTechSelect(job.id, e.target.value)}
+                                disabled={assigningJobId === job.id}
+                              >
+                                <option value="" disabled>
+                                  {techStatusLoading ? "Loading technicians..." : "Select Technician"}
+                                </option>
+                                {allTechsList.map((tech) => {
+                                  const unavail =
+                                    normalizeStatus(tech.technician_status) !== "available" &&
+                                    normalizeStatus(tech.technician_status) !== "assigned";
+                                  return (
+                                    <option
+                                      key={tech.technician_id}
+                                      value={tech.technician_id}
+                                      disabled={unavail}
+                                    >
+                                      {tech.technician_name} – {tech.technician_skill}
+                                      {unavail ? ` (Unavailable – ${tech.technician_status})` : ""}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                              <button
+                                className="assign-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAssignJob(job.id);
+                                }}
+                                disabled={!selectedTechs[job.id] || assigningJobId === job.id}
+                              >
+                                {assigningJobId === job.id ? "Assigning…" : "Assign"}
+                              </button>
                               <button
                                 className="assign-btn"
                                 style={{
-                                  backgroundColor: expandedScores[job.id] ? '#6b7280' : '#10b981',
-                                  minWidth: 90,
+                                  backgroundColor: '#475569',
+                                  minWidth: 40,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  padding: '0 8px'
                                 }}
-                                onClick={() => toggleScorePanel(job.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowHistoryJobId(job.id);
+                                  setShowHistoryJobTitle(`${job.service_type} - ${job.location}`);
+                                }}
+                                title="View Re-Dispatch History"
                               >
-                                {expandedScores[job.id] ? 'Hide Score' : '★ Score'}
+                                <History size={16} />
                               </button>
+                              {selectedTechs[job.id] && scoreDataMap[job.id] && (
+                                <button
+                                  className="assign-btn"
+                                  style={{
+                                    backgroundColor: expandedScores[job.id] ? '#6b7280' : '#10b981',
+                                    minWidth: 90,
+                                  }}
+                                  onClick={() => toggleScorePanel(job.id)}
+                                >
+                                  {expandedScores[job.id] ? 'Hide Score' : '★ Score'}
+                                </button>
+                              )}
+                            </div>
+                            {/* Inline compact score panel */}
+                            {expandedScores[job.id] && scoreDataMap[job.id] && (
+                              <CompactScorePanel
+                                composite_score={scoreDataMap[job.id].composite_score}
+                                proximity_score={scoreDataMap[job.id].proximity_score}
+                                skill_score={scoreDataMap[job.id].skill_score}
+                                workload_score={scoreDataMap[job.id].workload_score}
+                                distance_km={scoreDataMap[job.id].distance_km}
+                                active_jobs={scoreDataMap[job.id].active_jobs}
+                                max_capacity={scoreDataMap[job.id].max_capacity}
+                                is_top_3={scoreDataMap[job.id].is_top_3}
+                              />
                             )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {/* Pagination */}
+                <div className="planning-pagination">
+                  <span className="planning-page-info">
+                    Page <strong>{safePendingPage}</strong> of <strong>{pendingTotalPages}</strong> · {filteredPendingJobs.length} results
+                  </span>
+                  <div className="planning-page-controls">
+                    <button className="planning-page-btn" onClick={() => setPendingPage(1)} disabled={safePendingPage === 1}>«</button>
+                    <button className="planning-page-btn" onClick={() => setPendingPage(p => Math.max(1, p - 1))} disabled={safePendingPage === 1}>‹ Prev</button>
+                    <div className="planning-page-numbers">
+                      {getPageNums(safePendingPage, pendingTotalPages).map(n => (
+                        <button
+                          key={n}
+                          className={`planning-page-num${n === safePendingPage ? " active" : ""}`}
+                          onClick={() => setPendingPage(n)}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                    <button className="planning-page-btn" onClick={() => setPendingPage(p => Math.min(pendingTotalPages, p + 1))} disabled={safePendingPage === pendingTotalPages}>Next ›</button>
+                    <button className="planning-page-btn" onClick={() => setPendingPage(pendingTotalPages)} disabled={safePendingPage === pendingTotalPages}>»</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* PLANNED ASSIGNMENTS TAB */}
+      {activeTab === 'planned' && (
+      <section className="dashboard-section planned-section">
+        <div className="section-content">
+          {assignmentsLoading ? (
+            <LoadingSpinner message="Loading assignments..." />
+          ) : (
+            <div className="table-container">
+              {filteredPlannedAssignments.length === 0 ? (
+                <div className="empty-state">
+                  <span className="empty-icon"></span>
+                  <h3>{searchQuery.trim() ? "No assignments match your search" : "No planned assignments"}</h3>
+                  <p>{searchQuery.trim() ? "Try adjusting your search terms." : "No jobs have been assigned to technicians yet."}</p>
+                </div>
+              ) : (
+                <table className="dashboard-table">
+                  <thead>
+                    <tr>
+                      <th>Job ID</th>
+                      <th>Technician</th>
+                      <th>Customer</th>
+                      <th>Location</th>
+                      <th>Priority</th>
+                      <th>Status</th>
+                      <th>Workload</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedPlannedAssignments.map((item) => (
+                      <tr key={item.job_id}>
+                        <td className="job-id-cell">#{item.job_id}</td>
+                        <td className="tech-cell">
+                          <div className="tech-info">
+                            <strong>{item.technician}</strong>
+                            <span className="skill-sub">{item.skill}</span>
                           </div>
-                          {/* Inline compact score panel */}
-                          {expandedScores[job.id] && scoreDataMap[job.id] && (
-                            <CompactScorePanel
-                              composite_score={scoreDataMap[job.id].composite_score}
-                              proximity_score={scoreDataMap[job.id].proximity_score}
-                              skill_score={scoreDataMap[job.id].skill_score}
-                              workload_score={scoreDataMap[job.id].workload_score}
-                              distance_km={scoreDataMap[job.id].distance_km}
-                              active_jobs={scoreDataMap[job.id].active_jobs}
-                              max_capacity={scoreDataMap[job.id].max_capacity}
-                              is_top_3={scoreDataMap[job.id].is_top_3}
-                            />
-                          )}
+                        </td>
+                        <td className="customer-cell">{item.customer}</td>
+                        <td>{item.location}</td>
+                        <td>
+                          <span className={`priority-badge ${getPriorityClass(item.priority)}`}>
+                            {item.priority || "UNKNOWN"}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="status-badge status-assigned">ASSIGNED</span>
+                        </td>
+                        <td>
+                          <div className="workload-info">
+                            <div className="workload-bar">
+                              <div
+                                className="workload-fill"
+                                style={{
+                                  width: `${Math.min(
+                                    (item.current_jobs / (item.max_jobs || 5)) * 100,
+                                    100
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                            <span className="workload-text">
+                              {item.current_jobs}/{item.max_jobs}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="job-item-actions" style={{ border: 'none', padding: 0, margin: 0 }}>
+                            <button
+                              className="icon-action-btn icon-view"
+                              onClick={() => setViewAssignment(item)}
+                              title="View assignment"
+                              aria-label="View assignment"
+                            >
+                              <Eye size={15} />
+                            </button>
+                            <button
+                              className="icon-action-btn"
+                              style={{ color: '#475569' }}
+                              onClick={() => {
+                                setShowOverrideHistoryForJob({ id: item.job_id, title: `${item.customer}'s Job` });
+                              }}
+                              title="View Override History"
+                              aria-label="View Override History"
+                            >
+                              <History size={15} />
+                            </button>
+                            <button
+                              className="icon-action-btn icon-delete"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to delete assignment for "${item.technician}" → "${item.customer}" (Job #${item.job_id})?`)) {
+                                  showSuccess(`Assignment for Job #${item.job_id} removed (connect API for persistence).`);
+                                }
+                              }}
+                              title="Delete assignment"
+                              aria-label="Delete assignment"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* SECTION 2 – Technician Status Panel */}
-        <section className="dashboard-section">
-          <div className="section-header">
-            <h2 className="section-title">Technician Status</h2>
-            <span className="count-badge">{availableCount} available</span>
-          </div>
-          <div className="section-content">
-            {techStatusLoading ? (
-              <LoadingSpinner message="Loading technicians..." />
-            ) : allTechsStatus.length === 0 ? (
-              <div className="empty-state">
-                <span className="empty-icon"></span>
-                <h3>No technicians found</h3>
-                <p>No technicians are registered in the system.</p>
-              </div>
-            ) : (
-              <div className="tech-available-list">
-                {allTechsStatus.map((tech) => (
-                  <div key={tech.technician_id} className="tech-status-card">
-                    <div className="tech-avatar">
-                      {(tech.technician || "?").charAt(0).toUpperCase()}
-                    </div>
-                    <div className="tech-status-info">
-                      <span className="tech-status-name">{tech.technician}</span>
-                      <span className="tech-skill-label">{tech.skill}</span>
-                      <span className="tech-location-label">{tech.location}</span>
-                      <div className="tech-status-tags">
-                        <span className={getStatusBadgeClass(tech.status)}>
-                          {tech.status || "Unknown"}
-                        </span>
-                        {tech.eligible_for_assignment && (
-                          <span className="eligible-tag">Ready</span>
-                        )}
-                        <span className="workload-mini">
-                          {tech.current_jobs}/{tech.max_jobs} jobs
-                        </span>
-                      </div>
-                    </div>
-                    {/* Inline availability update */}
-                    <select
-                      className="avail-select"
-                      value={tech.status}
-                      onChange={(e) =>
-                        handleAvailabilityChange(tech.technician_id, e.target.value)
-                      }
-                      disabled={updatingTechId === tech.technician_id}
-                      title="Update availability"
-                    >
-                      {AVAILABILITY_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
+              )}
+              {/* Pagination */}
+              <div className="planning-pagination">
+                <span className="planning-page-info">
+                  Page <strong>{safePlannedPage}</strong> of <strong>{plannedTotalPages}</strong> · {filteredPlannedAssignments.length} results
+                </span>
+                <div className="planning-page-controls">
+                  <button className="planning-page-btn" onClick={() => setPlannedPage(1)} disabled={safePlannedPage === 1}>«</button>
+                  <button className="planning-page-btn" onClick={() => setPlannedPage(p => Math.max(1, p - 1))} disabled={safePlannedPage === 1}>‹ Prev</button>
+                  <div className="planning-page-numbers">
+                    {getPageNums(safePlannedPage, plannedTotalPages).map(n => (
+                      <button
+                        key={n}
+                        className={`planning-page-num${n === safePlannedPage ? " active" : ""}`}
+                        onClick={() => setPlannedPage(n)}
+                      >
+                        {n}
+                      </button>
+                    ))}
                   </div>
-                ))}
+                  <button className="planning-page-btn" onClick={() => setPlannedPage(p => Math.min(plannedTotalPages, p + 1))} disabled={safePlannedPage === plannedTotalPages}>Next ›</button>
+                  <button className="planning-page-btn" onClick={() => setPlannedPage(plannedTotalPages)} disabled={safePlannedPage === plannedTotalPages}>»</button>
+                </div>
               </div>
-            )}
-          </div>
-        </section>
-      </div>
-
-      {/* ── Full-Width: Planned Assignments ── */}
-      <section className="dashboard-section planned-section">
-        <div className="section-header">
-          <h2 className="section-title">Planned Assignments</h2>
-          <span className="count-badge">{plannedAssignments.length} active</span>
-        </div>
-        <div className="section-content">
-          {assignmentsLoading ? (
-            <LoadingSpinner message="Loading assignments..." />
-          ) : plannedAssignments.length === 0 ? (
-            <div className="empty-state">
-              <span className="empty-icon"></span>
-              <h3>No planned assignments</h3>
-              <p>No jobs have been assigned to technicians yet.</p>
-            </div>
-          ) : (
-            <div className="table-container">
-              <table className="dashboard-table">
-                <thead>
-                  <tr>
-                    <th>Job ID</th>
-                    <th>Technician</th>
-                    <th>Customer</th>
-                    <th>Location</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>Workload</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plannedAssignments.map((item) => (
-                    <tr key={item.job_id}>
-                      <td className="job-id-cell">#{item.job_id}</td>
-                      <td className="tech-cell">
-                        <div className="tech-info">
-                          <strong>{item.technician}</strong>
-                          <span className="skill-sub">{item.skill}</span>
-                        </div>
-                      </td>
-                      <td className="customer-cell">{item.customer}</td>
-                      <td>{item.location}</td>
-                      <td>
-                        <span className={`priority-badge ${getPriorityClass(item.priority)}`}>
-                          {item.priority || "UNKNOWN"}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="status-badge status-assigned">ASSIGNED</span>
-                      </td>
-                      <td>
-                        <div className="workload-info">
-                          <div className="workload-bar">
-                            <div
-                              className="workload-fill"
-                              style={{
-                                width: `${Math.min(
-                                  (item.current_jobs / (item.max_jobs || 5)) * 100,
-                                  100
-                                )}%`,
-                              }}
-                            />
-                          </div>
-                          <span className="workload-text">
-                            {item.current_jobs}/{item.max_jobs}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           )}
         </div>
       </section>
+      )}
+
+      {/* View Assignment Modal */}
+      {viewAssignment && (
+        <div className="popup-overlay" onClick={() => setViewAssignment(null)}>
+          <div className="view-job-modal" onClick={e => e.stopPropagation()}>
+            <div className="view-modal-header">
+              <h3>Assignment Details</h3>
+              <button onClick={() => setViewAssignment(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#6b7280' }}>×</button>
+            </div>
+            <div className="view-modal-body">
+              {viewAssignmentOverride && (
+                <div style={{ marginBottom: "16px" }}>
+                  <OverrideWarning
+                    actorName={viewAssignmentOverride.actor_name}
+                    actorRole={viewAssignmentOverride.actor_role}
+                    assignedAt={viewAssignmentOverride.created_at}
+                    reason={viewAssignmentOverride.justification}
+                    onViewHistory={() => setShowOverrideHistoryForView(true)}
+                  />
+                </div>
+              )}
+              <div className="view-detail-row"><span className="view-label">Job ID</span><span className="view-value">#{viewAssignment.job_id}</span></div>
+              <div className="view-detail-row"><span className="view-label">Technician</span><span className="view-value">{viewAssignment.technician}</span></div>
+              <div className="view-detail-row"><span className="view-label">Skill</span><span className="view-value">{viewAssignment.skill}</span></div>
+              <div className="view-detail-row"><span className="view-label">Customer</span><span className="view-value">{viewAssignment.customer}</span></div>
+              <div className="view-detail-row"><span className="view-label">Location</span><span className="view-value">{viewAssignment.location}</span></div>
+              <div className="view-detail-row"><span className="view-label">Priority</span><span className={`priority-badge ${getPriorityClass(viewAssignment.priority)}`}>{viewAssignment.priority || 'UNKNOWN'}</span></div>
+              <div className="view-detail-row"><span className="view-label">Status</span><span className="status-badge status-assigned">ASSIGNED</span></div>
+              <div className="view-detail-row"><span className="view-label">Workload</span><span className="view-value">{viewAssignment.current_jobs}/{viewAssignment.max_jobs}</span></div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Score Detail Modal — opens full card on demand from header button */}
       {/* (Inline compact panels render directly in the table rows above) */}
+
+      {showHistoryJobId && (
+        <ReDispatchHistory
+          jobId={showHistoryJobId}
+          jobTitle={showHistoryJobTitle}
+          onClose={() => {
+            setShowHistoryJobId(null);
+            setShowHistoryJobTitle("");
+          }}
+          onManualAssign={handleManualAssign}
+          technicians={allTechsList}
+          onForceAssignClick={(jobId, jobTitle) => {
+            setForceAssignJob({ id: jobId, title: jobTitle });
+          }}
+          currentUserRole="dispatcher"
+        />
+      )}
+
+      {forceAssignJob && (
+        <OverrideModal
+          jobId={forceAssignJob.id}
+          jobTitle={forceAssignJob.title}
+          initialJobLocation={forceAssignJob.location}
+          currentUserRole="dispatcher"
+          onClose={() => setForceAssignJob(null)}
+          onSuccess={() => {
+            setSuccessMsg(`Job #${forceAssignJob.id} has been force-assigned successfully!`);
+            setTimeout(() => setSuccessMsg(""), 4000);
+            fetchAllData();
+            setShowHistoryJobId(null);
+            setShowHistoryJobTitle("");
+          }}
+        />
+      )}
+
+      {showOverrideHistoryForJob && (
+        <OverrideHistory
+          jobId={showOverrideHistoryForJob.id}
+          jobTitle={showOverrideHistoryForJob.title}
+          onClose={() => setShowOverrideHistoryForJob(null)}
+        />
+      )}
+
+      {showOverrideHistoryForView && viewAssignment && (
+        <OverrideHistory
+          jobId={viewAssignment.job_id}
+          jobTitle={`${viewAssignment.customer}'s Job`}
+          onClose={() => setShowOverrideHistoryForView(false)}
+        />
+      )}
     </div>
   );
 }

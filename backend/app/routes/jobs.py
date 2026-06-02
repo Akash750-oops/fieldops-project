@@ -7,11 +7,15 @@ import uuid
 import logging
 
 from app.database import get_db
-from app.models import Job, Technician
+from app.models import Job, Technician, AuditEvent, DispatcherNotification
 from app.schemas import JobCreate, JobResponse, PlanResponse, RankedTechnician, DisqualifiedTechnician, ScoringWeights
+from pydantic import BaseModel, Field
+from app.services.distributed_lock_service import with_job_lock
 from app.redis_client import get_redis_client
 from app.services.certification_validator import CertificationValidator
 from app.services.distance import DistanceScoringService
+from app.services.cooldown_service import CooldownService
+from app.services.exclusion_service import ExclusionService
 from app.services.skill import SkillScoringService
 from app.services.workload import WorkloadScoringService
 from app.services.composite import CompositeScoringService
@@ -253,6 +257,27 @@ async def plan_job_assignment(
                 continue
             if cert_res.get("warnings"):
                 warnings_list.extend(cert_res["warnings"])
+                
+        if CooldownService.check_cooldown(redis_client, str(job_id), tech.tech_id):
+            disq = DisqualifiedTechnician(
+                tech_id=tech.tech_id or str(tech.technician_id),
+                name=tech.technician_name,
+                reason="cooldown_active",
+                message="Technician is in cooldown period"
+            )
+            disqualified.append(disq)
+            continue
+            
+        exc = ExclusionService.is_excluded(redis_client, str(job_id), tech.tech_id)
+        if exc.get("excluded"):
+            disq = DisqualifiedTechnician(
+                tech_id=tech.tech_id or str(tech.technician_id),
+                name=tech.technician_name,
+                reason=exc.get("reason", "excluded"),
+                message="Technician is excluded"
+            )
+            disqualified.append(disq)
+            continue
             
         # 2. Scoring
         skill_res = skill_service.calculate_skill_score(job.required_skill or "", tech.technician_skill or "", db)
@@ -355,3 +380,204 @@ async def plan_job_assignment(
     redis_client.setex(cache_key, 30, json.dumps(res_dict))
     
     return res
+
+class JobRejectRequest(BaseModel):
+    reason: str = Field(..., min_length=10)
+
+class JobReassignRequest(BaseModel):
+    new_tech_id: str
+    reason: str
+
+class JobAssignRequest(BaseModel):
+    tech_id: str
+    justification: str = Field(..., min_length=20)
+    skip_skill_check: bool = False
+    skip_workload_check: bool = False
+
+@router.post("/{job_id}/accept")
+def accept_job(
+    job_id: int,
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    authorization: str = Depends(verify_jwt_token),
+    db: Session = Depends(get_db),
+    redis_client = Depends(get_redis_client)
+):
+    tech_id = authorization
+    lock_key = f"lock:job_accept:{job_id}"
+    if not redis_client.set(lock_key, "locked", nx=True, ex=10):
+        raise HTTPException(status_code=409, detail="Concurrent modification")
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job.status != "ASSIGNED":
+            raise HTTPException(status_code=400, detail="Job is not in ASSIGNED status")
+            
+        tech = db.query(Technician).filter(Technician.tech_id == tech_id).first()
+        if not tech or job.assigned_technician_id != tech.technician_id:
+            raise HTTPException(status_code=403, detail="Technician not assigned to this job")
+            
+        if not redis_client.exists(f"job:timer:{job_id}"):
+            raise HTTPException(status_code=423, detail="Acceptance window expired")
+            
+        job.status = "EN_ROUTE"
+        tech.technician_status = "EN_ROUTE"
+        tech.current_jobs = 1
+        
+        audit = AuditEvent(tech_id=tech_id, tenant_id=x_tenant_id, event_type="JOB_ACCEPTED", new_status="EN_ROUTE")
+        db.add(audit)
+        db.commit()
+        
+        redis_client.delete(f"job:timer:{job_id}")
+        
+        return {
+            "status": "EN_ROUTE",
+            "previous_status": "ASSIGNED",
+            "technician": {"tech_id": tech_id, "status": "EN_ROUTE"},
+            "tracking_enabled": True
+        }
+    finally:
+        redis_client.delete(lock_key)
+
+@router.post("/{job_id}/reject")
+def reject_job(
+    job_id: int,
+    req: JobRejectRequest,
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    authorization: str = Depends(verify_jwt_token),
+    db: Session = Depends(get_db),
+    redis_client = Depends(get_redis_client)
+):
+    tech_id = authorization
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    tech = db.query(Technician).filter(Technician.tech_id == tech_id).first()
+    if not tech or job.assigned_technician_id != tech.technician_id:
+        raise HTTPException(status_code=403, detail="Technician not assigned to this job")
+        
+    tech.technician_status = "AVAILABLE"
+    tech.current_jobs = 0
+    
+    from app.services.re_dispatch_queue import ReDispatchQueueService
+    ReDispatchQueueService.enqueue_failed_job(
+        db=db,
+        redis_client=redis_client,
+        job=job,
+        tenant_id=x_tenant_id,
+        reason=req.reason,
+        tech_id=tech_id
+    )
+    
+    from app.services.cooldown_service import CooldownService
+    CooldownService.set_cooldown(redis_client, str(job.id), tech_id, 120)
+    
+    audit = AuditEvent(tech_id=tech_id, tenant_id=x_tenant_id, event_type="JOB_REJECTED", new_status="QUEUED", reason=req.reason)
+    db.add(audit)
+    
+    notif = DispatcherNotification(tech_id=tech_id, tenant_id=x_tenant_id, message=f"Rejected: {req.reason}")
+    db.add(notif)
+    
+    db.commit()
+    
+    return {
+        "status": "QUEUED",
+        "rejection": {"reason": req.reason},
+        "cooldown": {"duration_seconds": 120},
+        "re_dispatch": {"triggered": True}
+    }
+
+@router.post("/{job_id}/reassign")
+def reassign_job(
+    job_id: int,
+    req: JobReassignRequest,
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    authorization: str = Depends(verify_jwt_token),
+    db: Session = Depends(get_db),
+    redis_client = Depends(get_redis_client)
+):
+    tech_id = authorization
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    old_tech = db.query(Technician).filter(Technician.tech_id == tech_id).first()
+    if not old_tech or job.assigned_technician_id != old_tech.technician_id:
+        raise HTTPException(status_code=403, detail="Technician not assigned to this job")
+        
+    new_tech = db.query(Technician).filter(Technician.tech_id == req.new_tech_id).first()
+    if not new_tech:
+        raise HTTPException(status_code=400, detail="New technician not found")
+        
+    if new_tech.technician_status == "OFFLINE":
+        raise HTTPException(status_code=400, detail="New technician is OFFLINE")
+        
+    if job.required_skill and job.required_skill not in new_tech.technician_skill:
+        raise HTTPException(status_code=400, detail="New technician missing required skills")
+        
+    if new_tech.current_jobs >= 3:
+        raise HTTPException(status_code=400, detail="New technician at maximum workload capacity")
+        
+    job.assigned_technician_id = new_tech.technician_id
+    old_tech.current_jobs = 0
+    new_tech.current_jobs = 1
+    job.status = "ASSIGNED"
+    
+    audit = AuditEvent(tech_id=req.new_tech_id, tenant_id=x_tenant_id, event_type="JOB_REASSIGNED", new_status="ASSIGNED", reason=req.reason)
+    db.add(audit)
+    db.commit()
+    
+    redis_client.set(f"job:timer:{job_id}", "1")
+    
+    return {
+        "status": "ASSIGNED",
+        "previous_technician": {"tech_id": tech_id},
+        "new_technician": {"tech_id": req.new_tech_id}
+    }
+
+@router.post("/{job_id}/assign")
+def assign_job(
+    job_id: int,
+    req: JobAssignRequest,
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    x_permissions: str = Header(None, alias="X-Permissions"),
+    authorization: str = Depends(verify_jwt_token),
+    db: Session = Depends(get_db),
+    redis_client = Depends(get_redis_client)
+):
+    from app.models import OverrideAuditEvent
+    with with_job_lock(str(job_id)):
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+            
+        tech = db.query(Technician).filter(Technician.tech_id == req.tech_id).first()
+        if not tech:
+            raise HTTPException(status_code=404, detail="Technician not found")
+            
+        job.assigned_technician_id = tech.technician_id
+        job.status = "ASSIGNED"
+        
+        audit = OverrideAuditEvent(
+            id=str(uuid.uuid4()),
+            actor_id="admin",
+            actor_role="admin",
+            tenant_id=x_tenant_id,
+            job_id=job.id,
+            action="force_assign",
+            before_state={},
+            after_state={},
+            justification=req.justification,
+            reason="force_assign bypassing PlanningAgent"
+        )
+        db.add(audit)
+        db.commit()
+        
+        return {
+            "status": "ASSIGNED",
+            "override": {
+                "cooldown_bypassed": True,
+                "exclusion_bypassed": True
+            }
+        }

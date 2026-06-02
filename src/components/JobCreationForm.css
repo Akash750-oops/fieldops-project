@@ -96,7 +96,8 @@
   transition: background .15s;
 }
 .close-sidebar:hover { background: #EAF4EE; color: #2F4F3E; }
-.sidebar-content { flex: 1; overflow-y: auto; padding: 24px; }
+.sidebar-content,
+.sidebar-body { flex: 1; overflow-y: auto; padding: 24px; }
 
 .sidebar-overlay {
   position: fixed; inset: 0; background: rgba(31,41,51,.35);
@@ -323,3 +324,142 @@
 @media (max-width: 1200px) { .main-content-row { grid-template-columns: 1fr; } .kpi-row { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 768px)  { .jobs-page { padding: 16px; } .kpi-row { grid-template-columns: 1fr 1fr; } .form-grid-2 { grid-template-columns: 1fr; } .filters-row { grid-template-columns: 1fr 1fr; } .page-header { flex-direction: column; gap: 8px; } }
 @media (max-width: 480px)  { .kpi-row { grid-template-columns: 1fr; } .filters-row { grid-template-columns: 1fr; } }
+
+/* ─── Pagination ───────────────────────────────────────────────────────── */
+.jobs-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0 0 0;
+  border-top: 1px solid #E3ECE7;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.jobs-page-info {
+  font-size: 11px;
+  color: #6B7280;
+  font-weight: 500;
+}
+.jobs-page-info strong { color: #2F4F3E; }
+.jobs-page-controls { display: flex; align-items: center; gap: 6px; }
+.jobs-page-btn {
+  padding: 5px 12px;
+  background: #FFFFFF;
+  border: 1.5px solid #E3ECE7;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2F4F3E;
+  cursor: pointer;
+  transition: all .2s;
+}
+.jobs-page-btn:hover:not(:disabled) {
+  background: #EAF4EE;
+  border-color: #7AAE8A;
+}
+.jobs-page-btn:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+.jobs-page-numbers { display: flex; gap: 4px; }
+.jobs-page-num {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1.5px solid #E3ECE7;
+  background: #FFFFFF;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6B7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .2s;
+}
+.jobs-page-num:hover { border-color: #7AAE8A; color: #2F4F3E; }
+.jobs-page-num.active {
+  background: #7AAE8A;
+  border-color: #7AAE8A;
+  color: #fff;
+}
+
+/* ─── Icon Action Buttons (shared across all pages) ───────────────────── */
+.icon-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  transition: transform .15s, opacity .15s;
+  outline: none;
+}
+.icon-action-btn:hover { transform: scale(1.2); opacity: .85; }
+.icon-action-btn:active { transform: scale(0.9); }
+
+.icon-view  { color: #16a34a; }
+.icon-edit   { color: #ca8a04; }
+.icon-delete { color: #dc2626; }
+
+/* ─── View Job/Assignment Modal ────────────────────────────────────────── */
+.view-job-modal {
+  background: #FFFFFF;
+  border-radius: 16px;
+  padding: 0;
+  max-width: 460px;
+  width: 94%;
+  box-shadow: 0 20px 50px rgba(47,79,62,.18);
+  overflow: hidden;
+  animation: modal-pop .22s ease;
+}
+@keyframes modal-pop {
+  from { opacity: 0; transform: scale(.95) translateY(12px); }
+  to   { opacity: 1; transform: scale(1)  translateY(0); }
+}
+.view-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid #E3ECE7;
+  background: #F6FAF8;
+}
+.view-modal-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #2F4F3E;
+  margin: 0;
+}
+.view-modal-body {
+  padding: 18px 22px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.view-detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.view-detail-row.col { flex-direction: column; gap: 4px; }
+.view-label {
+  min-width: 110px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9CA3AF;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  padding-top: 2px;
+}
+.view-value {
+  font-size: 13px;
+  color: #1F2937;
+  font-weight: 500;
+  flex: 1;
+}

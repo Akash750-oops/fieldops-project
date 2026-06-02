@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { getAllTechnicians, updateTechnicianAvailability } from "../services/technicianService";
+import { getAllTechnicians, updateTechnicianAvailability, createTechnician, updateTechnician, deleteTechnician } from "../services/technicianService";
 import usePageVisibility from "../hooks/usePageVisibility";
 import useInterval from "../hooks/useInterval";
 import StatusBadge from "./common/StatusBadge";
+import LoadingSpinner from "./LoadingSpinner.jsx";
+import { Eye, Pencil, Trash2 } from "lucide-react";
 import "./TechnicianListPage.css";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 8;
 const REFRESH_MS = 30_000;
 const STALE_MS   = 60_000;
 const SKILLS = ["HVAC Repair","Electrical","Plumbing","Network Support","General Maintenance"];
@@ -17,10 +19,11 @@ function normalizeStatus(s) {
   const l = (s||"").toLowerCase();
   if (l==="available") return "Available";
   if (l==="busy")      return "Busy";
+  if (l==="assigned")  return "Assigned";
   if (l==="offline")   return "Offline";
   return s||"Unknown";
 }
-function statusCls(s){ const n=normalizeStatus(s).toLowerCase(); return n==="available"?"available":n==="busy"?"busy":"offline"; }
+function statusCls(s){ const n=normalizeStatus(s).toLowerCase(); return n==="available"?"available":n==="busy"?"busy":n==="assigned"?"assigned":"offline"; }
 function getInitials(n=""){ return n.trim().split(/\s+/).map(w=>w[0]?.toUpperCase()||"").slice(0,2).join(""); }
 function formatAgo(ts){
   if(!ts) return "—";
@@ -107,6 +110,86 @@ export default function TechnicianListPage(){
   const [newStatus, setNewStatus] = useState("");
   const [saving,    setSaving]    = useState(false);
 
+  // Form states for Add/Edit
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingTechId, setEditingTechId] = useState(null);
+  const [formLoading, setFormLoading] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
+  const [techFormData, setTechFormData] = useState({
+    technician_name: "",
+    technician_skill: "",
+    technician_location: "",
+    technician_status: "Available",
+  });
+
+  const openAddForm = () => {
+    setIsEditing(false);
+    setEditingTechId(null);
+    setTechFormData({
+      technician_name: "",
+      technician_skill: "",
+      technician_location: "",
+      technician_status: "Available",
+    });
+    setFormErrors({});
+    setIsFormOpen(true);
+  };
+
+  const openEditForm = (tech) => {
+    setIsEditing(true);
+    setEditingTechId(tech.id);
+    setTechFormData({
+      technician_name: tech.name,
+      technician_skill: tech.skill,
+      technician_location: tech.location,
+      technician_status: normalizeStatus(tech.status),
+    });
+    setFormErrors({});
+    setIsFormOpen(true);
+  };
+
+  const closeForm = () => {
+    setIsFormOpen(false);
+  };
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setTechFormData(prev => ({ ...prev, [name]: value }));
+    setFormErrors(prev => ({ ...prev, [name]: "" }));
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    if (!techFormData.technician_name.trim()) errors.technician_name = "Name is required";
+    if (!techFormData.technician_skill.trim()) errors.technician_skill = "Skill is required";
+    if (!techFormData.technician_location.trim()) errors.technician_location = "Location is required";
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleFormSubmit = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+    setFormLoading(true);
+    try {
+      if (isEditing) {
+        await updateTechnician(editingTechId, techFormData);
+        showToast("Technician updated successfully");
+      } else {
+        await createTechnician(techFormData);
+        showToast("Technician added successfully");
+      }
+      setIsFormOpen(false);
+      fetchData(technicians.length > 0);
+    } catch (err) {
+      const msg = err.response?.data?.error || err.response?.data?.detail || "Failed to save technician.";
+      showToast(msg, "error");
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
   /* ── State: toast ── */
   const [toast,     setToast]     = useState({msg:"",type:""});
   const toastTimer                = useRef(null);
@@ -172,14 +255,28 @@ export default function TechnicianListPage(){
   },[showMetrics]);
 
   /* ── Derived lists ── */
-  const uniqueZones = useMemo(()=>[...new Set(technicians.map(t=>t.location).filter(Boolean))].sort(),[technicians]);
+  const uniqueZones = useMemo(() => {
+    const seen = new Set();
+    const result = [];
+    technicians.forEach(t => {
+      if (t.location) {
+        const val = t.location.trim();
+        const norm = val.toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ");
+        if (!seen.has(norm)) {
+          seen.add(norm);
+          result.push(val);
+        }
+      }
+    });
+    return result.sort();
+  }, [technicians]);
 
   const filtered = useMemo(()=>{
     let list=technicians;
     if(debSearch){ const s=debSearch.toLowerCase(); list=list.filter(t=>t.name.toLowerCase().includes(s)||t.skill.toLowerCase().includes(s)||t.location.toLowerCase().includes(s)); }
     if(statusFilter!=="ALL") list=list.filter(t=>normalizeStatus(t.status)===statusFilter);
     if(skillFilter!=="ALL")  list=list.filter(t=>t.skill===skillFilter);
-    if(zoneFilter!=="ALL")   list=list.filter(t=>t.location===zoneFilter);
+    if(zoneFilter!=="ALL")   list=list.filter(t=>(t.location || "").trim().toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ")===zoneFilter.trim().toUpperCase().replace(/_/g, " ").replace(/\s+/g, " "));
     return [...list].sort((a,b)=>{
       let av,bv;
       if(sortKey==="name"){av=a.name.toLowerCase();bv=b.name.toLowerCase();}
@@ -192,6 +289,14 @@ export default function TechnicianListPage(){
       return 0;
     });
   },[technicians,debSearch,statusFilter,skillFilter,zoneFilter,sortKey,sortDir]);
+
+  // Clamp page to totalPages if length changes and page is out of bounds
+  useEffect(() => {
+    const total = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (page > total) {
+      setPage(total);
+    }
+  }, [filtered.length, page]);
 
   const totalPages = Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
   const safePage   = Math.min(page,totalPages);
@@ -232,6 +337,22 @@ export default function TechnicianListPage(){
   }
 
   function handleManualRefresh(){ fetchData(technicians.length>0); setCountdown(0); }
+
+  async function handleDeleteTech(tech) {
+    if (!window.confirm(`Are you sure you want to delete "${tech.name}"?`)) return;
+    try {
+      await deleteTechnician(tech.id);
+      showToast(`${tech.name} deleted successfully`);
+      fetchData(technicians.length > 0);
+    } catch (err) {
+      const msg = err.response?.data?.error || err.response?.data?.detail || "Failed to delete technician.";
+      showToast(msg, "error");
+    }
+  }
+
+  function handleEditTech(tech) {
+    openEditForm(tech);
+  }
 
   function getPageNums(){
     const nums=[]; const delta=2;
@@ -301,7 +422,7 @@ export default function TechnicianListPage(){
                 : <>Refresh</>
               }
             </button>
-            <button className="tld-add-btn" onClick={()=>showToast("Add Technician coming soon!")}>
+            <button className="tld-add-btn" onClick={openAddForm}>
               + Add Technician
             </button>
           </div>
@@ -323,6 +444,7 @@ export default function TechnicianListPage(){
               <option value="ALL">All Statuses</option>
               <option value="Available">Available</option>
               <option value="Busy">Busy</option>
+              <option value="Assigned">Assigned</option>
               <option value="Offline">Offline</option>
             </select>
           </div>
@@ -368,8 +490,14 @@ export default function TechnicianListPage(){
               </tr>
             </thead>
             <tbody>
-              {/* Initial load skeleton — only shows on very first load */}
-              {loading&&<SkeletonRows n={8}/>}
+              {/* Initial load loading spinner */}
+              {loading && (
+                <tr>
+                  <td colSpan={5} className="tld-state-cell">
+                    <LoadingSpinner message="Loading technician dashboard..." />
+                  </td>
+                </tr>
+              )}
 
               {/* Initial load error */}
               {!loading&&initError&&(
@@ -419,8 +547,30 @@ export default function TechnicianListPage(){
                     <td data-label="Last Ping"><span className="tld-ping">{formatAgo(tech.lastPing)}</span></td>
                     <td data-label="Actions">
                       <div className="tld-actions" onClick={e=>e.stopPropagation()}>
-                        <button className="tld-btn-view" onClick={()=>openSidebar(tech)}>View</button>
-                        <button className="tld-btn-status" onClick={()=>openSidebar(tech)}>Status</button>
+                        <button
+                          className="icon-action-btn icon-view"
+                          onClick={()=>openSidebar(tech)}
+                          title="View technician"
+                          aria-label="View technician"
+                        >
+                          <Eye size={15}/>
+                        </button>
+                        <button
+                          className="icon-action-btn icon-edit"
+                          onClick={()=>handleEditTech(tech)}
+                          title="Edit technician"
+                          aria-label="Edit technician"
+                        >
+                          <Pencil size={15}/>
+                        </button>
+                        <button
+                          className="icon-action-btn icon-delete"
+                          onClick={()=>handleDeleteTech(tech)}
+                          title="Delete technician"
+                          aria-label="Delete technician"
+                        >
+                          <Trash2 size={15}/>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -431,7 +581,7 @@ export default function TechnicianListPage(){
         </div>
 
         {/* Pagination */}
-        {!loading&&!initError&&filtered.length>0&&(
+        {!loading&&!initError&&(
           <div className="tld-pagination">
             <span className="tld-page-info">Page <strong>{safePage}</strong> of <strong>{totalPages}</strong> · {filtered.length} results</span>
             <div className="tld-page-controls">
@@ -481,6 +631,7 @@ export default function TechnicianListPage(){
               <select className="tld-status-select" value={newStatus} onChange={e=>setNewStatus(e.target.value)}>
                 <option value="Available">Available</option>
                 <option value="Busy">Busy</option>
+                <option value="Assigned">Assigned</option>
                 <option value="Offline">Offline</option>
               </select>
               <button className="tld-save-btn" onClick={handleSaveStatus}
@@ -490,6 +641,93 @@ export default function TechnicianListPage(){
             </div>
           </div>
         )}
+      </div>
+
+      {/* Form Sidebar for Add/Edit */}
+      {isFormOpen && <div className="tld-sidebar-overlay" onClick={closeForm}/>}
+      <div className={`tld-sidebar${isFormOpen ? " open" : ""}`}>
+        <div className="tld-sidebar-head">
+          <h3>{isEditing ? "Edit Technician" : "Add New Technician"}</h3>
+          <button className="tld-sidebar-close" onClick={closeForm}>X</button>
+        </div>
+        <div className="tld-sidebar-body">
+          <form className="tech-form" onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Full Name <span style={{ color: '#ef4444' }}>*</span></label>
+              <input
+                type="text"
+                name="technician_name"
+                value={techFormData.technician_name}
+                onChange={handleFormChange}
+                placeholder="e.g. Rajesh Kumar"
+                style={{ width: '100%', padding: '8px 12px', border: formErrors.technician_name ? '1px solid #f87171' : '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px' }}
+              />
+              {formErrors.technician_name && <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 'bold' }}>{formErrors.technician_name}</span>}
+            </div>
+
+            <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Skill <span style={{ color: '#ef4444' }}>*</span></label>
+              <input
+                type="text"
+                name="technician_skill"
+                value={techFormData.technician_skill}
+                onChange={handleFormChange}
+                placeholder="e.g. Electrical, HVAC"
+                style={{ width: '100%', padding: '8px 12px', border: formErrors.technician_skill ? '1px solid #f87171' : '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px' }}
+                list="tld-skill-suggestions"
+              />
+              <datalist id="tld-skill-suggestions">
+                {SKILLS.map(s => <option key={s} value={s} />)}
+              </datalist>
+              {formErrors.technician_skill && <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 'bold' }}>{formErrors.technician_skill}</span>}
+            </div>
+
+            <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Location / Zone <span style={{ color: '#ef4444' }}>*</span></label>
+              <input
+                type="text"
+                name="technician_location"
+                value={techFormData.technician_location}
+                onChange={handleFormChange}
+                placeholder="e.g. 13.0827,80.2707"
+                style={{ width: '100%', padding: '8px 12px', border: formErrors.technician_location ? '1px solid #f87171' : '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px' }}
+              />
+              {formErrors.technician_location && <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 'bold' }}>{formErrors.technician_location}</span>}
+            </div>
+
+            <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>{isEditing ? "Status" : "Initial Status"}</label>
+              <select
+                name="technician_status"
+                value={techFormData.technician_status}
+                onChange={handleFormChange}
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', background: '#fff' }}
+              >
+                <option value="Available">Available</option>
+                <option value="Busy">Busy</option>
+                <option value="Assigned">Assigned</option>
+                <option value="Offline">Offline</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <button 
+                type="submit" 
+                disabled={formLoading}
+                style={{ flex: 1, padding: '10px', background: '#2F4F3E', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                {formLoading ? "Saving..." : isEditing ? "Update Technician" : "Add Technician"}
+              </button>
+              <button 
+                type="button" 
+                onClick={closeForm}
+                style={{ padding: '10px 16px', background: '#fff', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
 
     </div>

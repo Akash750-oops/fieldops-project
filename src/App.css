@@ -111,6 +111,8 @@ body {
   cursor: pointer;
   text-align: left;
   transition: all .15s;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .nav-item:hover {
@@ -147,6 +149,8 @@ body {
   text-align: left;
   letter-spacing: 0.01em;
   transition: color 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .nav-group-header:hover {
@@ -168,14 +172,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  margin-left: 14px;
+  margin-left: 10px;
   border-left: 1.5px solid #E3ECE7; /* vertical tree connector line */
-  padding-left: 6px;
+  padding-left: 4px;
 }
 
 .nav-sub-item {
   font-size: 13px;
-  padding: 5px 8px;
+  padding: 5px 6px;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .nav-icon {
@@ -333,6 +339,8 @@ body {
 .page-wrap {
   flex: 1;
   background: #EEF4F1;
+  overflow-y: auto;
+  height: 0; /* flex child trick: makes it respect flex: 1 + overflow */
 }
 
 /* ── Responsive ────────────────────────────────────────────────────────── */
@@ -396,24 +404,42 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  overflow: hidden;
+  /* overflow:hidden removed — was trapping position:fixed elements */
 }
 
 .app-shell {
   height: 100vh;
   display: flex;
-  overflow: hidden;
+  /* overflow:hidden removed — it was blocking position:fixed children (e.g. job form sidebar) */
 }
 
 .sidebar {
-  width: 200px;
-  min-width: 200px;
+  width: 220px;
+  min-width: 220px;
   height: 100vh;
   overflow: hidden;
   position: relative;
   padding: 0;
   box-sizing: border-box;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Override global .sidebar-content to resist CSS pollution and hide scrollbar */
+.sidebar .sidebar-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex: 1;
+  padding: 16px 12px !important; /* Force correct shell padding */
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none; /* Hide scrollbar Firefox */
+  -ms-overflow-style: none;  /* Hide scrollbar IE/Edge */
+}
+
+.sidebar .sidebar-content::-webkit-scrollbar {
+  display: none; /* Hide scrollbar Safari/Chrome */
 }
 
 .sidebar-brand {
@@ -475,7 +501,7 @@ body,
 }
 
 .sidebar-collapsed .sidebar-content {
-  padding: 12px 6px;
+  padding: 12px 6px !important;
 }
 
 .sidebar-collapsed .sidebar-brand {
@@ -566,9 +592,9 @@ body,
 .main-area {
   flex: 1;
   height: 100vh;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* NOTE: Do NOT add overflow:hidden here — it clips position:fixed children like the job form sidebar */
 }
 
 /* Planning header integration styles */

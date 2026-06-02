@@ -28,6 +28,7 @@ import {
   User,
 } from 'lucide-react';
 import { getScoreLevel, formatScore, ScoreBadge } from './ScoreDisplay';
+import StatusBadge from '../common/StatusBadge';
 
 /* ═══════════════════════════════════════════════════════════════════════
    Public Types
@@ -145,32 +146,6 @@ function ReasonIcon({ reason }: { reason: string }) {
   return <Star className="w-3.5 h-3.5" aria-hidden="true" />;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   Status Pill
-   ═══════════════════════════════════════════════════════════════════════ */
-
-function StatusPill({ status }: { status: string }) {
-  const s = status.toLowerCase();
-  const styles =
-    s === 'available'
-      ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-      : s === 'busy'
-      ? 'bg-amber-100 text-amber-700 border-amber-200'
-      : 'bg-slate-100 text-slate-500 border-slate-200';
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${styles}`}
-      data-testid={`status-pill-${s}`}
-    >
-      <span
-        className={`w-1.5 h-1.5 rounded-full ${s === 'available' ? 'bg-emerald-500' : s === 'busy' ? 'bg-amber-500' : 'bg-slate-400'}`}
-        aria-hidden="true"
-      />
-      {status}
-    </span>
-  );
-}
 
 /* ═══════════════════════════════════════════════════════════════════════
    MedalIcon  (SVG medal shape with gradient fill)
@@ -238,11 +213,11 @@ export function RankCard({ rank, medal, tech, reason, onSelect, animationDelay =
         ease: [0.25, 0.46, 0.45, 0.94],
       }}
       className={[
-        'relative flex flex-col gap-3 rounded-2xl p-4 border-2',
+        'relative flex flex-col gap-4 rounded-2xl px-5 pb-5 pt-7 border-2',
         cfg.bg,
         cfg.border,
         `shadow-lg ${cfg.glowColor}`,
-        'transition-shadow duration-200 hover:shadow-xl',
+        'transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5',
         rank === 1 ? 'ring-2 ring-amber-400/30' : '',
       ].join(' ')}
     >
@@ -268,10 +243,10 @@ export function RankCard({ rank, medal, tech, reason, onSelect, animationDelay =
       )}
 
       {/* ── Header row: avatar + name + score ── */}
-      <div className="flex items-start gap-3 mt-3">
+      <div className="flex items-start gap-3.5 mt-2">
         {/* Avatar */}
         <div
-          className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-to-br ${cfg.gradient} text-white font-black text-base shadow-sm`}
+          className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br ${cfg.gradient} text-white font-black text-lg shadow-md ml-5`}
           aria-hidden="true"
         >
           {tech.technician_name.charAt(0).toUpperCase()}
@@ -279,19 +254,19 @@ export function RankCard({ rank, medal, tech, reason, onSelect, animationDelay =
 
         {/* Name + skill + status */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-slate-800 truncate leading-tight">
+          <p className="text-sm font-extrabold text-slate-800 truncate leading-tight">
             {tech.technician_name}
           </p>
-          <p className="text-[11px] text-slate-500 truncate">{tech.technician_skill}</p>
-          <div className="mt-1">
-            <StatusPill status={tech.technician_status} />
+          <p className="text-[11px] text-slate-500 truncate mt-0.5">{tech.technician_skill}</p>
+          <div className="mt-1.5">
+            <StatusBadge status={tech.technician_status as any} size="sm" data-testid={`status-pill-${tech.technician_status.toLowerCase()}`} />
           </div>
         </div>
 
         {/* Composite score */}
         <div className="flex-shrink-0 text-right">
           <ScoreBadge score={tech.composite_score} label="Score" />
-          <p className={`text-[10px] mt-0.5 font-medium ${cfg.textAccent}`}>
+          <p className={`text-[10px] mt-1 font-semibold ${cfg.textAccent}`}>
             {level === 'high' ? 'Excellent' : level === 'medium' ? 'Good' : 'Fair'}
           </p>
         </div>
@@ -311,7 +286,7 @@ export function RankCard({ rank, medal, tech, reason, onSelect, animationDelay =
       </div>
 
       {/* ── Mini stat row ── */}
-      <div className="grid grid-cols-3 gap-1.5 text-center">
+      <div className="grid grid-cols-3 gap-2 text-center">
         {[
           { label: 'Skill', value: tech.skill_score },
           { label: 'Proximity', value: tech.proximity_score },
@@ -320,40 +295,39 @@ export function RankCard({ rank, medal, tech, reason, onSelect, animationDelay =
           const lv = getScoreLevel(value);
           const color = lv === 'high' ? 'text-emerald-600' : lv === 'medium' ? 'text-amber-600' : 'text-rose-600';
           return (
-            <div key={label} className="flex flex-col items-center gap-0.5 bg-white/60 rounded-lg py-1.5 px-1">
-              <span className={`text-sm font-black tabular-nums ${color}`}>{formatScore(value)}</span>
-              <span className="text-[9px] font-medium text-slate-400 uppercase tracking-wider">{label}</span>
+            <div key={label} className="flex flex-col items-center gap-1 bg-white/70 rounded-xl py-2 px-1.5 border border-white/80 shadow-sm">
+              <span className={`text-base font-black tabular-nums ${color}`}>{formatScore(value)}</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
             </div>
           );
         })}
       </div>
 
       {/* ── Meta row: distance + workload ── */}
-      <div className="flex items-center gap-3 text-[11px] text-slate-500">
-        <span className="flex items-center gap-1">
-          <MapPin className="w-3 h-3 text-sky-400" aria-hidden="true" />
-          <span className="font-semibold text-sky-600">{tech.distance_km.toFixed(1)} km</span>
+      <div className="flex items-center gap-3 text-xs text-slate-500 px-1">
+        <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-100">
+          <MapPin className="w-3.5 h-3.5 text-sky-500" aria-hidden="true" />
+          <span className="font-bold text-sky-700">{tech.distance_km.toFixed(1)} km</span>
         </span>
-        <span className="text-slate-300">·</span>
-        <span className="flex items-center gap-1">
-          <Briefcase className="w-3 h-3 text-slate-400" aria-hidden="true" />
-          <span className="font-semibold">{tech.active_jobs}/{tech.max_capacity} jobs</span>
+        <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-100">
+          <Briefcase className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+          <span className="font-bold text-slate-600">{tech.active_jobs}/{tech.max_capacity} jobs</span>
         </span>
       </div>
 
       {/* ── Select button ── */}
       <motion.button
         whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
+        whileTap={{ scale: 0.97 }}
         onClick={() => onSelect(tech.technician_id)}
         aria-label={`Select ${tech.technician_name} for this job`}
         data-testid={`select-btn-${rank}`}
         className={[
-          'w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl',
-          'text-white text-sm font-bold',
+          'w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl',
+          'text-white text-sm font-extrabold tracking-wide',
           `bg-gradient-to-r ${cfg.gradient}`,
-          'shadow-md transition-shadow duration-200 hover:shadow-lg',
-          'focus:outline-none focus:ring-2 focus:ring-offset-1',
+          'shadow-md transition-all duration-200 hover:shadow-lg',
+          'focus:outline-none focus:ring-2 focus:ring-offset-2',
           rank === 1 ? 'focus:ring-amber-400' : rank === 2 ? 'focus:ring-slate-400' : 'focus:ring-orange-400',
         ].join(' ')}
       >
@@ -399,26 +373,26 @@ export default function TopThreeHighlight({
         aria-label="Top 3 Recommended Technicians"
         data-testid="top-three-highlight"
       >
-        <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-white via-amber-50/30 to-white shadow-lg shadow-amber-100/50 p-5 mb-5">
+        <div className="rounded-2xl border-2 border-amber-200/80 bg-gradient-to-br from-white via-amber-50/20 to-white shadow-xl shadow-amber-100/30 p-6 mb-5">
 
           {/* ── Section header ── */}
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2">
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 shadow-md shadow-amber-300/40">
-                <Star className="w-4 h-4 text-white fill-white" aria-hidden="true" />
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-300/40">
+                <Star className="w-5 h-5 text-white fill-white" aria-hidden="true" />
               </div>
               <div>
                 <h3 className="text-sm font-black text-slate-800 leading-tight">
                   Top 3 Recommended
                 </h3>
                 {jobLabel && (
-                  <p className="text-[11px] text-slate-400 leading-tight">
+                  <p className="text-[11px] text-slate-400 leading-tight mt-0.5">
                     for {jobLabel}
                   </p>
                 )}
               </div>
               <span
-                className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold border border-amber-200"
+                className="ml-1 inline-flex items-center px-2.5 py-1 rounded-lg bg-amber-100/80 text-amber-700 text-[10px] font-bold border border-amber-200/80"
                 data-testid="top-3-section-badge"
               >
                 AI Ranked
@@ -431,7 +405,7 @@ export default function TopThreeHighlight({
                 onClick={onClose}
                 aria-label="Select other technician"
                 data-testid="select-other-btn"
-                className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700 px-3 py-2 rounded-xl hover:bg-slate-100 transition-all"
               >
                 <User className="w-3.5 h-3.5" aria-hidden="true" />
                 Select Other
@@ -441,7 +415,7 @@ export default function TopThreeHighlight({
                 onClick={onClose}
                 aria-label="Close recommendations panel"
                 data-testid="close-btn"
-                className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                className="flex items-center justify-center w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
               >
                 <X className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -452,7 +426,7 @@ export default function TopThreeHighlight({
           <div
             role="list"
             aria-label="Ranked technician recommendations"
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-3"
+            className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-5 pt-2"
           >
             {ranked.map((tech, idx) => {
               const tier = TIER_ORDER[idx];

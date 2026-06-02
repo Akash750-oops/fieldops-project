@@ -25,3 +25,16 @@ export const updateTechnicianAvailability = (technicianId, technician_status) =>
 
 /** Get a single technician by ID */
 export const getTechnicianById = (id) => api.get(`/technicians/${id}`);
+
+/** Update technician details */
+export const updateTechnician = (technicianId, technicianData) =>
+  api.put(`/technicians/${technicianId}`, technicianData);
+
+/** Delete a technician */
+export const deleteTechnician = (technicianId) =>
+  api.delete(`/technicians/${technicianId}`);
+
+/** Create a technician */
+export const createTechnician = (technicianData) =>
+  api.post("/technicians/", technicianData);
+

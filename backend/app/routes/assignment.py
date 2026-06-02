@@ -17,7 +17,7 @@ def match_skill(job_type: str, db: Session = Depends(get_db)):
     """
     technicians = db.query(models.Technician).filter(
         models.Technician.technician_skill == job_type,
-        models.Technician.technician_status == "AVAILABLE",
+        models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"]),
         models.Technician.current_jobs < models.Technician.max_jobs
     ).all()
     return technicians
@@ -34,7 +34,7 @@ def get_nearest_technician(job_id: int, db: Session = Depends(get_db)):
     # Filter technicians by skill, availability, and workload
     technicians = db.query(models.Technician).filter(
         models.Technician.technician_skill == job.required_skill,
-        models.Technician.technician_status == "AVAILABLE",
+        models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"]),
         models.Technician.current_jobs < models.Technician.max_jobs
     ).all()
 
@@ -104,7 +104,7 @@ def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(g
             # Auto-assign logic based on skill and availability
             technicians = db.query(models.Technician).filter(
                 models.Technician.technician_skill == assignment.job_type,
-                models.Technician.technician_status == "AVAILABLE",
+                models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"]),
                 models.Technician.current_jobs < models.Technician.max_jobs
             ).all()
             if not technicians:

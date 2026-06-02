@@ -1,27 +1,21 @@
+/**
+ * NotificationDetail.tsx
+ * Refactored to use modular CountdownTimer, ActionButtons, and WaitingState components.
+ */
 import React, { useState, useEffect } from "react";
-import { Clock, MapPin, Phone, User, DollarSign, Brain, Navigation, ChevronRight, X, AlertTriangle } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { NotificationDetailProps, JobNotificationDetail } from "../../types/notifications.ts";
+import { MapPin, Phone, User, DollarSign, Navigation, AlertTriangle } from "lucide-react";
+import { motion } from "framer-motion";
+import { NotificationDetailProps } from "../../types/notifications";
+import CountdownTimer from "./CountdownTimer";
+import ActionButtons from "./ActionButtons";
+import WaitingState from "./WaitingState";
+import useActionState from "../../hooks/useActionState";
+import { getOverrideHistory } from "../../services/planningService";
+import OverrideWarning from "./OverrideWarning";
+import OverrideHistory from "./OverrideHistory";
+import { io } from "socket.io-client";
 // @ts-ignore: allow importing CSS side-effect without module declarations
 import "./notifications.css";
-
-const calculateTimeRemaining = (deadline?: string) => {
-  if (!deadline) return { total: 0, hours: 0, minutes: 0, seconds: 0, overdue: true };
-  const total = new Date(deadline).getTime() - Date.now();
-  const overdue = total < 0;
-  const absTotal = Math.abs(total);
-  const seconds = Math.floor((absTotal / 1000) % 60);
-  const minutes = Math.floor((absTotal / 1000 / 60) % 60);
-  const hours = Math.floor((absTotal / (1000 * 60 * 60)) % 24);
-  const days = Math.floor(absTotal / (1000 * 60 * 60 * 24));
-  return {
-    total,
-    hours: hours + days * 24,
-    minutes,
-    seconds,
-    overdue
-  };
-};
 
 export const NotificationDetail: React.FC<NotificationDetailProps> = ({
   notification,
@@ -34,20 +28,44 @@ export const NotificationDetail: React.FC<NotificationDetailProps> = ({
   onClose
 }) => {
   const jobData = job || notification.job;
-  const [timeLeft, setTimeLeft] = useState(() => calculateTimeRemaining(jobData?.sla_deadline));
-  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
-  const [actionProcessing, setActionProcessing] = useState(false);
-  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const { state: actionState, message: actionMessage, execute, retry, reset } = useActionState();
+  const [overrideLogs, setOverrideLogs] = useState<any[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
-    if (!jobData?.sla_deadline) return;
-    const interval = setInterval(() => {
-      setTimeLeft(calculateTimeRemaining(jobData.sla_deadline));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [jobData?.sla_deadline]);
+    if (!jobData?.id) return;
+
+    const fetchHistory = async () => {
+      try {
+        const res = await getOverrideHistory(jobData.id);
+        if (res && res.data) {
+          setOverrideLogs(res.data);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch override history in detail view", err);
+      }
+    };
+
+    fetchHistory();
+
+    const socket = io("http://localhost:8000", {
+      transports: ["websocket", "polling"]
+    });
+
+    socket.on("override:new", (data: any) => {
+      if (data && (data.job_id === jobData.id || data.job_id === String(jobData.id))) {
+        const newOverride = data.override || data;
+        setOverrideLogs(prev => {
+          if (prev.some(item => item.id === newOverride.id)) return prev;
+          return [newOverride, ...prev];
+        });
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [jobData?.id]);
 
   if (loading) {
     return (
@@ -73,40 +91,34 @@ export const NotificationDetail: React.FC<NotificationDetailProps> = ({
     );
   }
 
-  const formatCountdown = () => {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const label = timeLeft.overdue ? "Overdue by: " : "Time Remaining: ";
-    return `${label}${pad(timeLeft.hours)}h ${pad(timeLeft.minutes)}m ${pad(timeLeft.seconds)}s`;
+  // Wrap parent callbacks with useActionState lifecycle
+  const handleAccept = async (jobId: string | number) => {
+    await execute(() => onAccept(jobId), "Job accepted");
   };
 
-  const handleAction = async (type: "accept" | "reject" | "reassign") => {
-    setActionProcessing(true);
-    setActionSuccess(null);
-    setActionError(null);
-    try {
-      if (type === "accept") {
-        await onAccept(jobData.id);
-        setActionSuccess("Job accepted successfully!");
-      } else if (type === "reject") {
-        await onReject(jobData.id, rejectReason);
-        setIsRejectModalOpen(false);
-        setRejectReason("");
-        setActionSuccess("Job rejected successfully.");
-      } else if (type === "reassign") {
-        await onReassign(jobData.id);
-        setActionSuccess("Reassignment requested.");
-      }
-    } catch (err: any) {
-      setActionError(err?.message || `Failed to ${type} job.`);
-    } finally {
-      setActionProcessing(false);
-    }
+  const handleReject = async (jobId: string | number, reason: string) => {
+    await execute(() => onReject(jobId, reason), "Job rejected");
   };
+
+  const handleReassign = async (jobId: string | number) => {
+    await execute(() => onReassign(jobId), "Reassignment requested");
+  };
+
+  const handleExpire = () => {
+    console.warn(`Timer expired for job ${jobData.id}`);
+  };
+
+  const handleWarning = () => {
+    console.warn(`2 minutes remaining for job ${jobData.id}`);
+  };
+
+  const isActioned = actionState === "SUCCESS";
 
   return (
     <div className="noc-module">
       <motion.div
         className="notification-detail-card"
+        style={{ position: "relative" }}
         drag="x"
         dragConstraints={{ left: 0, right: 300 }}
         dragElastic={{ left: 0.1, right: 0.5 }}
@@ -119,6 +131,15 @@ export const NotificationDetail: React.FC<NotificationDetailProps> = ({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0 }}
       >
+        {/* Waiting State Overlay */}
+        <WaitingState
+          state={actionState}
+          message={actionMessage}
+          onRetry={retry}
+          onCancel={reset}
+        />
+
+        {/* Header */}
         <div className="detail-header">
           <div>
             <span className="detail-grid-label" style={{ display: "block", marginBottom: "2px" }}>
@@ -131,23 +152,29 @@ export const NotificationDetail: React.FC<NotificationDetailProps> = ({
           </span>
         </div>
 
-        {/* Action success/error banners */}
-        {actionSuccess && (
-          <div style={{ padding: "10px 14px", backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534", borderRadius: "8px", fontSize: "14px", fontWeight: 500, marginBottom: "16px" }}>
-            {actionSuccess}
-          </div>
-        )}
-        {actionError && (
-          <div style={{ padding: "10px 14px", backgroundColor: "#fdf2f2", border: "1px solid #fde8e8", color: "#9b1c1c", borderRadius: "8px", fontSize: "14px", fontWeight: 500, marginBottom: "16px" }}>
-            {actionError}
+        {/* Override Warning Banner */}
+        {overrideLogs.length > 0 && (
+          <div style={{ marginBottom: "16px" }}>
+            <OverrideWarning
+              actorName={overrideLogs[0].actor_name}
+              actorRole={overrideLogs[0].actor_role}
+              assignedAt={overrideLogs[0].created_at}
+              reason={overrideLogs[0].justification}
+              onViewHistory={() => setShowHistory(true)}
+            />
           </div>
         )}
 
-        {/* SLA Countdown Timer */}
-        <div className={`sla-countdown ${timeLeft.overdue ? "overdue" : ""}`}>
-          <Clock size={16} />
-          <span>{formatCountdown()}</span>
-        </div>
+        {/* Countdown Timer */}
+        {jobData.sla_deadline && (
+          <CountdownTimer
+            expiresAt={jobData.sla_deadline}
+            onExpire={handleExpire}
+            onWarning={handleWarning}
+            jobId={jobData.id}
+            hidden={isActioned}
+          />
+        )}
 
         {/* Job Details Grid */}
         <div className="detail-row-grid">
@@ -174,7 +201,7 @@ export const NotificationDetail: React.FC<NotificationDetailProps> = ({
           <div className="detail-grid-item">
             <span className="detail-grid-label">Est. Value</span>
             <span className="detail-grid-value" style={{ display: "flex", alignItems: "center", gap: "2px", fontWeight: 700, color: "#10b981" }}>
-              <DollarSign size={14} />{jobData.estimated_value}
+              ${jobData.estimated_value}
             </span>
           </div>
         </div>
@@ -202,88 +229,24 @@ export const NotificationDetail: React.FC<NotificationDetailProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="notification-actions">
-          <button
-            type="button"
-            className="accept-btn"
-            onClick={() => handleAction("accept")}
-            disabled={actionProcessing || !!actionSuccess}
-          >
-            Accept
-          </button>
-          <button
-            type="button"
-            className="reject-btn"
-            onClick={() => setIsRejectModalOpen(true)}
-            disabled={actionProcessing || !!actionSuccess}
-          >
-            Reject
-          </button>
-          <button
-            type="button"
-            className="reassign-btn"
-            onClick={() => handleAction("reassign")}
-            disabled={actionProcessing || !!actionSuccess}
-          >
-            Reassign
-          </button>
-          <button
-            type="button"
-            className="permission-btn-secondary"
-            onClick={onClose}
-            style={{ flex: "none", width: "42px", height: "42px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
-            title="Close Details"
-          >
-            <ChevronRight size={18} />
-          </button>
-        </div>
+        <ActionButtons
+          onAccept={handleAccept}
+          onReject={handleReject}
+          onReassign={handleReassign}
+          jobId={jobData.id}
+          disabled={actionState !== "IDLE"}
+        />
       </motion.div>
 
-      {/* Reject Reason Modal */}
-      <AnimatePresence>
-        {isRejectModalOpen && (
-          <div className="rejection-modal-backdrop">
-            <motion.div
-              className="rejection-modal"
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-            >
-              <h3>Reject Assignment</h3>
-              <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 12px 0" }}>
-                Please provide a reason for rejecting this assignment.
-              </p>
-              <textarea
-                className="rejection-textarea"
-                placeholder="Reason (e.g. Travel distance too long, lack of parts…)"
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-              />
-              <div className="rejection-modal-actions">
-                <button
-                  type="button"
-                  className="rejection-cancel"
-                  onClick={() => {
-                    setIsRejectModalOpen(false);
-                    setRejectReason("");
-                  }}
-                  disabled={actionProcessing}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="rejection-submit"
-                  onClick={() => handleAction("reject")}
-                  disabled={actionProcessing || !rejectReason.trim()}
-                >
-                  Confirm Rejection
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {showHistory && (
+        <OverrideHistory
+          jobId={jobData.id}
+          jobTitle={jobData.title}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </div>
   );
 };
+
+export default NotificationDetail;

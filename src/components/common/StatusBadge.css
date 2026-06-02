@@ -5,6 +5,7 @@
 .sb-badge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   border-radius: 20px;
   border: 1px solid transparent;
@@ -19,9 +20,9 @@
 }
 
 /* ─── Sizes ──────────────────────────────────────────────────────────────── */
-.sb-sm { font-size: 10px; padding: 2px  8px;  gap: 4px; }
-.sb-md { font-size: 12px; padding: 4px  10px; gap: 5px; }
-.sb-lg { font-size: 14px; padding: 6px  14px; gap: 6px; }
+.sb-sm { font-size: 10px; padding: 2px 4px; gap: 4px; width: 80px; }
+.sb-md { font-size: 12px; padding: 4px 6px; gap: 5px; width: 92px; }
+.sb-lg { font-size: 14px; padding: 6px 8px; gap: 6px; width: 106px; }
 
 /* ─── Icon ───────────────────────────────────────────────────────────────── */
 .sb-icon {
@@ -59,6 +60,14 @@
   border-color: #BFDBFE;
 }
 .sb-BUSY .sb-dot { background: #2563EB; }
+
+/* ─── ASSIGNED · light blue ──────────────────────────────────────────────── */
+.sb-ASSIGNED {
+  background: #E0F2FE;
+  color: #0369A1;
+  border-color: #7DD3FC;
+}
+.sb-ASSIGNED .sb-dot { background: #0284C7; }
 
 /* ─── OFFLINE · gray (slight opacity) ───────────────────────────────────── */
 .sb-OFFLINE {

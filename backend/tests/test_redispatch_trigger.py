@@ -28,7 +28,6 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
 fake_redis = FakeRedis(decode_responses=True)
@@ -36,7 +35,12 @@ fake_redis = FakeRedis(decode_responses=True)
 def override_get_redis():
     return fake_redis
 
-app.dependency_overrides[get_redis_client] = override_get_redis
+@pytest.fixture(autouse=True)
+def apply_overrides():
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_redis_client] = override_get_redis
+    yield
+    app.dependency_overrides.clear()
 
 @contextmanager
 def dummy_job_lock(*args, **kwargs):
