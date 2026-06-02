@@ -143,38 +143,6 @@ function TechnicianList() {
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="kpi-row">
-        <div className="kpi-card kpi-blue">
-          <div className="kpi-icon">👷</div>
-          <div className="kpi-info">
-            <span className="kpi-label">Total Technicians</span>
-            <span className="kpi-value">{total}</span>
-          </div>
-        </div>
-        <div className="kpi-card kpi-green">
-          <div className="kpi-icon">✅</div>
-          <div className="kpi-info">
-            <span className="kpi-label">Available</span>
-            <span className="kpi-value">{available}</span>
-          </div>
-        </div>
-        <div className="kpi-card kpi-orange">
-          <div className="kpi-icon">⚙️</div>
-          <div className="kpi-info">
-            <span className="kpi-label">Busy</span>
-            <span className="kpi-value">{busy}</span>
-          </div>
-        </div>
-        <div className="kpi-card kpi-red">
-          <div className="kpi-icon">🔴</div>
-          <div className="kpi-info">
-            <span className="kpi-label">Offline</span>
-            <span className="kpi-value">{offline}</span>
-          </div>
-        </div>
-      </div>
-
       {/* Main Content Area: Grid Only */}
       <div className="main-content-row full-grid-layout">
         {/* Technicians Grid & Filters */}
@@ -220,12 +188,10 @@ function TechnicianList() {
 
           {loading ? (
             <div className="empty-state">
-              <span className="empty-icon">⏳</span>
               <p>Loading technicians...</p>
             </div>
           ) : filteredTechnicians.length === 0 ? (
             <div className="empty-state">
-              <span className="empty-icon">👷</span>
               <p>No technicians found.</p>
             </div>
           ) : (
@@ -246,15 +212,12 @@ function TechnicianList() {
 
                   <div className="tech-details">
                     <div className="tech-detail-row">
-                      <span className="detail-icon">🛠</span>
                       <span>{tech.technician_skill}</span>
                     </div>
                     <div className="tech-detail-row">
-                      <span className="detail-icon">📍</span>
                       <span>{tech.technician_location}</span>
                     </div>
                     <div className="tech-detail-row">
-                      <span className="detail-icon">📋</span>
                       <span>Jobs: {tech.current_jobs} / {tech.max_jobs}</span>
                     </div>
                   </div>

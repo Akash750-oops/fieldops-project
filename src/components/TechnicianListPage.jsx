@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { getAllTechnicians, updateTechnicianAvailability } from "../services/technicianService";
 import usePageVisibility from "../hooks/usePageVisibility";
 import useInterval from "../hooks/useInterval";
+import StatusBadge from "./common/StatusBadge";
 import "./TechnicianListPage.css";
 
 const PAGE_SIZE = 20;
@@ -48,13 +49,6 @@ function wPct(cur,max){ return max>0?Math.min(Math.round((cur/max)*100),100):0; 
 function wColor(p){ return p>=90?"high":p>=60?"mid":"low"; }
 
 /* ── Sub-components ──────────────────────────────────────────────────────── */
-function StatusBadge({status}){
-  return(
-    <span className={`tld-badge ${statusCls(status)}`}>
-      <span className="tld-badge-dot"/>{normalizeStatus(status)}
-    </span>
-  );
-}
 
 function SkeletonRows({n=8}){
   return Array.from({length:n},(_,i)=>(

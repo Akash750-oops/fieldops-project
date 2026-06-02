@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import "./JobCreationForm.css";
 
-const API_URL = "http://localhost:8000/jobs/";
+const API_URL = "http://localhost:8000/jobs";
 
 const initialFormData = {
   customer_name: "",
@@ -59,6 +59,8 @@ function JobCreationForm() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [priorityFilter, setPriorityFilter] = useState("ALL");
   const [serviceFilter, setServiceFilter] = useState("ALL");
+
+  const uniqueServiceTypes = Array.from(new Set(jobs.map(j => j.service_type).filter(Boolean)));
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingJobId, setEditingJobId] = useState(null);
@@ -242,45 +244,12 @@ function JobCreationForm() {
       )}
 
 
-      {/* KPI Cards */}
-      <div className="kpi-row">
-        <div className="kpi-card kpi-blue">
-          <div className="kpi-icon">📋</div>
-          <div className="kpi-info">
-            <span className="kpi-label">Total Jobs</span>
-            <span className="kpi-value">{totalJobs}</span>
-          </div>
-        </div>
-        <div className="kpi-card kpi-green">
-          <div className="kpi-icon">✅</div>
-          <div className="kpi-info">
-            <span className="kpi-label">Active Jobs</span>
-            <span className="kpi-value">{activeJobs}</span>
-          </div>
-        </div>
-        <div className="kpi-card kpi-orange">
-          <div className="kpi-icon">⚙️</div>
-          <div className="kpi-info">
-            <span className="kpi-label">In Progress</span>
-            <span className="kpi-value">{inProgressJobs}</span>
-          </div>
-        </div>
-        <div className="kpi-card kpi-purple">
-          <div className="kpi-icon">🏁</div>
-          <div className="kpi-info">
-            <span className="kpi-label">Completed</span>
-            <span className="kpi-value">{completedJobs}</span>
-          </div>
-        </div>
-      </div>
-
       {/* Main Content: List Only (Form moved to Sidebar) */}
       <div className="main-content-row full-list-layout">
         {/* Job Management List */}
         <div className="content-card list-card">
           <div className="card-header">
             <div>
-              <span className="section-badge">Dashboard</span>
               <p className="card-subtitle">View and manage all submitted job requests</p>
             </div>
             <div className="header-actions-row">
@@ -325,7 +294,11 @@ function JobCreationForm() {
               <label>Service</label>
               <select value={serviceFilter} onChange={e => setServiceFilter(e.target.value)} className="filter-select">
                 <option value="ALL">All Services</option>
-                {serviceTypes.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                {uniqueServiceTypes.map(st => (
+                  <option key={st} value={st}>
+                    {serviceTypes.find(s => s.value === st)?.label || st.replace(/_/g, " ")}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -337,12 +310,10 @@ function JobCreationForm() {
           <div className="job-list-scroll">
             {jobsLoading ? (
               <div className="empty-state">
-                <span className="empty-icon">⏳</span>
                 <p>Loading jobs...</p>
               </div>
             ) : filteredJobs.length === 0 ? (
               <div className="empty-state">
-                <span className="empty-icon">📭</span>
                 <p>No jobs found. Create your first job.</p>
               </div>
             ) : (
@@ -365,10 +336,10 @@ function JobCreationForm() {
                   <p className="job-item-desc">{job.issue_description}</p>
 
                   <div className="job-item-meta">
-                    {job.location && <span>📍 {job.location}</span>}
-                    {job.service_type && <span>🛠 {job.service_type.replace(/_/g, " ")}</span>}
-                    {job.contact_number && <span>📞 {job.contact_number}</span>}
-                    {job.preferred_service_date && <span>📅 {job.preferred_service_date}</span>}
+                    {job.location && <span>{job.location}</span>}
+                    {job.service_type && <span>{job.service_type.replace(/_/g, " ")}</span>}
+                    {job.contact_number && <span>{job.contact_number}</span>}
+                    {job.preferred_service_date && <span>{job.preferred_service_date}</span>}
                   </div>
 
                   <div className="job-item-actions">
@@ -431,6 +402,14 @@ function JobCreationForm() {
               <select name="service_type" value={formData.service_type} onChange={handleChange} className={errors.service_type ? "input-error" : ""}>
                 <option value="">Select service type</option>
                 {serviceTypes.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                {uniqueServiceTypes.filter(st => st && !serviceTypes.some(s => s.value === st)).map(st => (
+                  <option key={st} value={st}>{st.replace(/_/g, " ")}</option>
+                ))}
+                {formData.service_type && 
+                 !serviceTypes.some(s => s.value === formData.service_type) && 
+                 !uniqueServiceTypes.includes(formData.service_type) && (
+                  <option value={formData.service_type}>{formData.service_type.replace(/_/g, " ")}</option>
+                )}
               </select>
               {errors.service_type && <span className="field-error">{errors.service_type}</span>}
             </div>

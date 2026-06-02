@@ -5,7 +5,7 @@
 .tech-page {
   font-family: 'Inter', sans-serif;
   background: #EEF4F1; min-height: 100vh;
-  padding: 24px; color: #1F2933;
+  padding: 14px; color: #1F2933;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -72,7 +72,7 @@
 .kpi-icon   { font-size: 22px; }
 .kpi-info   { display: flex; flex-direction: column; }
 .kpi-label  { font-size: 10px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: .05em; }
-.kpi-value  { font-size: 24px; font-weight: 700; color: #2F4F3E; line-height: 1.1; }
+.kpi-value  { font-size: 20px; font-weight: 700; color: #2F4F3E; line-height: 1.1; }
 
 /* ── Main Content Layout ────────────────────────────────────────────────── */
 .main-content-row { display: grid; gap: 20px; align-items: start; }
@@ -132,7 +132,7 @@
 /* ── Tech Card ──────────────────────────────────────────────────────────── */
 .tech-card {
   background: #FFFFFF; border: 1.5px solid #E3ECE7; border-radius: 12px;
-  padding: 18px;
+  padding: 12px;
   transition: transform .2s, box-shadow .2s, border-color .2s;
 }
 .tech-card:hover {
@@ -143,13 +143,13 @@
 
 .tech-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .tech-avatar {
-  width: 40px; height: 40px; min-width: 40px;
+  width: 32px; height: 32px; min-width: 32px;
   background: #7AAE8A;
   color: #fff; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 16px; font-weight: 700;
+  font-size: 13px; font-weight: 700;
 }
-.tech-name { font-size: 14px; font-weight: 700; color: #2F4F3E; margin-bottom: 4px; }
+.tech-name { font-size: 13px; font-weight: 700; color: #2F4F3E; margin-bottom: 3px; }
 
 /* Badges */
 .tech-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; display: inline-block; }
