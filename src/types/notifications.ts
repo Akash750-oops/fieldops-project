@@ -101,3 +101,41 @@ export interface UseActionStateReturn {
   retry: () => void;
   reset: () => void;
 }
+
+/* ─── Toast Notification System ─────────────────────────────────────── */
+
+export type ToastType = 'success' | 'warning' | 'error' | 'info';
+export type ToastPriority = 'normal' | 'critical';
+
+export type DispatchEventType =
+  | 'job.assigned'
+  | 'job.accepted'
+  | 'job.rejected'
+  | 'job.expired'
+  | 'job.en_route';
+
+export interface ToastItem {
+  id: string;
+  type: ToastType;
+  title: string;
+  message: string;
+  jobId?: string | number;
+  timestamp: string;
+  autoDismiss: number;       // ms — 0 means never
+  priority: ToastPriority;
+  eventType?: DispatchEventType;
+  // Batch grouping
+  batchCount?: number;
+  batchItems?: Array<{ title: string; message: string }>;
+}
+
+export interface ToastContextValue {
+  toasts: ToastItem[];
+  addToast: (toast: Omit<ToastItem, 'id' | 'timestamp'>) => string;
+  dismissToast: (id: string) => void;
+  pauseToast: (id: string) => void;
+  resumeToast: (id: string) => void;
+  soundEnabled: boolean;
+  setSoundEnabled: (enabled: boolean) => void;
+}
+

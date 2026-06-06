@@ -191,3 +191,83 @@ export const disconnectNotificationSocket = (socket) => {
     socket.disconnect();
   }
 };
+
+// ─── Dispatch Event → Toast mapping ──────────────────────────────────
+
+const DISPATCH_EVENT_CONFIG = {
+  'job.assigned': { type: 'info',    title: 'Job Assigned',   autoDismiss: 5000, priority: 'normal'   },
+  'job.accepted': { type: 'success', title: 'Job Accepted',   autoDismiss: 5000, priority: 'normal'   },
+  'job.rejected': { type: 'warning', title: 'Job Rejected',   autoDismiss: 8000, priority: 'critical' },
+  'job.expired':  { type: 'error',   title: 'Job Expired',    autoDismiss: 10000,priority: 'critical' },
+  'job.en_route': { type: 'info',    title: 'Tech En Route',  autoDismiss: 5000, priority: 'normal'   },
+};
+
+/**
+ * Attach listeners for job.* dispatch events on an existing socket.
+ * Calls onDispatchEvent with a pre-built toast payload ready for addToast().
+ */
+export const subscribeToDispatchEvents = (socket, onDispatchEvent) => {
+  if (!socket) return () => {};
+
+  const handlers = {};
+
+  Object.entries(DISPATCH_EVENT_CONFIG).forEach(([event, cfg]) => {
+    const handler = (payload = {}) => {
+      const jobTitle   = payload.job_title   || payload.title   || 'Unknown Job';
+      const techName   = payload.tech_name   || payload.technician_name || '';
+      const reason     = payload.reason      || '';
+      const eta        = payload.eta         || '';
+
+      let message = jobTitle;
+      if (event === 'job.accepted' && techName)  message = `${techName} accepted ${jobTitle}`;
+      if (event === 'job.rejected' && techName)  message = `${techName} rejected ${jobTitle}${reason ? ` — ${reason}` : ''}`;
+      if (event === 'job.expired')               message = `${jobTitle} — Re-dispatching…`;
+      if (event === 'job.en_route' && techName)  message = `${techName} is en route${eta ? ` — ETA ${eta}` : ''}`;
+      if (event === 'job.assigned' && techName)  message = `${jobTitle} → ${techName}`;
+
+      onDispatchEvent({
+        type:       cfg.type,
+        title:      cfg.title,
+        message,
+        jobId:      payload.job_id || payload.jobId,
+        autoDismiss: cfg.autoDismiss,
+        priority:   cfg.priority,
+        eventType:  event,
+      });
+    };
+
+    handlers[event] = handler;
+    socket.on(event, handler);
+  });
+
+  // Return cleanup function
+  return () => {
+    Object.entries(handlers).forEach(([event, handler]) => {
+      socket.off(event, handler);
+    });
+  };
+};
+
+/**
+ * Convert an existing TechnicianNotification (from new_notification event)
+ * into a toast payload for addToast().
+ */
+export const createToastFromNotification = (notif) => {
+  const typeMap = {
+    JOB_ASSIGNED: { type: 'info',    autoDismiss: 5000, priority: 'normal',   eventType: 'job.assigned' },
+    SLA_WARNING:  { type: 'warning', autoDismiss: 8000, priority: 'critical', eventType: undefined },
+    JOB_UPDATED:  { type: 'info',    autoDismiss: 5000, priority: 'normal',   eventType: undefined },
+    SYSTEM:       { type: 'info',    autoDismiss: 5000, priority: 'normal',   eventType: undefined },
+  };
+  const cfg = typeMap[notif.type] || typeMap.SYSTEM;
+  return {
+    type:       cfg.type,
+    title:      notif.title || 'Notification',
+    message:    notif.message || '',
+    jobId:      notif.jobId,
+    autoDismiss: cfg.autoDismiss,
+    priority:   cfg.priority,
+    eventType:  cfg.eventType,
+  };
+};
+

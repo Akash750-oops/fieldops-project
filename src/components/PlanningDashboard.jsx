@@ -4,6 +4,8 @@ import { Eye, Trash2, History } from "lucide-react";
 import OverrideModal from "./notifications/OverrideModal";
 import OverrideHistory from "./notifications/OverrideHistory";
 import OverrideWarning from "./notifications/OverrideWarning";
+import MetricsCards from "./dispatch/MetricsCards";
+import DispatchQueueTable from "./dispatch/DispatchQueueTable";
 import {
   getTechnicians,
   getAvailableTechnicians,
@@ -107,6 +109,53 @@ function PlanningDashboard() {
   const [plannedPage, setPlannedPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewAssignment, setViewAssignment] = useState(null);
+
+  const [activeMetricFilter, setActiveMetricFilter] = useState("all");
+  const [dispatchQueueCount, setDispatchQueueCount] = useState(0);
+
+  const handleMetricFilterChange = (filter, metricKey) => {
+    console.log("Metric card clicked:", metricKey, filter);
+
+    setActiveMetricFilter(metricKey);
+    setActiveTab("pending");
+    setPendingPage(1);
+  };
+
+  // ── Render___________________________________________________________________
+
+  const getMetricEmptyTitle = () => {
+  if (activeMetricFilter === "expired") {
+    return "No expired jobs found";
+  }
+
+  if (activeMetricFilter === "redispatched") {
+    return "No re-dispatched jobs found";
+  }
+
+  if (activeMetricFilter === "pending") {
+    return "No pending jobs found";
+  }
+
+  return searchQuery.trim() ? "No jobs match your search" : "No pending jobs";
+};
+
+const getMetricEmptyDescription = () => {
+  if (activeMetricFilter === "expired") {
+    return "There are no jobs with expired acceptance timer in the current queue.";
+  }
+
+  if (activeMetricFilter === "redispatched") {
+    return "There are no re-dispatched jobs in the current queue.";
+  }
+
+  if (activeMetricFilter === "pending") {
+    return "There are no queued, assigned, or pending jobs available right now.";
+  }
+
+  return searchQuery.trim()
+    ? "Try adjusting your search terms."
+    : "All jobs are either assigned or completed.";
+};
 
   // ── Fetchers ────────────────────────────────────────────────────────────────
 
@@ -398,6 +447,51 @@ function PlanningDashboard() {
     );
   }, [pendingJobs, searchQuery]);
 
+  const metricFilteredPendingJobs = useMemo(() => {
+    if (!filteredPendingJobs || filteredPendingJobs.length === 0) return [];
+
+    if (activeMetricFilter === "all" || activeMetricFilter === "dispatched") {
+      return filteredPendingJobs;
+    }
+
+    if (activeMetricFilter === "pending") {
+      return filteredPendingJobs.filter((job) => {
+        const status = String(job.status || job.job_status || "").toLowerCase();
+
+        return (
+          status === "queued" ||
+          status === "assigned" ||
+          status === "pending" ||
+          !status
+        );
+      });
+    }
+
+    if (activeMetricFilter === "expired") {
+      return filteredPendingJobs.filter((job) => {
+        const status = String(job.status || job.job_status || "").toLowerCase();
+
+        return (
+          status === "expired" ||
+          job.acceptance_expired === true ||
+          job.is_expired === true
+        );
+      });
+    }
+
+    if (activeMetricFilter === "redispatched") {
+      return filteredPendingJobs.filter((job) => {
+        return (
+          job.redispatched === true ||
+          job.is_redispatched === true ||
+          Number(job.redispatch_count || 0) > 0
+        );
+      });
+    }
+
+    return filteredPendingJobs;
+  }, [filteredPendingJobs, activeMetricFilter]);
+
   const filteredPlannedAssignments = useMemo(() => {
     if (!searchQuery.trim()) return plannedAssignments;
     const q = searchQuery.toLowerCase().trim();
@@ -416,15 +510,15 @@ function PlanningDashboard() {
   useEffect(() => {
     setPendingPage(1);
     setPlannedPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, activeMetricFilter]);
 
   // Clamp page to total pages when data changes to prevent empty page views
   useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(filteredPendingJobs.length / PAGE_SIZE));
+    const totalPages = Math.max(1, Math.ceil(metricFilteredPendingJobs.length / PAGE_SIZE));
     if (pendingPage > totalPages) {
       setPendingPage(totalPages);
     }
-  }, [filteredPendingJobs.length, pendingPage]);
+  }, [metricFilteredPendingJobs.length, pendingPage]);
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(filteredPlannedAssignments.length / PAGE_SIZE));
@@ -434,9 +528,12 @@ function PlanningDashboard() {
   }, [filteredPlannedAssignments.length, plannedPage]);
 
   // Pagination logic
-  const pendingTotalPages = Math.max(1, Math.ceil(filteredPendingJobs.length / PAGE_SIZE));
+  const pendingTotalPages = Math.max(1, Math.ceil(metricFilteredPendingJobs.length / PAGE_SIZE));
   const safePendingPage = Math.min(pendingPage, pendingTotalPages);
-  const paginatedPendingJobs = filteredPendingJobs.slice((safePendingPage - 1) * PAGE_SIZE, safePendingPage * PAGE_SIZE);
+  const paginatedPendingJobs = metricFilteredPendingJobs.slice(
+    (safePendingPage - 1) * PAGE_SIZE,
+    safePendingPage * PAGE_SIZE
+  );
 
   const plannedTotalPages = Math.max(1, Math.ceil(filteredPlannedAssignments.length / PAGE_SIZE));
   const safePlannedPage = Math.min(plannedPage, plannedTotalPages);
@@ -455,6 +552,9 @@ function PlanningDashboard() {
 
   return (
     <div className="planning-dashboard">
+      <div className="mb-6">
+        <MetricsCards onFilterChange={handleMetricFilterChange} />
+      </div>
       <AlertBanner
         onViewHistory={(jobId, jobTitle) => {
           setShowHistoryJobId(jobId);
@@ -522,6 +622,14 @@ function PlanningDashboard() {
             <span>Planned Assignments</span>
             <span className="planning-tab-count">{plannedAssignments.length}</span>
           </button>
+          <button
+            className={`planning-tab ${activeTab === 'dispatch' ? 'planning-tab-active' : ''}`}
+            onClick={() => setActiveTab('dispatch')}
+          >
+            <span className="planning-tab-dot" style={{ backgroundColor: '#3B82F6' }}></span>
+            <span>Dispatch Queue</span>
+            <span className="planning-tab-count">{dispatchQueueCount}</span>
+          </button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
           <div className="planning-header-search-wrap">
@@ -566,15 +674,46 @@ function PlanningDashboard() {
           )}
 
           <div className="section-content">
+            {activeMetricFilter !== "all" && (
+              <div className="metric-filter-banner">
+                <div className="metric-filter-left">
+                  <div className="metric-filter-icon" aria-hidden="true">
+                    🔎
+                  </div>
+
+                  <div className="metric-filter-text-wrap">
+                    <p className="metric-filter-label">Active metric filter</p>
+                    <h4 className="metric-filter-value">{activeMetricFilter}</h4>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="metric-clear-btn"
+                  onClick={() => {
+                    setActiveMetricFilter("all");
+                    setPendingPage(1);
+                  }}
+                >
+                  ✕ Clear Filter
+                </button>
+              </div>
+            )}
+
+
             {jobsLoading ? (
               <LoadingSpinner message="Loading pending jobs..." />
             ) : (
               <div className="table-container">
-                {filteredPendingJobs.length === 0 ? (
-                  <div className="empty-state">
-                    <span className="empty-icon"></span>
-                    <h3>{searchQuery.trim() ? "No jobs match your search" : "No pending jobs"}</h3>
-                    <p>{searchQuery.trim() ? "Try adjusting your search terms." : "All jobs are either assigned or completed."}</p>
+                {metricFilteredPendingJobs.length === 0 ? (
+                  <div className="metric-empty-card">
+                    <div className="metric-empty-illustration" aria-hidden="true">
+                      <div className="metric-empty-circle">📋</div>
+                      <div className="metric-empty-search">🔍</div>
+                    </div>
+
+                    <h3 className="metric-empty-title">{getMetricEmptyTitle()}</h3>
+                    <p className="metric-empty-description">{getMetricEmptyDescription()}</p>
                   </div>
                 ) : (
                   <table className="dashboard-table">
@@ -700,7 +839,7 @@ function PlanningDashboard() {
                 {/* Pagination */}
                 <div className="planning-pagination">
                   <span className="planning-page-info">
-                    Page <strong>{safePendingPage}</strong> of <strong>{pendingTotalPages}</strong> · {filteredPendingJobs.length} results
+                    Page <strong>{safePendingPage}</strong> of <strong>{pendingTotalPages}</strong> · {metricFilteredPendingJobs.length} results
                   </span>
                   <div className="planning-page-controls">
                     <button className="planning-page-btn" onClick={() => setPendingPage(1)} disabled={safePendingPage === 1}>«</button>
@@ -724,6 +863,11 @@ function PlanningDashboard() {
             )}
           </div>
         </section>
+      )}
+
+      {/* DISPATCH QUEUE TAB */}
+      {activeTab === 'dispatch' && (
+        <DispatchQueueTable onCountChange={setDispatchQueueCount} />
       )}
 
       {/* PLANNED ASSIGNMENTS TAB */}

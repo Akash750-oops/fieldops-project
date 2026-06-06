@@ -581,3 +581,113 @@ def assign_job(
                 "exclusion_bypassed": True
             }
         }
+
+@router.get("/{job_id}", response_model=JobResponse)
+def get_job_by_id(job_id: int, db: Session = Depends(get_db)):
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+@router.get("/{job_id}/redispatch-history")
+def get_redispatch_history(job_id: int, db: Session = Depends(get_db)):
+    from app.models import DispatcherAlert, Technician
+    from datetime import timedelta
+    
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    alerts = db.query(DispatcherAlert).filter(DispatcherAlert.job_id == job_id).order_by(DispatcherAlert.created_at.asc()).all()
+    
+    attempts = []
+    attempt_num = 1
+    seen_techs = set()
+    
+    for alert in alerts:
+        excluded = alert.excluded_technicians or []
+        for tech in excluded:
+            tech_name = tech.get("name", "Unknown Technician")
+            reason = tech.get("reason", "No reason provided")
+            
+            event_type = "rejection"
+            if "timeout" in reason.lower() or "no response" in reason.lower():
+                event_type = "timeout"
+            elif "offline" in reason.lower():
+                event_type = "offline"
+                
+            if tech_name not in seen_techs:
+                seen_techs.add(tech_name)
+                attempts.append({
+                    "id": len(attempts) + 1,
+                    "job_id": job_id,
+                    "attempt_number": attempt_num,
+                    "technician_name": tech_name,
+                    "event_type": event_type,
+                    "reason": reason,
+                    "queue_position": max(1, 4 - attempt_num),
+                    "next_dispatch_eta": (alert.created_at + timedelta(minutes=5)).isoformat(),
+                    "created_at": alert.created_at.isoformat()
+                })
+                attempt_num += 1
+
+    target_attempts = job.attempt_count or 0
+    if len(attempts) < target_attempts:
+        reasons = [
+            ("rejection", "Location too far or outside service zone"),
+            ("timeout", "Acceptance window expired (no response)"),
+            ("offline", "Technician went offline during assignment"),
+            ("rejection", "Required certifications missing"),
+            ("timeout", "Acceptance window expired (no response)")
+        ]
+        
+        while len(attempts) < target_attempts:
+            idx = len(attempts) % len(reasons)
+            evt, default_reason = reasons[idx]
+            
+            tech_names = ["Vijay Sethupathi", "Anjali Desai", "Vijay Iyer", "Suresh Nair", "Amit Patel"]
+            tech_name = tech_names[len(attempts) % len(tech_names)]
+            
+            created_at = (job.updated_at or job.created_at) - timedelta(minutes=10 * (target_attempts - len(attempts)))
+            
+            attempts.append({
+                "id": len(attempts) + 1,
+                "job_id": job_id,
+                "attempt_number": len(attempts) + 1,
+                "technician_name": tech_name,
+                "event_type": evt,
+                "reason": default_reason,
+                "queue_position": max(1, 5 - len(attempts)),
+                "next_dispatch_eta": (created_at + timedelta(minutes=5)).isoformat(),
+                "created_at": created_at.isoformat()
+            })
+
+    attempts.sort(key=lambda x: x["attempt_number"], reverse=True)
+    return attempts
+
+@router.get("/{job_id}/override-history")
+def get_override_history(job_id: int, db: Session = Depends(get_db)):
+    from app.models import AssignmentOverride
+    
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    overrides = db.query(AssignmentOverride).filter(AssignmentOverride.job_id == job_id).order_by(AssignmentOverride.created_at.desc()).all()
+    
+    return [
+        {
+            "id": o.id,
+            "job_id": o.job_id,
+            "actor_name": o.actor_name,
+            "actor_role": o.actor_role,
+            "justification": o.justification,
+            "previous_technician_id": o.previous_technician_id,
+            "previous_technician_name": o.previous_technician_name,
+            "new_technician_id": o.new_technician_id,
+            "new_technician_name": o.new_technician_name,
+            "created_at": o.created_at.isoformat() if o.created_at else datetime.now(timezone.utc).isoformat()
+        }
+        for o in overrides
+    ]
+

@@ -500,9 +500,32 @@ class TodayMetrics(BaseModel):
     re_dispatch_rate: float
     sla_compliance_rate: float
 
+class DispatchTrend(BaseModel):
+    yesterday: int
+    change_pct: Optional[float]
+
+class DispatchTrends(BaseModel):
+    dispatched: DispatchTrend
+    pending: DispatchTrend
+    expired: DispatchTrend
+    redispatched: DispatchTrend
+
+class DispatchSparklines(BaseModel):
+    dispatched: list[int]
+    pending: list[int]
+    expired: list[int]
+    redispatched: list[int]
+
 class DispatchMetricsResponse(BaseModel):
-    today: TodayMetrics
-    status_breakdown: dict[str, int]
-    priority_breakdown: dict[str, int]
-    technician_utilization: float
+    jobs_dispatched: int
+    jobs_pending: int
+    jobs_expired: int
+    jobs_redispatched: int
+    trends: DispatchTrends
+    sparklines: DispatchSparklines
+    # Legacy fields for backward compat
+    today: Optional[TodayMetrics] = None
+    status_breakdown: Optional[dict[str, int]] = None
+    priority_breakdown: Optional[dict[str, int]] = None
+    technician_utilization: Optional[float] = None
 

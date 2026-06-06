@@ -12,15 +12,20 @@ import { ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, LayoutDashboard
 import NotificationBell from "./components/notifications/NotificationBell";
 import NotificationDrawer from "./components/notifications/NotificationDrawer";
 import NotificationDetail from "./components/notifications/NotificationDetail";
+import ToastContainer from "./components/notifications/ToastContainer";
 import {
   fetchNotifications,
   markNotificationAsRead,
   connectNotificationSocket,
-  disconnectNotificationSocket
+  disconnectNotificationSocket,
+  subscribeToDispatchEvents,
+  createToastFromNotification,
 } from "./services/notificationService";
 import { getAllTechnicians } from "./services/technicianService";
+import { ToastProvider, useToast } from "./hooks/useToast";
 
-function App() {
+function AppInner() {
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isTechGroupOpen, setIsTechGroupOpen] = useState(true);
@@ -79,6 +84,8 @@ function App() {
       onNewNotification: (notif) => {
         setNotifications((prev) => [notif, ...prev]);
         setUnreadCount((prev) => prev + 1);
+        // Mirror to toast system
+        addToast(createToastFromNotification(notif));
         // Trigger bell bounce animation
         setIsBellAnimated(true);
         setTimeout(() => setIsBellAnimated(false), 1000);
@@ -90,7 +97,11 @@ function App() {
 
     const socket = connectNotificationSocket(activeTechId, socketHandlers);
 
+    // Subscribe to dispatch-specific job.* events
+    const unsubscribeDispatch = subscribeToDispatchEvents(socket, addToast);
+
     return () => {
+      unsubscribeDispatch();
       disconnectNotificationSocket(socket);
     };
   }, [activeTechId]);
@@ -143,36 +154,56 @@ function App() {
     setUnreadCount(0);
   };
 
-  // Helper function to trigger a mock notification (useful for testing & demo)
+  // Helper function to trigger mock dispatch events (cycles through all types)
+  const MOCK_EVENTS = [
+    { eventType: 'job.assigned', type: 'info',    title: 'Job Assigned',   message: 'AC Repair Service → Rajesh Kumar',          autoDismiss: 5000,  priority: 'normal',   jobId: 101 },
+    { eventType: 'job.accepted', type: 'success', title: 'Job Accepted',   message: 'Rajesh Kumar accepted AC Repair at ABC Corp', autoDismiss: 5000,  priority: 'normal',   jobId: 101 },
+    { eventType: 'job.rejected', type: 'warning', title: 'Job Rejected',   message: 'Vijay Iyer rejected Plumbing — Too far',       autoDismiss: 8000,  priority: 'critical', jobId: 102 },
+    { eventType: 'job.expired',  type: 'error',   title: 'Job Expired',    message: 'Electrical Repair — Re-dispatching…',          autoDismiss: 10000, priority: 'critical', jobId: 103 },
+    { eventType: 'job.en_route', type: 'info',    title: 'Tech En Route',  message: 'Arjun Sharma is en route — ETA 12 min',        autoDismiss: 5000,  priority: 'normal',   jobId: 104 },
+  ];
+  let mockCursor = 0;
+
   const triggerMockNotification = () => {
-    const randomId = `notif-${Date.now()}`;
+    const event = MOCK_EVENTS[mockCursor % MOCK_EVENTS.length];
+    mockCursor += 1;
+
+    // Fire as toast
+    addToast(event);
+
+    // Also populate the bell/drawer with an equivalent notification
     const newNotif = {
-      id: randomId,
-      type: Math.random() > 0.5 ? "JOB_ASSIGNED" : "SLA_WARNING",
-      title: Math.random() > 0.5 ? "New Urgent Job" : "SLA Deadline Approaching",
-      message: Math.random() > 0.5 ? "AC repair job assigned near Anna Nagar" : "AC Repair Service SLA deadline in 15 mins!",
+      id: `notif-${Date.now()}`,
+      type: event.eventType === 'job.assigned' ? 'JOB_ASSIGNED' : 'SYSTEM',
+      title: event.title,
+      message: event.message,
       isRead: false,
       createdAt: new Date().toISOString(),
-      jobId: 101,
+      jobId: event.jobId,
       job: {
-        id: 101,
-        title: "AC Repair Service",
-        description: "Customer reported cooling issue in split AC.",
-        location: "Anna Nagar, Chennai",
-        priority: "HIGH",
-        customer_name: "Arun Kumar",
+        id: event.jobId,
+        title: event.title,
+        description: event.message,
+        location: "Chennai",
+        priority: event.priority === 'critical' ? 'HIGH' : 'MEDIUM',
+        customer_name: "Demo Customer",
         customer_phone: "+91 9876543210",
         estimated_value: 2500,
         sla_deadline: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
         distance_km: 6.8,
-        required_skills: ["AC Repair", "Electrical", "Customer Support"]
+        required_skills: []
       }
     };
-
     setNotifications((prev) => [newNotif, ...prev]);
     setUnreadCount((prev) => prev + 1);
     setIsBellAnimated(true);
     setTimeout(() => setIsBellAnimated(false), 1000);
+  };
+
+  const handleToastNavigate = (jobId) => {
+    // Navigate to jobs tab — in a real app you'd open the job detail
+    setActiveTab("jobs");
+    console.log("Navigate to job:", jobId);
   };
 
   return (
@@ -370,7 +401,19 @@ function App() {
         onNotificationClick={handleNotificationClick}
         onMarkAllAsRead={handleMarkAllAsRead}
       />
+
+      {/* Real-time toast overlay */}
+      <ToastContainer onNavigate={handleToastNavigate} />
     </div>
+  );
+}
+
+// Wrap with ToastProvider at the root
+function App() {
+  return (
+    <ToastProvider>
+      <AppInner />
+    </ToastProvider>
   );
 }
 
