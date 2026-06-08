@@ -82,5 +82,23 @@ class DispatcherAlertService:
         
         logger.info(f"DispatcherAlertService: [DASHBOARD] Broadcasting alert {alert_id} (Severity: {severity}) for job {job.id}")
         
+        # Emit alert to all clients via Socket.IO
+        import asyncio
+        from app.services.socket_manager import sio
+        
+        async def broadcast():
+            try:
+                await sio.emit("redispatch:alert", payload)
+            except Exception as se:
+                logger.error(f"Failed to emit socket.io alert: {se}")
+                
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(broadcast())
+        except RuntimeError:
+            new_loop = asyncio.new_event_loop()
+            new_loop.run_until_complete(broadcast())
+            new_loop.close()
+        
         # Simulate Email to dispatchers/managers
         logger.info(f"DispatcherAlertService: [EMAIL] Alert sent for job {job.id} - Attempt {attempt} - Action Required")

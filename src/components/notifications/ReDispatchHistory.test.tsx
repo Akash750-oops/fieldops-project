@@ -4,6 +4,27 @@ import React from "react";
 import "@testing-library/jest-dom";
 import ReDispatchHistory from "./ReDispatchHistory";
 
+vi.mock("../../services/planningService", () => ({
+  getJob: vi.fn().mockResolvedValue({
+    data: {
+      id: 101,
+      customer_name: "Amit Sharma",
+      location: "13.0827,80.2707",
+      priority: "HIGH",
+      service_type: "AC Repair",
+      status: "active"
+    }
+  }),
+  getOverrideHistory: vi.fn().mockResolvedValue({ data: [] }),
+  forceAssignJob: vi.fn().mockResolvedValue({ message: "Override applied successfully" })
+}));
+
+vi.mock("../../hooks/useToast", () => ({
+  useToast: () => ({
+    addToast: vi.fn()
+  })
+}));
+
 // Mock global fetch
 const mockHistoryData = [
   {
@@ -77,7 +98,7 @@ describe("ReDispatchHistory Component", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Attempts")).toBeInTheDocument();
+      expect(screen.getAllByText("Attempts")[0]).toBeInTheDocument();
     });
 
     // Check stats badges
@@ -159,7 +180,8 @@ describe("ReDispatchHistory Component", () => {
   it("triggers CSV download when Export button is clicked", async () => {
     const createObjectURL = vi.fn();
     const revokeObjectURL = vi.fn();
-    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    window.URL.createObjectURL = createObjectURL;
+    window.URL.revokeObjectURL = revokeObjectURL;
     
     // Mock anchor element download clicks
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});

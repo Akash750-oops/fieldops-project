@@ -3,7 +3,7 @@
  * Refactored to use modular CountdownTimer, ActionButtons, and WaitingState components.
  */
 import React, { useState, useEffect } from "react";
-import { MapPin, Phone, User, DollarSign, Navigation, AlertTriangle } from "lucide-react";
+import { MapPin, Phone, User, DollarSign, Navigation, AlertTriangle, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { NotificationDetailProps } from "../../types/notifications";
 import CountdownTimer from "./CountdownTimer";
@@ -115,10 +115,11 @@ export const NotificationDetail: React.FC<NotificationDetailProps> = ({
   const isActioned = actionState === "SUCCESS";
 
   return (
-    <div className="noc-module">
+    <div className="notification-detail-backdrop" onClick={onClose}>
       <motion.div
         className="notification-detail-card"
         style={{ position: "relative" }}
+        onClick={(e) => e.stopPropagation()}
         drag="x"
         dragConstraints={{ left: 0, right: 300 }}
         dragElastic={{ left: 0.1, right: 0.5 }}
@@ -131,6 +132,17 @@ export const NotificationDetail: React.FC<NotificationDetailProps> = ({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0 }}
       >
+        {/* Close Button */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="detail-close-btn"
+          aria-label="Close details"
+          title="Close details"
+        >
+          <X size={18} />
+        </button>
+
         {/* Waiting State Overlay */}
         <WaitingState
           state={actionState}
@@ -139,103 +151,108 @@ export const NotificationDetail: React.FC<NotificationDetailProps> = ({
           onCancel={reset}
         />
 
-        {/* Header */}
-        <div className="detail-header">
-          <div>
-            <span className="detail-grid-label" style={{ display: "block", marginBottom: "2px" }}>
-              Job ID: #{jobData.id}
+        {/* Card Body */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {/* Header */}
+          <div className="detail-header" style={{ padding: "0 24px 0 0", borderBottom: "none", gap: "4px", marginBottom: "4px" }}>
+            <div>
+              <span className="detail-grid-label" style={{ display: "block", marginBottom: "2px", fontSize: "10px" }}>
+                Job ID: #{jobData.id}
+              </span>
+              <h2 className="detail-header-title" style={{ fontSize: "17px", fontWeight: 700 }}>{jobData.title}</h2>
+            </div>
+            <span className={`detail-priority-badge priority-${(jobData.priority || "medium").toLowerCase()}`} style={{ padding: "2px 6px", fontSize: "10px" }}>
+              {jobData.priority}
             </span>
-            <h2 className="detail-header-title">{jobData.title}</h2>
           </div>
-          <span className={`detail-priority-badge priority-${(jobData.priority || "medium").toLowerCase()}`}>
-            {jobData.priority} Priority
-          </span>
-        </div>
 
-        {/* Override Warning Banner */}
-        {overrideLogs.length > 0 && (
-          <div style={{ marginBottom: "16px" }}>
-            <OverrideWarning
-              actorName={overrideLogs[0].actor_name}
-              actorRole={overrideLogs[0].actor_role}
-              assignedAt={overrideLogs[0].created_at}
-              reason={overrideLogs[0].justification}
-              onViewHistory={() => setShowHistory(true)}
+          {/* Override Warning Banner */}
+          {overrideLogs.length > 0 && (
+            <div style={{ marginBottom: "4px" }}>
+              <OverrideWarning
+                actorName={overrideLogs[0].actor_name}
+                actorRole={overrideLogs[0].actor_role}
+                assignedAt={overrideLogs[0].created_at}
+                reason={overrideLogs[0].justification}
+                onViewHistory={() => setShowHistory(true)}
+              />
+            </div>
+          )}
+
+          {/* Countdown Timer */}
+          {jobData.sla_deadline && (
+            <CountdownTimer
+              expiresAt={jobData.sla_deadline}
+              onExpire={handleExpire}
+              onWarning={handleWarning}
+              jobId={jobData.id}
+              hidden={isActioned}
             />
-          </div>
-        )}
+          )}
 
-        {/* Countdown Timer */}
-        {jobData.sla_deadline && (
-          <CountdownTimer
-            expiresAt={jobData.sla_deadline}
-            onExpire={handleExpire}
-            onWarning={handleWarning}
+          {/* Job Details Grid */}
+          <div className="detail-row-grid" style={{ marginBottom: "8px" }}>
+            <div className="detail-grid-item">
+              <span className="detail-grid-label">Customer</span>
+              <span className="detail-grid-value" style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px" }}>
+                <User size={12} color="#64748b" /> {jobData.customer_name}
+              </span>
+            </div>
+            <div className="detail-grid-item">
+              <span className="detail-grid-label">Contact</span>
+              <span className="detail-grid-value" style={{ fontSize: "12px" }}>
+                <a href={`tel:${jobData.customer_phone}`} style={{ display: "flex", alignItems: "center", gap: "4px", color: "#3b82f6", textDecoration: "none" }}>
+                  <Phone size={12} /> {jobData.customer_phone}
+                </a>
+              </span>
+            </div>
+            <div className="detail-grid-item">
+              <span className="detail-grid-label">Distance</span>
+              <span className="detail-grid-value" style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px" }}>
+                <Navigation size={12} color="#64748b" /> {jobData.distance_km} km
+              </span>
+            </div>
+            <div className="detail-grid-item">
+              <span className="detail-grid-label">Est. Value</span>
+              <span className="detail-grid-value" style={{ display: "flex", alignItems: "center", gap: "2px", fontWeight: 700, color: "#10b981", fontSize: "12px" }}>
+                ${jobData.estimated_value}
+              </span>
+            </div>
+          </div>
+
+          {/* Compact Description */}
+          <p className="detail-description">
+            {jobData.description}
+          </p>
+
+          {/* Inline Location Address (No huge map placeholder!) */}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", margin: "2px 0 6px 0" }}>
+            <MapPin size={14} color="#ef4444" className="flex-shrink-0" />
+            <span style={{ fontSize: "12px", color: "#475569", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={jobData.location}>
+              {jobData.location}
+            </span>
+          </div>
+
+          {/* Compact Skills Chips */}
+          <div className="skills-container" style={{ gap: "4px", marginBottom: "4px" }}>
+            {jobData.required_skills?.map((skill: string) => (
+              <span key={skill} className="skill-chip" style={{ padding: "2px 6px", fontSize: "10.5px" }}>
+                {skill}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Action Buttons (Fixed Footer) */}
+        <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "12px", marginTop: "4px" }}>
+          <ActionButtons
+            onAccept={handleAccept}
+            onReject={handleReject}
+            onReassign={handleReassign}
             jobId={jobData.id}
-            hidden={isActioned}
+            disabled={actionState !== "IDLE"}
           />
-        )}
-
-        {/* Job Details Grid */}
-        <div className="detail-row-grid">
-          <div className="detail-grid-item">
-            <span className="detail-grid-label">Customer</span>
-            <span className="detail-grid-value" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <User size={14} color="#64748b" /> {jobData.customer_name}
-            </span>
-          </div>
-          <div className="detail-grid-item">
-            <span className="detail-grid-label">Contact</span>
-            <span className="detail-grid-value">
-              <a href={`tel:${jobData.customer_phone}`} style={{ display: "flex", alignItems: "center", gap: "6px", color: "#3b82f6", textDecoration: "none" }}>
-                <Phone size={14} /> {jobData.customer_phone}
-              </a>
-            </span>
-          </div>
-          <div className="detail-grid-item">
-            <span className="detail-grid-label">Distance</span>
-            <span className="detail-grid-value" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <Navigation size={14} color="#64748b" /> {jobData.distance_km} km away
-            </span>
-          </div>
-          <div className="detail-grid-item">
-            <span className="detail-grid-label">Est. Value</span>
-            <span className="detail-grid-value" style={{ display: "flex", alignItems: "center", gap: "2px", fontWeight: 700, color: "#10b981" }}>
-              ${jobData.estimated_value}
-            </span>
-          </div>
         </div>
-
-        <div className="detail-section-title">Job Description</div>
-        <p style={{ fontSize: "14px", color: "#475569", lineHeight: 1.5, margin: "0 0 16px 0" }}>
-          {jobData.description}
-        </p>
-
-        <div className="detail-section-title">Required Skills</div>
-        <div className="skills-container">
-          {jobData.required_skills?.map((skill: string) => (
-            <span key={skill} className="skill-chip">
-              {skill}
-            </span>
-          ))}
-        </div>
-
-        {/* Visual Map Placeholder */}
-        <div className="detail-section-title">Location Map</div>
-        <div className="map-placeholder">
-          <MapPin size={24} color="#ef4444" />
-          <span style={{ fontWeight: 600, color: "#1e293b", fontSize: "13px" }}>{jobData.location}</span>
-          <span style={{ fontSize: "11px", color: "#94a3b8" }}>(Static map preview)</span>
-        </div>
-
-        {/* Action Buttons */}
-        <ActionButtons
-          onAccept={handleAccept}
-          onReject={handleReject}
-          onReassign={handleReassign}
-          jobId={jobData.id}
-          disabled={actionState !== "IDLE"}
-        />
       </motion.div>
 
       {showHistory && (

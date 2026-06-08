@@ -25,9 +25,12 @@ import {
   Info,
   ChevronDown,
   UserCheck,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Check
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
+import "./notifications.css";
 
 interface RedispatchAttempt {
   id: number;
@@ -44,6 +47,7 @@ interface RedispatchAttempt {
 
 import ForceAssignButton from "./ForceAssignButton";
 import { getJob } from "../../services/planningService";
+import { useToast } from "../../hooks/useToast";
 
 interface ReDispatchHistoryProps {
   jobId: number;
@@ -76,6 +80,8 @@ export default function ReDispatchHistory({
   const [isJobDetailsExpanded, setIsJobDetailsExpanded] = useState(true);
   const [isDispatchStatusExpanded, setIsDispatchStatusExpanded] = useState(true);
   const [isQueueInfoExpanded, setIsQueueInfoExpanded] = useState(true);
+  const [copiedJobId, setCopiedJobId] = useState(false);
+  const { addToast } = useToast();
 
   useEffect(() => {
     const fetchJobDetail = async () => {
@@ -238,6 +244,23 @@ export default function ReDispatchHistory({
     }
   };
 
+  const isCompleted = jobDetail?.status?.toLowerCase() === "completed";
+  const attemptsSubtitle = attemptCount === 0 
+    ? "No dispatch attempts yet" 
+    : `${attemptCount} of 5 attempts made`;
+  
+  const queueSubtitle = isCompleted
+    ? "Job completed"
+    : currentQueuePosition === 1
+      ? "Top priority in queue"
+      : `Position #${currentQueuePosition} in queue`;
+
+  const etaSubtitle = isCompleted
+    ? "Job is completed"
+    : nextDispatchETA
+      ? "Automatic search scheduled"
+      : "No automatic search active";
+
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
       <motion.div 
@@ -245,97 +268,95 @@ export default function ReDispatchHistory({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 16 }}
         transition={{ type: "spring", duration: 0.4, bounce: 0.15 }}
-        className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[92vh]"
+        className="rdh-modal-container"
         style={{ fontFamily: "'Inter', sans-serif" }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="history-dialog-title"
       >
         {/* ── Header ── */}
-        <div className="px-7 py-5 bg-white flex justify-between items-center border-b border-slate-100 shrink-0">
+        <div className="rdh-header">
           <div className="flex items-center gap-4">
-            <div className="w-11 h-11 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shadow-sm shrink-0">
+            <div className="rdh-header-icon-box">
               <History className="w-5 h-5 text-[#2563eb]" />
             </div>
             <div className="text-left">
-              <h2 id="history-dialog-title" className="text-lg font-extrabold text-slate-900 tracking-tight leading-tight">Dispatch History</h2>
-              <p className="text-slate-500 text-[11px] font-medium mt-0.5">
+              <h2 id="history-dialog-title" className="rdh-header-title">Dispatch History</h2>
+              <p className="rdh-header-subtitle">
                 {jobDetail ? `${jobDetail.service_type} - ${jobDetail.customer_name}` : jobTitle} (ID: #{jobId})
               </p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center transition duration-200 shrink-0"
+            className="rdh-header-close-btn"
             aria-label="Close dialog"
           >
             <X size={15} />
           </button>
         </div>
 
-        {/* ── Scrollable body ── */}
-        <div className="flex-1 overflow-y-auto bg-[#f5f7fa] min-h-0">
-          <div className="p-6 pb-8 space-y-5">
+        {/* ── Modal Body (No vertical scroll on wrapper itself) ── */}
+        <div className="rdh-body">
+          <div className="rdh-body-inner">
 
             {/* KPI row */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="rdh-summary-row">
               {/* Attempts */}
-              <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex items-center gap-3 text-left">
-                <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+              <div className="rdh-summary-card">
+                <div className="rdh-summary-icon-box bg-emerald-50 text-emerald-600">
                   <FileText size={18} className="text-emerald-600" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Attempts</div>
-                  <div className="mt-0.5 flex items-baseline gap-1">
+                  <div className="rdh-summary-label">Attempts</div>
+                  <div className="rdh-summary-value flex items-baseline gap-1">
                     <span className="text-xl font-extrabold text-slate-900">{attemptCount}</span>
                     <span className="text-slate-400 text-[11px] font-semibold">/ 5 max</span>
                   </div>
-                  <div className="text-[10px] text-slate-400 font-medium mt-0.5">No dispatch attempts yet</div>
+                  <div className="rdh-summary-subtitle">{attemptsSubtitle}</div>
                 </div>
               </div>
 
               {/* Queue Position */}
-              <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex items-center gap-3 text-left">
-                <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+              <div className="rdh-summary-card">
+                <div className="rdh-summary-icon-box bg-blue-50 text-blue-600">
                   <TrendingUp size={18} className="text-blue-600" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Queue Position</div>
-                  <div className="mt-0.5 flex items-baseline gap-1">
+                  <div className="rdh-summary-label">Queue Position</div>
+                  <div className="rdh-summary-value flex items-baseline gap-1">
                     <span className="text-xl font-extrabold text-slate-900">#{currentQueuePosition}</span>
                     <span className="text-slate-400 text-[11px] font-semibold">in line</span>
                   </div>
-                  <div className="text-[10px] text-slate-400 font-medium mt-0.5">Current queue priority</div>
+                  <div className="rdh-summary-subtitle">{queueSubtitle}</div>
                 </div>
               </div>
 
               {/* Next Dispatch ETA */}
-              <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex items-center gap-3 text-left">
-                <div className="w-10 h-10 rounded-lg bg-violet-50 flex items-center justify-center shrink-0">
+              <div className="rdh-summary-card">
+                <div className="rdh-summary-icon-box bg-violet-50 text-violet-600">
                   <Clock size={18} className="text-violet-600" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Next Dispatch ETA</div>
-                  <div className="mt-0.5 text-sm font-bold text-slate-800 truncate">
+                  <div className="rdh-summary-label">Next Dispatch ETA</div>
+                  <div className="rdh-summary-value text-sm font-bold text-slate-800 truncate">
                     {nextDispatchETA
                       ? new Date(nextDispatchETA).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                       : <span className="text-slate-700">No pending search</span>}
                   </div>
-                  <div className="text-[10px] text-slate-400 font-medium mt-0.5">Estimated time unavailable</div>
+                  <div className="rdh-summary-subtitle">{etaSubtitle}</div>
                 </div>
               </div>
             </div>
 
             {/* ── Two-column body ── */}
-            <div className="grid grid-cols-5 gap-5 items-start">
-
-              {/* Left: Event History — 3/5 */}
-              <div className="col-span-3 flex flex-col gap-0 text-left">
-                <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex flex-col" style={{ minHeight: 380 }}>
-
+            <div className="rdh-main-layout">
+              {/* Left Column: Event History */}
+              <div className="rdh-left-column text-left">
+                <div className="rdh-event-history-card">
                   {/* Card header */}
-                  <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-                    <h3 className="text-[10px] font-extrabold text-slate-600 uppercase tracking-widest">Event History</h3>
+                  <div className="rdh-event-history-header">
+                    <h3 className="rdh-event-history-title">Event History</h3>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={fetchHistory}
@@ -349,7 +370,7 @@ export default function ReDispatchHistory({
                         onClick={handleExportCSV}
                         disabled={history.length === 0}
                         className="flex items-center gap-1.5 py-1.5 px-3 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-lg text-[11px] font-bold transition duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-                        aria-label="Export to CSV"
+                        aria-label="Export history to CSV"
                       >
                         <Download size={12} className="text-slate-500" />
                         Export CSV
@@ -358,13 +379,13 @@ export default function ReDispatchHistory({
                   </div>
 
                   {/* Filter row */}
-                  <div className="px-5 py-3 border-b border-slate-50 shrink-0">
+                  <div className="rdh-event-history-filter-bar">
                     <div className="relative inline-block">
                       <select
                         value={filterReason}
                         onChange={(e) => setFilterReason(e.target.value)}
                         className="appearance-none bg-slate-50 border border-slate-200 rounded-lg py-1.5 pl-3 pr-7 text-[11px] font-bold text-slate-700 hover:bg-slate-100 transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        aria-label="Filter events"
+                        aria-label="Filter events by type"
                       >
                         <option value="all">All Events</option>
                         <option value="rejection">Rejections Only</option>
@@ -384,39 +405,36 @@ export default function ReDispatchHistory({
                   )}
 
                   {/* Content */}
-                  <div className="flex-1 flex flex-col">
+                  <div className="flex-1 flex flex-col min-h-0">
                     {loading ? (
                       <div className="flex-1 flex flex-col items-center justify-center py-16">
                         <div className="w-7 h-7 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
                         <p className="text-[11px] text-slate-400 font-semibold mt-3">Loading history…</p>
                       </div>
                     ) : filteredData.length === 0 ? (
-                      <div className="flex-1 flex">
-                        {/* Dotted timeline rail */}
-                        <div className="w-10 shrink-0 flex flex-col items-center pt-6 pb-4">
-                          <div className="w-2 h-2 rounded-full bg-slate-300 mt-1" />
-                          <div className="flex-1 border-l-2 border-dashed border-slate-200 mt-2" />
+                      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                        <div className="w-24 h-24 bg-blue-50/60 rounded-full flex items-center justify-center mb-5">
+                          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M19 3H5C3.896 3 3 3.896 3 5V19C3 20.104 3.896 21 5 21H19C20.104 21 21 20.104 21 19V5C21 3.896 20.104 3 19 3Z" stroke="#cbd5e1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M9 7H15" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"/>
+                            <path d="M9 11H13" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"/>
+                            <path d="M9 15H11" stroke="#cbd5e1" strokeWidth="1.5" strokeLinecap="round"/>
+                            <circle cx="16" cy="16" r="4" fill="white" stroke="#3b82f6" strokeWidth="2"/>
+                            <path d="M19 19L22 22" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"/>
+                          </svg>
                         </div>
-                        {/* Empty state */}
-                        <div className="flex-1 flex flex-col items-center justify-center py-10 pr-4">
-                          <div className="w-24 h-24 bg-blue-50/60 rounded-full flex items-center justify-center mb-5">
-                            <svg width="52" height="52" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M19 3H5C3.896 3 3 3.896 3 5V19C3 20.104 3.896 21 5 21H19C20.104 21 21 20.104 21 19V5C21 3.896 20.104 3 19 3Z" stroke="#cbd5e1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              <path d="M9 7H15" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"/>
-                              <path d="M9 11H13" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"/>
-                              <path d="M9 15H11" stroke="#cbd5e1" strokeWidth="1.5" strokeLinecap="round"/>
-                              <circle cx="16" cy="16" r="4" fill="white" stroke="#3b82f6" strokeWidth="2"/>
-                              <path d="M19 19L22 22" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"/>
-                            </svg>
-                          </div>
-                          <p className="text-sm text-slate-700 font-extrabold">No re-dispatch history logged</p>
-                          <p className="text-[11px] text-slate-500 mt-1.5 max-w-[240px] text-center font-medium leading-relaxed">
-                            This job is either freshly queued or was assigned without attempts.
-                          </p>
-                        </div>
+                        <p className="text-sm text-slate-700 font-extrabold">No re-dispatch history logged</p>
+                        <p className="text-[11px] text-slate-500 mt-1.5 max-w-[280px] text-center font-medium leading-relaxed">
+                          {jobDetail
+                            ? isCompleted
+                              ? "This job was completed successfully without any re-dispatch attempts."
+                              : "This job is currently not completed and has no failed dispatch attempts."
+                            : "This job is either freshly queued or was assigned without attempts."
+                          }
+                        </p>
                       </div>
                     ) : (
-                      <div className="overflow-x-auto min-h-0">
+                      <div className="rdh-table-container scrollbar-thin">
                         <table className="min-w-full divide-y divide-slate-100 text-left text-xs">
                           <thead className="bg-slate-50 uppercase tracking-wider sticky top-0 z-10">
                             {table.getHeaderGroups().map(headerGroup => (
@@ -446,136 +464,188 @@ export default function ReDispatchHistory({
                   </div>
 
                   {/* Bottom info banner */}
-                  <div className="mx-4 mb-4 mt-auto pt-3">
-                    <div className="p-3 bg-blue-50/70 border border-blue-100 text-blue-700 rounded-lg text-[10px] font-semibold flex items-center gap-2 leading-relaxed">
-                      <Info size={13} className="text-blue-500 shrink-0" />
-                      Events will appear here once re-dispatch attempts are made.
-                    </div>
+                  <div className="rdh-bottom-info">
+                    <Info size={13} className="text-blue-500 shrink-0" />
+                    <span>
+                      {isCompleted
+                        ? "This job is completed. Re-dispatch events are closed."
+                        : "Events will appear here once re-dispatch attempts are made."
+                      }
+                    </span>
                   </div>
-
                 </div>
               </div>
 
-              {/* Right: Stacked detail cards — 2/5 */}
-              <div className="col-span-2 flex flex-col gap-3">
-
+              {/* Right Column: Detail Cards */}
+              <div className="rdh-right-column scrollbar-thin">
                 {/* Card 1: Job Details */}
-                <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 text-left">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-6 h-6 rounded-md bg-emerald-50 flex items-center justify-center shrink-0">
-                      <FileText size={13} className="text-emerald-600" />
+                <div className="rdh-details-card">
+                  <div className="rdh-details-card-header" onClick={() => setIsJobDetailsExpanded(!isJobDetailsExpanded)}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-md bg-emerald-50 flex items-center justify-center shrink-0">
+                        <FileText size={13} className="text-emerald-600" />
+                      </div>
+                      <h4 className="rdh-details-card-title">Job Details</h4>
                     </div>
-                    <h4 className="text-[10px] font-extrabold text-slate-600 uppercase tracking-widest">Job Details</h4>
+                    <button className="text-slate-400 hover:text-slate-600 transition-colors" type="button" aria-label="Toggle details">
+                      <ChevronDown size={14} className={`transform transition-transform duration-200 ${isJobDetailsExpanded ? "rotate-180" : ""}`} />
+                    </button>
                   </div>
-                  <div className="space-y-2.5 text-[11px]">
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-slate-400 font-medium shrink-0">Job</span>
-                      <span className="text-slate-800 font-semibold text-right min-w-0 break-words leading-relaxed">
-                        {jobDetail ? `${jobDetail.service_type} - ${jobDetail.customer_name}` : jobTitle}
-                      </span>
+                  {isJobDetailsExpanded && (
+                    <div className="rdh-detail-grid">
+                      <div className="rdh-detail-row">
+                        <span className="rdh-detail-label">Job</span>
+                        <span className="rdh-detail-value">
+                          {jobDetail ? `${jobDetail.service_type} - ${jobDetail.customer_name}` : jobTitle}
+                        </span>
+                      </div>
+                      <div className="rdh-detail-row items-center">
+                        <span className="rdh-detail-label">Job ID</span>
+                        <div className="rdh-detail-value flex items-center gap-1.5">
+                          <span>#{jobId}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(String(jobId));
+                              setCopiedJobId(true);
+                              setTimeout(() => setCopiedJobId(false), 1500);
+                              addToast({
+                                type: "success",
+                                title: "Copied!",
+                                message: `Job ID #${jobId} copied to your clipboard`,
+                                autoDismiss: 4000,
+                                priority: "normal",
+                              });
+                            }}
+                            className="p-1 hover:bg-slate-100 rounded transition-colors text-slate-400 hover:text-slate-600 cursor-pointer"
+                            title={copiedJobId ? "Copied!" : "Copy Job ID"}
+                            aria-label={`Copy Job ID ${jobId}`}
+                          >
+                            {copiedJobId ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="rdh-detail-row">
+                        <span className="rdh-detail-label">Created</span>
+                        <span className="rdh-detail-value">
+                          {jobDetail?.created_at ? new Date(jobDetail.created_at).toLocaleString([], { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "—"}
+                        </span>
+                      </div>
+                      <div className="rdh-detail-row">
+                        <span className="rdh-detail-label">Priority</span>
+                        <span className="rdh-detail-value flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${['high','critical'].includes((jobDetail?.priority || '').toLowerCase()) ? 'bg-orange-500' : 'bg-slate-400'}`} />
+                          <span>{(jobDetail?.priority || '—').toUpperCase()}</span>
+                        </span>
+                      </div>
+                      <div className="rdh-detail-row">
+                        <span className="rdh-detail-label">Service Line</span>
+                        <span className="rdh-detail-value">{jobDetail?.service_type || "—"}</span>
+                      </div>
+                      <div className="rdh-detail-row">
+                        <span className="rdh-detail-label">Address</span>
+                        <span className="rdh-detail-value">{jobDetail?.location || "—"}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-slate-400 font-medium shrink-0">Job ID</span>
-                      <span className="text-slate-800 font-semibold">#{jobId}</span>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-slate-400 font-medium shrink-0">Created</span>
-                      <span className="text-slate-800 font-semibold text-right min-w-0 break-words">
-                        {jobDetail?.created_at ? new Date(jobDetail.created_at).toLocaleString([], { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "—"}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-slate-400 font-medium shrink-0">Priority</span>
-                      <span className="flex items-center gap-1.5 justify-end">
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${['high','critical'].includes((jobDetail?.priority || '').toLowerCase()) ? 'bg-orange-500' : 'bg-slate-400'}`} />
-                        <span className="text-slate-800 font-bold">{(jobDetail?.priority || '—').toUpperCase()}</span>
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-slate-400 font-medium shrink-0">Service Line</span>
-                      <span className="text-slate-800 font-semibold text-right min-w-0 break-words">{jobDetail?.service_type || "—"}</span>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-slate-400 font-medium shrink-0">Address</span>
-                      <span className="text-slate-800 font-semibold text-right min-w-0 break-all">{jobDetail?.location || "—"}</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Card 2: Current Dispatch Status */}
-                <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 text-left">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center shrink-0">
-                      <Truck size={13} className="text-blue-600" />
+                <div className="rdh-details-card">
+                  <div className="rdh-details-card-header" onClick={() => setIsDispatchStatusExpanded(!isDispatchStatusExpanded)}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center shrink-0">
+                        <Truck size={13} className="text-blue-600" />
+                      </div>
+                      <h4 className="rdh-details-card-title">Current Dispatch Status</h4>
                     </div>
-                    <h4 className="text-[10px] font-extrabold text-slate-600 uppercase tracking-widest">Current Dispatch Status</h4>
+                    <button className="text-slate-400 hover:text-slate-600 transition-colors" type="button" aria-label="Toggle status">
+                      <ChevronDown size={14} className={`transform transition-transform duration-200 ${isDispatchStatusExpanded ? "rotate-180" : ""}`} />
+                    </button>
                   </div>
-                  <div className="space-y-2.5 text-[11px]">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-slate-400 font-medium shrink-0">Status</span>
-                      {(() => {
-                        const s = (jobDetail?.status || 'queued').toLowerCase();
-                        const cfg: Record<string,string> = {
-                          completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                          assigned:  'bg-blue-50 text-blue-700 border-blue-200',
-                          queued:    'bg-amber-50 text-amber-700 border-amber-200',
-                          failed:    'bg-rose-50 text-rose-700 border-rose-200',
-                        };
-                        const cls = cfg[s] || 'bg-slate-100 text-slate-700 border-slate-200';
-                        return (
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wide ${cls}`}>
-                            {jobDetail?.status || 'Queued'}
-                          </span>
-                        );
-                      })()}
+                  {isDispatchStatusExpanded && (
+                    <div className="rdh-detail-grid">
+                      <div className="rdh-detail-row items-center">
+                        <span className="rdh-detail-label">Status</span>
+                        <div className="rdh-detail-value">
+                          {(() => {
+                            const s = (jobDetail?.status || 'queued').toLowerCase();
+                            const cfg: Record<string,string> = {
+                              completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                              assigned:  'bg-blue-50 text-blue-700 border-blue-200',
+                              queued:    'bg-amber-50 text-amber-700 border-amber-200',
+                              active:    'bg-amber-50 text-amber-700 border-amber-200',
+                              pending:   'bg-amber-50 text-amber-700 border-amber-200',
+                              'in progress': 'bg-sky-50 text-sky-700 border-sky-200',
+                              en_route:  'bg-sky-50 text-sky-700 border-sky-200',
+                              on_site:   'bg-sky-50 text-sky-700 border-sky-200',
+                              failed:    'bg-rose-50 text-rose-700 border-rose-200',
+                              expired:   'bg-rose-50 text-rose-700 border-rose-200',
+                            };
+                            const cls = cfg[s] || 'bg-slate-100 text-slate-700 border-slate-200';
+                            return (
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wide ${cls}`}>
+                                {jobDetail?.status || 'Queued'}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                      <div className="rdh-detail-row">
+                        <span className="rdh-detail-label">Dispatch Method</span>
+                        <span className="rdh-detail-value">Automatic (PlanningAgent)</span>
+                      </div>
+                      <div className="rdh-detail-row">
+                        <span className="rdh-detail-label">Attempts</span>
+                        <span className="rdh-detail-value">{attemptCount} of 5</span>
+                      </div>
                     </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-slate-400 font-medium shrink-0">Dispatch Method</span>
-                      <span className="text-slate-800 font-semibold text-right min-w-0 break-words">Automatic (PlanningAgent)</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-slate-400 font-medium shrink-0">Attempts</span>
-                      <span className="text-slate-800 font-semibold">{attemptCount} of 5</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Card 3: Queue Information */}
-                <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 text-left">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-6 h-6 rounded-md bg-violet-50 flex items-center justify-center shrink-0">
-                      <Layers size={13} className="text-violet-600" />
+                <div className="rdh-details-card">
+                  <div className="rdh-details-card-header" onClick={() => setIsQueueInfoExpanded(!isQueueInfoExpanded)}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-md bg-violet-50 flex items-center justify-center shrink-0">
+                        <Layers size={13} className="text-violet-600" />
+                      </div>
+                      <h4 className="rdh-details-card-title">Queue Information</h4>
                     </div>
-                    <h4 className="text-[10px] font-extrabold text-slate-600 uppercase tracking-widest">Queue Information</h4>
+                    <button className="text-slate-400 hover:text-slate-600 transition-colors" type="button" aria-label="Toggle queue info">
+                      <ChevronDown size={14} className={`transform transition-transform duration-200 ${isQueueInfoExpanded ? "rotate-180" : ""}`} />
+                    </button>
                   </div>
-                  <div className="space-y-2.5 text-[11px]">
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-slate-400 font-medium shrink-0">Queue</span>
-                      <span className="text-slate-800 font-semibold text-right min-w-0 break-words">{jobDetail?.service_type || "General"} Dispatch</span>
+                  {isQueueInfoExpanded && (
+                    <div className="rdh-detail-grid">
+                      <div className="rdh-detail-row">
+                        <span className="rdh-detail-label">Queue</span>
+                        <span className="rdh-detail-value">{jobDetail?.service_type || "General"} Dispatch</span>
+                      </div>
+                      <div className="rdh-detail-row">
+                        <span className="rdh-detail-label">Queue Position</span>
+                        <span className="rdh-detail-value">#{currentQueuePosition} in line</span>
+                      </div>
+                      <div className="rdh-detail-row">
+                        <span className="rdh-detail-label">Next ETA</span>
+                        <span className="rdh-detail-value">
+                          {nextDispatchETA ? new Date(nextDispatchETA).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "No pending search"}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-slate-400 font-medium shrink-0">Queue Position</span>
-                      <span className="text-slate-800 font-semibold">#{currentQueuePosition} in line</span>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-slate-400 font-medium shrink-0">Next ETA</span>
-                      <span className="text-slate-800 font-semibold text-right min-w-0 break-words">
-                        {nextDispatchETA ? new Date(nextDispatchETA).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "No pending search"}
-                      </span>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Card 4: Manual Intervention */}
                 {onForceAssignClick && (
-                  <div className="bg-amber-50 rounded-xl border border-amber-200 p-4 text-left">
+                  <div className="rdh-manual-card">
                     <div className="flex items-start gap-2.5 mb-3">
                       <div className="w-6 h-6 rounded-md bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
                         <Shield size={13} className="text-amber-700" />
                       </div>
                       <div className="min-w-0">
-                        <h4 className="text-[10px] font-extrabold text-amber-900 uppercase tracking-widest">Manual Intervention / Override</h4>
-                        <p className="text-[10px] text-amber-800/80 font-medium mt-1 leading-relaxed">
+                        <h4 className="rdh-manual-title">Manual Intervention / Override</h4>
+                        <p className="rdh-manual-text">
                           Bypass automatic PlanningAgent rules and force-assign this job to any eligible technician with full justification.
                         </p>
                       </div>
@@ -583,12 +653,12 @@ export default function ReDispatchHistory({
                     <button
                       type="button"
                       onClick={() => onForceAssignClick(jobId, jobTitle)}
-                      className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-orange-400 hover:from-orange-600 hover:to-orange-500 text-white rounded-lg text-[11px] font-extrabold flex items-center justify-center gap-2 transition duration-200 shadow-md shadow-orange-400/20 hover:shadow-orange-500/30"
+                      className="rdh-manual-btn"
                     >
                       <Shield size={13} />
                       Force Assign Job
                     </button>
-                    <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-amber-700 font-semibold">
+                    <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-amber-700 font-semibold text-left">
                       <Info size={11} className="shrink-0" />
                       Manual overrides are logged and require justification.
                     </div>
@@ -597,12 +667,12 @@ export default function ReDispatchHistory({
 
                 {/* Fallback: legacy manual assign */}
                 {onManualAssign && !onForceAssignClick && (
-                  <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm text-left space-y-3">
-                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <div className="rdh-details-card">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100 mb-3">
                       <div className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center">
                         <UserCheck size={13} className="text-slate-600" />
                       </div>
-                      <h4 className="text-[10px] font-extrabold text-slate-600 uppercase tracking-widest">Manual Assignment</h4>
+                      <h4 className="rdh-details-card-title">Manual Assignment</h4>
                     </div>
                     <form onSubmit={handleManualAssignSubmit} className="space-y-3">
                       <select
@@ -610,6 +680,7 @@ export default function ReDispatchHistory({
                         value={selectedTechId}
                         onChange={(e) => setSelectedTechId(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-semibold text-slate-700"
+                        aria-label="Select Technician to Force-Assign"
                         required
                       >
                         <option value="">-- Choose a Technician --</option>
@@ -622,20 +693,15 @@ export default function ReDispatchHistory({
                       <button
                         type="submit"
                         disabled={assigning || !selectedTechId}
-                        className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {assigning ? "Assigning…" : "Manual Assign"}
                       </button>
                     </form>
                   </div>
                 )}
-
               </div>
-              {/* end right col */}
-
             </div>
-            {/* end 2-col */}
-
           </div>
         </div>
         {/* end scrollable body */}

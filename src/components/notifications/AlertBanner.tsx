@@ -207,7 +207,7 @@ export default function AlertBanner({
                     onClick={() => onManualAssignClick(alert.job_id, alert.title)}
                     currentUserRole={currentUserRole}
                     className={isCritical ? "bg-rose-600 hover:bg-rose-700" : "bg-amber-600 hover:bg-amber-700"}
-                    label={isCritical ? "Force Assign + Escalate" : "Force Assign"}
+                    label={isCritical ? "Manual Assign + Escalate" : "Manual Assign"}
                   />
                   <button
                     onClick={() => handleDismissLocal(alert.job_id)}
