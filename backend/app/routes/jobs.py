@@ -537,7 +537,7 @@ def reassign_job(
     }
 
 @router.post("/{job_id}/assign")
-def assign_job(
+async def assign_job(
     job_id: int,
     req: JobAssignRequest,
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
@@ -546,23 +546,56 @@ def assign_job(
     db: Session = Depends(get_db),
     redis_client = Depends(get_redis_client)
 ):
-    from app.models import OverrideAuditEvent
+    from app.models import OverrideAuditEvent, InAppNotification, AssignmentOverride
+    from app.services.timer_service import TimerService
+    from app.services.cooldown_service import CooldownService
+    from app.services.socket_manager import sio, emit_notification
+
     with with_job_lock(str(job_id)):
         job = db.query(Job).filter(Job.id == job_id).first()
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
             
+        if job.assigned_technician_id:
+            raise HTTPException(status_code=400, detail="Job is already assigned to a technician")
+            
         tech = db.query(Technician).filter(Technician.tech_id == req.tech_id).first()
+        if not tech and req.tech_id.isdigit():
+            tech = db.query(Technician).filter(Technician.technician_id == int(req.tech_id)).first()
         if not tech:
             raise HTTPException(status_code=404, detail="Technician not found")
             
+        if tech.technician_status == "OFFLINE":
+            raise HTTPException(status_code=400, detail="Technician is OFFLINE")
+            
+        if not req.skip_skill_check and job.required_skill and job.required_skill not in tech.technician_skill:
+            raise HTTPException(status_code=400, detail="Technician missing required skills")
+            
+        if not req.skip_workload_check and tech.current_jobs >= tech.max_jobs:
+            raise HTTPException(status_code=400, detail="Technician at maximum workload capacity")
+            
+        prev_id = None
+        prev_name = "Unassigned"
+        
         job.assigned_technician_id = tech.technician_id
         job.status = "ASSIGNED"
         
+        override_log = AssignmentOverride(
+            job_id=job.id,
+            actor_name="Dispatcher",
+            actor_role="dispatcher",
+            justification=req.justification,
+            previous_technician_id=prev_id,
+            previous_technician_name=prev_name,
+            new_technician_id=tech.technician_id,
+            new_technician_name=tech.technician_name
+        )
+        db.add(override_log)
+        
         audit = OverrideAuditEvent(
             id=str(uuid.uuid4()),
-            actor_id="admin",
-            actor_role="admin",
+            actor_id="dispatcher",
+            actor_role="dispatcher",
             tenant_id=x_tenant_id,
             job_id=job.id,
             action="force_assign",
@@ -572,7 +605,71 @@ def assign_job(
             reason="force_assign bypassing PlanningAgent"
         )
         db.add(audit)
+        
+        notif_id = str(uuid.uuid4())
+        if tech.tech_id:
+            db_notif = InAppNotification(
+                id=notif_id,
+                tech_id=tech.tech_id,
+                job_id=str(job.id),
+                type="JOB_ASSIGNED",
+                title="Job Assigned",
+                body=f"You have been assigned to job: {job.service_type} at {job.location}.",
+                status="UNREAD",
+                priority="HIGH",
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(db_notif)
+            
         db.commit()
+        db.refresh(override_log)
+        
+        # Broadcast override history update
+        override_data = {
+            "id": override_log.id,
+            "job_id": override_log.job_id,
+            "actor_name": override_log.actor_name,
+            "actor_role": override_log.actor_role,
+            "justification": override_log.justification,
+            "previous_technician_id": override_log.previous_technician_id,
+            "previous_technician_name": override_log.previous_technician_name,
+            "new_technician_id": override_log.new_technician_id,
+            "new_technician_name": override_log.new_technician_name,
+            "created_at": override_log.created_at.isoformat() if override_log.created_at else datetime.now(timezone.utc).isoformat()
+        }
+        await sio.emit("override:new", override_data)
+        
+        # Send WS notification to tech
+        if tech.tech_id:
+            payload = {
+                "id": notif_id,
+                "tech_id": tech.tech_id,
+                "job_id": str(job.id),
+                "type": "JOB_ASSIGNED",
+                "title": "Job Assigned",
+                "body": f"You have been assigned to job: {job.service_type} at {job.location}.",
+                "status": "UNREAD",
+                "priority": "HIGH",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "job": {
+                    "id": job.id,
+                    "title": f"{job.service_type} - {job.location}",
+                    "description": job.issue_description,
+                    "location": job.location,
+                    "priority": job.priority,
+                    "status": job.status
+                }
+            }
+            await emit_notification(tech.tech_id, payload)
+            
+        # Start timer & clear cooldown
+        TimerService.start_timer(redis_client, str(job.id), str(tech.tech_id))
+        CooldownService.clear_cooldown(redis_client, str(job.id), str(tech.tech_id))
+        
+        # Dismiss alert banner for all dispatchers
+        await sio.emit("redispatch:dismiss", {
+            "job_id": job.id
+        })
         
         return {
             "status": "ASSIGNED",

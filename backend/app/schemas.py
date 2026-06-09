@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Literal, Optional, Union
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, ConfigDict
 
 
 class JobCreate(BaseModel):
@@ -53,8 +53,7 @@ class JobResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TechnicianCreate(BaseModel):
@@ -91,8 +90,7 @@ class TechnicianResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WorkloadResponse(BaseModel):
@@ -124,8 +122,7 @@ class AvailableTechnicianResponse(BaseModel):
     max_jobs: int
     eligible_for_assignment: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TechnicianAssignment(BaseModel):
@@ -149,8 +146,7 @@ class PlannedAssignmentResponse(BaseModel):
     current_jobs: int
     max_jobs: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class HeartbeatPayload(BaseModel):
@@ -242,8 +238,7 @@ class InAppNotificationResponse(BaseModel):
     expires_at: Optional[datetime] = None
     notification_metadata: Optional[dict] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class PaginatedNotificationsResponse(BaseModel):
     notifications: list[InAppNotificationResponse]
@@ -268,8 +263,7 @@ class TemplateResponse(TemplateCreate):
     is_active: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TemplatePreviewRequest(BaseModel):
     title_template: Optional[str] = None
@@ -461,8 +455,7 @@ class OverrideAuditResponse(BaseModel):
     tenant_id: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SLADetail(BaseModel):
     deadline: Optional[datetime]

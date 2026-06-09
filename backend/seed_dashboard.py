@@ -18,13 +18,21 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def seed_data():
-    from app.models import Technician, Job, AuditEvent, InAppNotification, DispatcherNotification
+    from app.models import (
+        Technician, Job, AuditEvent, InAppNotification,
+        DispatcherNotification, SLAEscalation, DispatcherAlert,
+        OverrideAuditEvent, AssignmentOverride
+    )
     db = SessionLocal()
     try:
         print("Cleaning existing database records...")
         db.query(AuditEvent).delete()
         db.query(InAppNotification).delete()
         db.query(DispatcherNotification).delete()
+        db.query(SLAEscalation).delete()
+        db.query(DispatcherAlert).delete()
+        db.query(OverrideAuditEvent).delete()
+        db.query(AssignmentOverride).delete()
         # Set assigned technician to None first to avoid FK constraints
         db.query(Job).update({Job.assigned_technician_id: None})
         db.commit()
@@ -165,7 +173,8 @@ def seed_data():
                 preferred_service_date=datetime.date.today(),
                 required_skill=j_info["skill"],
                 status=j_info["status"],
-                assigned_technician_id=assigned_id
+                assigned_technician_id=assigned_id,
+                tenant_id="tenant-1"
             )
             db.add(job)
         db.commit()

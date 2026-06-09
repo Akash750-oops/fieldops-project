@@ -7,6 +7,7 @@ import logging
 from app.database import get_db
 from app.models import Job, SLAEscalation, AuditEvent, Technician
 from app.routes.dispatch import verify_jwt_token
+from app.redis_client import get_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -110,17 +111,25 @@ def cancel_job(
     return {"message": "Job cancelled successfully"}
 
 @router.post("/{job_id}/force-assign")
-def force_assign(
+async def force_assign(
     job_id: int, 
     payload: ForceAssignRequest,
     db: Session = Depends(get_db),
+    redis_client = Depends(get_redis_client),
     authorization: str = Depends(verify_jwt_token)
 ):
+    from app.models import InAppNotification
+    from app.services.timer_service import TimerService
+    from app.services.socket_manager import sio, emit_notification
+    import uuid
+
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
     tech = db.query(Technician).filter(Technician.tech_id == payload.tech_id).first()
+    if not tech and payload.tech_id.isdigit():
+        tech = db.query(Technician).filter(Technician.technician_id == int(payload.tech_id)).first()
     if not tech:
         raise HTTPException(status_code=404, detail="Technician not found")
         
@@ -131,7 +140,7 @@ def force_assign(
     job.assigned_technician_id = tech.technician_id
     
     audit = AuditEvent(
-        tech_id=payload.tech_id,
+        tech_id=tech.tech_id or str(tech.technician_id),
         tenant_id="system",
         event_type="ESCALATION_ACTION",
         old_status=old_status,
@@ -140,7 +149,53 @@ def force_assign(
     )
     db.add(audit)
     
+    notif_id = str(uuid.uuid4())
+    if tech.tech_id:
+        db_notif = InAppNotification(
+            id=notif_id,
+            tech_id=tech.tech_id,
+            job_id=str(job.id),
+            type="JOB_ASSIGNED",
+            title="Escalated Job Assignment",
+            body=f"You have been manually assigned to an escalated job: {job.service_type} at {job.location}. Reason: {payload.reason}",
+            status="UNREAD",
+            priority="HIGH",
+            created_at=datetime.now(timezone.utc)
+        )
+        db.add(db_notif)
+        
     mark_responded(db, esc, f"Force Assigned to {payload.tech_id}")
+    
+    # Send WS notification to tech
+    if tech.tech_id:
+        payload_notif = {
+            "id": notif_id,
+            "tech_id": tech.tech_id,
+            "job_id": str(job.id),
+            "type": "JOB_ASSIGNED",
+            "title": "Escalated Job Assignment",
+            "body": f"You have been manually assigned to an escalated job: {job.service_type} at {job.location}. Reason: {payload.reason}",
+            "status": "UNREAD",
+            "priority": "HIGH",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "job": {
+                "id": job.id,
+                "title": f"{job.service_type} - {job.location}",
+                "description": job.issue_description,
+                "location": job.location,
+                "priority": job.priority,
+                "status": job.status
+            }
+        }
+        await emit_notification(tech.tech_id, payload_notif)
+        
+    # Start timer
+    TimerService.start_timer(redis_client, str(job.id), str(tech.tech_id))
+    
+    # Dismiss alert banner for all dispatchers
+    await sio.emit("redispatch:dismiss", {
+        "job_id": job.id
+    })
     
     logger.info(f"Escalation resolved: Job {job_id} force-assigned to tech {payload.tech_id}")
     return {"message": "Job force-assigned successfully"}

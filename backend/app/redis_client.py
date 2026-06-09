@@ -13,13 +13,13 @@ class RedisCacheManager:
             host=redis_host, 
             port=redis_port, 
             decode_responses=True,
-            socket_timeout=2.0,
-            socket_connect_timeout=2.0
+            socket_timeout=0.3,
+            socket_connect_timeout=0.3
         )
         self.client = redis.Redis(connection_pool=self.pool)
 
     def _execute_with_retry(self, operation, *args, **kwargs):
-        retries = 2
+        retries = 1
         for i in range(retries):
             try:
                 return operation(*args, **kwargs)
