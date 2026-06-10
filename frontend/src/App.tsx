@@ -1,0 +1,941 @@
+import { useState, useEffect, useRef } from "react";
+import JobsPage from "./pages/JobsPage";
+import TechniciansPage from "./pages/TechniciansPage";
+import TechDashboardPage from "./pages/TechDashboardPage";
+import PlanningPage from "./pages/PlanningPage";
+import DashboardPage from "./pages/DashboardPage";
+import logo from "./assets/logo.png";
+import { ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, LayoutDashboard, Briefcase, Users, Wrench, ClipboardList, Calendar } from "lucide-react";
+
+// Import notification modules
+import NotificationBell from "./components/notifications/NotificationBell";
+import NotificationDrawer from "./components/notifications/NotificationDrawer";
+import NotificationDetail from "./components/notifications/NotificationDetail";
+import ToastContainer from "./components/notifications/ToastContainer";
+import {
+  fetchNotifications,
+  markNotificationAsRead,
+  connectNotificationSocket,
+  disconnectNotificationSocket,
+  subscribeToDispatchEvents,
+  createToastFromNotification,
+  acceptJob,
+  rejectJob,
+  reassignJob,
+  batchMarkAsRead,
+  dismissNotification,
+} from "./services/notificationService";
+import { startHeartbeatLoop, stopHeartbeatLoop } from "./services/heartbeatService";
+import { getAllTechnicians } from "./services/technicianService";
+import { ToastProvider, useToast } from "./hooks/useToast";
+
+interface NotificationItem {
+  id: string | number;
+  type: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+  jobId?: string | number;
+  job?: any;
+}
+
+interface Technician {
+  tech_id?: string | number;
+  technician_id?: string | number;
+  id?: string | number;
+  technician_name?: string;
+  name?: string;
+}
+
+const styles = {
+  appShell: {
+    display: "flex",
+    minHeight: "100vh",
+    height: "100vh",
+    fontFamily: "'Inter', sans-serif",
+  } as React.CSSProperties,
+
+  sidebar: {
+    width: "220px",
+    minWidth: "220px",
+    background: "#F3F8F5",
+    borderRight: "1px solid #E3ECE7",
+    display: "flex",
+    flexDirection: "column",
+    position: "sticky",
+    top: 0,
+    height: "100vh",
+    zIndex: 200,
+    boxShadow: "2px 0 8px rgba(47, 79, 62, 0.04)",
+    transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+    boxSizing: "border-box",
+  } as React.CSSProperties,
+
+  sidebarCollapsed: {
+    width: "60px",
+    minWidth: "60px",
+  } as React.CSSProperties,
+
+  sidebarMobile: {
+    width: "100%",
+    minWidth: "100%",
+    height: "54px",
+    position: "fixed",
+    bottom: 0,
+    top: "auto",
+    flexDirection: "row",
+    alignItems: "center",
+    borderRight: "none",
+    borderTop: "1px solid #E3ECE7",
+    padding: "0 12px",
+    overflow: "hidden",
+    boxShadow: "0 -2px 8px rgba(47, 79, 62, 0.06)",
+    zIndex: 9999,
+    background: "#F3F8F5",
+    boxSizing: "border-box",
+  } as React.CSSProperties,
+
+  sidebarContent: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+    flex: 1,
+    padding: "16px 12px",
+    boxSizing: "border-box",
+    overflowY: "auto",
+    overflowX: "hidden",
+  } as React.CSSProperties,
+
+  sidebarContentCollapsed: {
+    padding: "12px 6px",
+  } as React.CSSProperties,
+
+  sidebarContentMobile: {
+    flexDirection: "row",
+    height: "100%",
+    padding: 0,
+    overflow: "hidden",
+    alignItems: "center",
+    width: "100%",
+  } as React.CSSProperties,
+
+  sidebarBrand: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: "15px 0 14px",
+    marginBottom: "8px",
+  } as React.CSSProperties,
+
+  brandLogoWrap: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  } as React.CSSProperties,
+
+  brandLogoImg: {
+    width: "120px",
+    objectFit: "contain",
+    display: "block",
+    transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+  } as React.CSSProperties,
+
+  sidebarNav: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    flex: 1,
+    marginTop: "16px",
+  } as React.CSSProperties,
+
+  sidebarNavMobile: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    width: "100%",
+    marginTop: 0,
+    gap: "4px",
+    flex: 1,
+  } as React.CSSProperties,
+
+  navGroupLabel: {
+    fontSize: "10px",
+    fontWeight: 700,
+    color: "#7AAE8A",
+    letterSpacing: ".08em",
+    textTransform: "uppercase",
+    padding: "0 10px",
+    marginBottom: "6px",
+  } as React.CSSProperties,
+
+  navItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    width: "100%",
+    padding: "8px 10px",
+    border: "none",
+    borderRadius: "8px",
+    background: "transparent",
+    color: "#6B7280",
+    fontSize: "13px",
+    fontWeight: 500,
+    fontFamily: "'Inter', sans-serif",
+    cursor: "pointer",
+    textAlign: "left",
+    transition: "all .15s",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+  } as React.CSSProperties,
+
+  navItemMobile: {
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "2px",
+    fontSize: "10px",
+    padding: "6px 12px",
+    borderRadius: "6px",
+    width: "auto",
+    flex: 1,
+    minWidth: "60px",
+  } as React.CSSProperties,
+
+  navItemCollapsed: {
+    justifyContent: "center",
+    padding: "8px 0",
+    gap: 0,
+  } as React.CSSProperties,
+
+  navActive: {
+    background: "#DDEEE5",
+    color: "#2F4F3E",
+    fontWeight: 700,
+    boxShadow: "inset 3px 0 0 #7AAE8A",
+  } as React.CSSProperties,
+
+  navActiveMobile: {
+    boxShadow: "none",
+    borderBottom: "2px solid #7AAE8A",
+    borderRadius: 0,
+    background: "transparent",
+  } as React.CSSProperties,
+
+  navGroup: {
+    display: "flex",
+    flexDirection: "column",
+    margin: "4px 0",
+  } as React.CSSProperties,
+
+  navGroupMobile: {
+    display: "flex",
+    flexDirection: "row",
+    margin: 0,
+    alignItems: "center",
+  } as React.CSSProperties,
+
+  navGroupHeader: {
+    fontSize: "13.5px",
+    fontWeight: 600,
+    color: "#6B7280",
+    padding: "6px 8px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    textAlign: "left",
+    letterSpacing: "0.01em",
+    transition: "color 0.2s ease",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+  } as React.CSSProperties,
+
+  navGroupItems: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "3px",
+    marginLeft: "10px",
+    borderLeft: "1.5px solid #E3ECE7",
+    paddingLeft: "4px",
+  } as React.CSSProperties,
+
+  navGroupItemsMobile: {
+    display: "flex",
+    flexDirection: "row",
+    gap: "4px",
+    marginLeft: 0,
+    borderLeft: "none",
+    paddingLeft: 0,
+  } as React.CSSProperties,
+
+  sidebarToggle: {
+    position: "absolute",
+    top: "16px",
+    right: "12px",
+    width: "30px",
+    height: "30px",
+    border: "none",
+    background: "transparent",
+    color: "#7AAE8A",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    zIndex: 300,
+    transition: "color 0.2s ease, transform 0.2s ease",
+  } as React.CSSProperties,
+
+  sidebarToggleCollapsed: {
+    right: "15px",
+  } as React.CSSProperties,
+
+  sidebarProfileMini: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "10px 8px",
+    borderTop: "1px solid #E3ECE7",
+    marginTop: "auto",
+    flexShrink: 0,
+    transition: "padding 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+  } as React.CSSProperties,
+
+  sidebarProfileMiniCollapsed: {
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "12px",
+    padding: "12px 0",
+    borderTop: "1px solid #E3ECE7",
+    marginTop: "auto",
+    flexShrink: 0,
+  } as React.CSSProperties,
+
+  miniAvatar: {
+    width: "32px",
+    height: "32px",
+    minWidth: "32px",
+    borderRadius: "50%",
+    background: "#7AAE8A",
+    color: "#fff",
+    fontSize: "13px",
+    fontWeight: 700,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  } as React.CSSProperties,
+
+  miniInfo: {
+    display: "flex",
+    flexDirection: "column",
+  } as React.CSSProperties,
+
+  miniName: {
+    fontSize: "12px",
+    fontWeight: 700,
+    color: "#1F2933",
+  } as React.CSSProperties,
+
+  miniRole: {
+    fontSize: "10px",
+    color: "#6B7280",
+    fontWeight: 500,
+  } as React.CSSProperties,
+
+  sidebarSimulationControls: {
+    padding: "10px 8px",
+    borderTop: "1px solid #E3ECE7",
+    marginTop: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  } as React.CSSProperties,
+
+  mainArea: {
+    flex: 1,
+    height: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+  } as React.CSSProperties,
+
+  mainAreaMobile: {
+    marginLeft: 0,
+    marginBottom: "54px",
+    height: "calc(100vh - 54px)",
+  } as React.CSSProperties,
+
+  pageWrap: {
+    flex: 1,
+    background: "#EEF4F1",
+    overflowY: "auto",
+    height: 0,
+  } as React.CSSProperties,
+
+  pageWrapMobile: {
+    paddingBottom: "60px",
+  } as React.CSSProperties,
+};
+
+const localCss = `
+  .nav-item-style:hover {
+    background-color: #EAF4EE !important;
+    color: #2F4F3E !important;
+  }
+  .nav-group-header-style:hover {
+    color: #2F4F3E !important;
+  }
+  .nav-group-header-style:hover .chevron-icon-style {
+    color: #2F4F3E !important;
+  }
+  .sidebar-toggle-style:hover {
+    color: #5C9470 !important;
+    transform: scale(1.2) !important;
+  }
+  .sidebar-content-style::-webkit-scrollbar {
+    display: none !important;
+  }
+`;
+
+function AppInner() {
+  const { addToast } = useToast();
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isTechGroupOpen, setIsTechGroupOpen] = useState(true);
+
+  // Notification States
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null);
+  const [selectedJobDetail, setSelectedJobDetail] = useState<any>(null);
+  const [isBellAnimated, setIsBellAnimated] = useState(false);
+  const [activeTechId, setActiveTechId] = useState<string | number | null>(null); // set after fetching real technicians
+  const [techList, setTechList] = useState<Technician[]>([]);
+
+  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 500);
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const isMobileLayout = windowWidth <= 500;
+
+  // Fetch registered technicians to pick one as the active user
+  useEffect(() => {
+    const fetchTechs = async () => {
+      try {
+        const response = await getAllTechnicians();
+        if (response.data && response.data.length > 0) {
+          setTechList(response.data);
+          // Pick the first technician's UUID
+          const firstTech = response.data[0];
+          const techId = firstTech.tech_id || firstTech.technician_id || firstTech.id;
+          if (techId) {
+            setActiveTechId(techId);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch technicians list, using fallback technician ID.", err);
+      }
+    };
+    fetchTechs();
+  }, []);
+
+  // Fetch notifications and initialize socket listeners for the active technician
+  useEffect(() => {
+    if (!activeTechId) return;
+
+    // Start heartbeat loop (POST /technicians/{id}/heartbeat every 30 seconds)
+    startHeartbeatLoop(String(activeTechId), 30000, () => ({
+      last_lat: 13.0827 + (Math.random() - 0.5) * 0.01,
+      last_lng: 80.2707 + (Math.random() - 0.5) * 0.01
+    }));
+
+    // 1. Initial Load
+    const loadInitialNotifications = async () => {
+      const data = await fetchNotifications(activeTechId);
+      setNotifications(data.notifications);
+      setUnreadCount(data.unreadCount);
+    };
+    loadInitialNotifications();
+
+    // 2. Connect Socket.io
+    const socketHandlers = {
+      onConnect: () => {
+        console.log("Connected to notification server.");
+      },
+      onDisconnect: () => {
+        console.log("Disconnected from notification server.");
+      },
+      onNewNotification: (notif: NotificationItem) => {
+        setNotifications((prev) => [notif, ...prev]);
+        setUnreadCount((prev) => prev + 1);
+        // Mirror to toast system
+        addToast(createToastFromNotification(notif));
+        // Trigger bell bounce animation
+        setIsBellAnimated(true);
+        setTimeout(() => setIsBellAnimated(false), 1000);
+      },
+      onUnreadCount: (count: number) => {
+        setUnreadCount(count);
+      }
+    };
+
+    const socket = connectNotificationSocket(activeTechId, socketHandlers);
+
+    // Subscribe to dispatch-specific job.* events
+    const unsubscribeDispatch = subscribeToDispatchEvents(socket, addToast);
+
+    return () => {
+      stopHeartbeatLoop();
+      unsubscribeDispatch();
+      disconnectNotificationSocket(socket);
+    };
+  }, [activeTechId]);
+
+  // Handlers for NotificationDetail Actions
+  const handleAcceptJob = async (jobId: string | number) => {
+    console.log(`Accepting job ID: ${jobId}`);
+    const isMock = selectedNotification && typeof selectedNotification.id === "string" && selectedNotification.id.startsWith("notif-");
+    if (!isMock) {
+      await acceptJob(jobId);
+    }
+    if (selectedNotification) {
+      await handleMarkAsRead(selectedNotification.id);
+    }
+  };
+
+  const handleRejectJob = async (jobId: string | number, reason: string) => {
+    console.log(`Rejecting job ID: ${jobId} for reason: ${reason}`);
+    const isMock = selectedNotification && typeof selectedNotification.id === "string" && selectedNotification.id.startsWith("notif-");
+    if (!isMock) {
+      await rejectJob(jobId, reason);
+    }
+    if (selectedNotification) {
+      await handleMarkAsRead(selectedNotification.id);
+    }
+  };
+
+  const handleReassignJob = async (jobId: string | number, colleagueId?: string | number, reason?: string) => {
+    console.log(`Requesting reassignment for job ID: ${jobId} to colleague: ${colleagueId} with reason: ${reason}`);
+    const isMock = selectedNotification && typeof selectedNotification.id === "string" && selectedNotification.id.startsWith("notif-");
+    if (!isMock && colleagueId) {
+      await reassignJob(jobId, colleagueId, reason || "");
+    }
+    if (selectedNotification) {
+      await handleMarkAsRead(selectedNotification.id);
+    }
+  };
+
+  const handleNotificationClick = async (notif: NotificationItem) => {
+    setSelectedNotification(notif);
+    setSelectedJobDetail(notif.job || null);
+    setIsNotificationDrawerOpen(false); // Close drawer to display details
+
+    // Mark as read immediately on click
+    if (!notif.isRead) {
+      await handleMarkAsRead(notif.id);
+    }
+  };
+
+  const handleMarkAsRead = async (notifId: string | number) => {
+    const isMock = typeof notifId === "string" && notifId.startsWith("notif-");
+    if (!isMock) {
+      await markNotificationAsRead(notifId);
+    }
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notifId ? { ...n, isRead: true } : n))
+    );
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+  };
+
+  const handleMarkAllAsRead = async () => {
+    const unreadIds = notifications.filter((n) => !n.isRead).map((n) => String(n.id));
+    const realUnreadIds = unreadIds.filter(id => !id.startsWith("notif-"));
+    if (realUnreadIds.length > 0) {
+      try {
+        await batchMarkAsRead(realUnreadIds);
+      } catch (err) {
+        console.error("Failed to batch mark notifications as read", err);
+      }
+    }
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    setUnreadCount(0);
+  };
+
+  const handleDismissNotification = async (notifId: string) => {
+    const isMock = typeof notifId === "string" && notifId.startsWith("notif-");
+    if (!isMock) {
+      try {
+        await dismissNotification(notifId);
+      } catch (err) {
+        console.error(`Failed to dismiss notification ${notifId}`, err);
+      }
+    }
+    setNotifications((prev) => prev.filter((n) => String(n.id) !== String(notifId)));
+    const notif = notifications.find((n) => String(n.id) === String(notifId));
+    if (notif && !notif.isRead) {
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    }
+  };
+
+  const handleToastNavigate = (jobId: string | number) => {
+    // Find matching notification in the state
+    const matchingNotif = notifications.find(
+      (n) => String(n.jobId) === String(jobId) || String(n.id) === String(jobId)
+    );
+
+    if (matchingNotif) {
+      setSelectedNotification(matchingNotif);
+      setSelectedJobDetail(matchingNotif.job || null);
+      setIsNotificationDrawerOpen(false);
+    } else {
+      // Create a temporary/placeholder notification detail so we can open it!
+      const tempNotif: NotificationItem = {
+        id: `notif-temp-${Date.now()}`,
+        type: 'JOB_ASSIGNED',
+        title: 'Job Notification',
+        message: 'Details for job #' + jobId,
+        isRead: true,
+        createdAt: new Date().toISOString(),
+        jobId: jobId,
+        job: {
+          id: jobId,
+          title: 'Dispatch Assignment',
+          description: 'Scheduled dispatch details for job #' + jobId,
+          location: 'Chennai Site',
+          priority: 'MEDIUM',
+          customer_name: 'Customer',
+          customer_phone: '+91 9876543210',
+          estimated_value: 1500,
+          sla_deadline: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+          distance_km: 4.5,
+          required_skills: []
+        }
+      };
+      setSelectedNotification(tempNotif);
+      setSelectedJobDetail(tempNotif.job);
+      setIsNotificationDrawerOpen(false);
+    }
+  };
+
+  // Helper function to trigger mock dispatch events (cycles through all types)
+  const MOCK_EVENTS = [
+    { eventType: 'job.assigned', type: 'info' as const,    title: 'Job Assigned',   message: 'AC Repair Service → Rajesh Kumar',          autoDismiss: 5000,  priority: 'normal',   jobId: 101 },
+    { eventType: 'job.accepted', type: 'success' as const, title: 'Job Accepted',   message: 'Rajesh Kumar accepted AC Repair at ABC Corp', autoDismiss: 5000,  priority: 'normal',   jobId: 101 },
+    { eventType: 'job.rejected', type: 'warning' as const, title: 'Job Rejected',   message: 'Vijay Iyer rejected Plumbing — Too far',       autoDismiss: 8000,  priority: 'critical', jobId: 102 },
+    { eventType: 'job.expired',  type: 'error' as const,   title: 'Job Expired',    message: 'Electrical Repair — Re-dispatching…',          autoDismiss: 10000, priority: 'critical', jobId: 103 },
+    { eventType: 'job.en_route', type: 'info' as const,    title: 'Tech En Route',  message: 'Arjun Sharma is en route — ETA 12 min',        autoDismiss: 5000,  priority: 'normal',   jobId: 104 },
+  ];
+  const mockCursorRef = useRef(0);
+
+  const triggerMockNotification = () => {
+    const event = MOCK_EVENTS[mockCursorRef.current % MOCK_EVENTS.length];
+    mockCursorRef.current += 1;
+
+    // Fire as toast
+    addToast(event);
+
+    // Also populate the bell/drawer with an equivalent notification
+    const newNotif: NotificationItem = {
+      id: `notif-${Date.now()}`,
+      type: event.eventType === 'job.assigned' ? 'JOB_ASSIGNED' : 'SYSTEM',
+      title: event.title,
+      message: event.message,
+      isRead: false,
+      createdAt: new Date().toISOString(),
+      jobId: event.jobId,
+      job: {
+        id: event.jobId,
+        title: event.title,
+        description: event.message,
+        location: "Chennai",
+        priority: event.priority === 'critical' ? 'HIGH' : 'MEDIUM',
+        customer_name: "Demo Customer",
+        customer_phone: "+91 9876543210",
+        estimated_value: 2500,
+        sla_deadline: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        distance_km: 6.8,
+        required_skills: []
+      }
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+    setUnreadCount((prev) => prev + 1);
+    setIsBellAnimated(true);
+    setTimeout(() => setIsBellAnimated(false), 1000);
+  };
+
+  const getItemStyle = (tab: string, isSub = false) => {
+    const active = activeTab === tab;
+    let base = {
+      ...styles.navItem,
+      ...(isMobileLayout ? styles.navItemMobile : {}),
+      ...(!isMobileLayout && sidebarCollapsed ? styles.navItemCollapsed : {}),
+      ...(isSub ? { fontSize: "13px", padding: "5px 6px" } : {})
+    };
+    if (active) {
+      base = {
+        ...base,
+        ...styles.navActive,
+        ...(isMobileLayout ? styles.navActiveMobile : {})
+      };
+    }
+    return base;
+  };
+
+  return (
+    <div style={styles.appShell}>
+      <style>{localCss}</style>
+      <aside 
+        style={
+          isMobileLayout
+            ? styles.sidebarMobile
+            : sidebarCollapsed
+              ? { ...styles.sidebar, ...styles.sidebarCollapsed }
+              : styles.sidebar
+        }
+      >
+        <button
+          className="sidebar-toggle-style"
+          style={
+            isMobileLayout
+              ? { display: "none" }
+              : sidebarCollapsed
+                ? { ...styles.sidebarToggle, ...styles.sidebarToggleCollapsed }
+                : styles.sidebarToggle
+          }
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          aria-label="Toggle sidebar"
+        >
+          {sidebarCollapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
+        </button>
+
+        <div 
+          className="sidebar-content-style"
+          style={{
+            ...styles.sidebarContent,
+            ...(isMobileLayout ? styles.sidebarContentMobile : {}),
+            ...(!isMobileLayout && sidebarCollapsed ? styles.sidebarContentCollapsed : {})
+          }}
+        >
+          <div style={isMobileLayout ? { display: "none" } : styles.sidebarBrand}>
+            <div style={styles.brandLogoWrap}>
+              <img src={logo} alt="FieldOps Logo" style={styles.brandLogoImg} />
+            </div>
+          </div>
+
+          <nav style={isMobileLayout ? styles.sidebarNavMobile : styles.sidebarNav}>
+            <span style={isMobileLayout ? { display: "none" } : styles.navGroupLabel}>MAIN MENU</span>
+
+            <button
+              className="nav-item-style"
+              style={getItemStyle("dashboard")}
+              onClick={() => setActiveTab("dashboard")}
+            >
+              <LayoutDashboard size={18} style={{ flexShrink: 0 }} />
+              <span className="nav-text" style={isMobileLayout ? { display: "none" } : {}}>Dashboard</span>
+            </button>
+
+            <button
+              className="nav-item-style"
+              style={getItemStyle("jobs")}
+              onClick={() => setActiveTab("jobs")}
+            >
+              <Briefcase size={18} style={{ flexShrink: 0 }} />
+              <span className="nav-text" style={isMobileLayout ? { display: "none" } : {}}>Jobs</span>
+            </button>
+
+            <div style={isMobileLayout ? styles.navGroupMobile : styles.navGroup}>
+              <button
+                type="button"
+                className="nav-group-header-style"
+                style={isMobileLayout ? { display: "none" } : styles.navGroupHeader}
+                onClick={() => setIsTechGroupOpen(!isTechGroupOpen)}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", justifyContent: isMobileLayout ? "center" : "flex-start" }}>
+                  <Users size={18} style={{ flexShrink: 0, marginRight: "10px" }} />
+                  <span className="nav-text">Technicians</span>
+                </span>
+                <span className="chevron-icon-style nav-text" style={{ display: "flex", alignItems: "center", color: "#9CA3AF" }}>
+                  {isTechGroupOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </span>
+              </button>
+
+              <div 
+                style={{
+                  ...(isMobileLayout ? styles.navGroupItemsMobile : styles.navGroupItems),
+                  ...(!isMobileLayout && !isTechGroupOpen ? { display: "none" } : {})
+                }}
+              >
+                <button
+                  className="nav-item-style"
+                  style={getItemStyle("techboard", true)}
+                  onClick={() => setActiveTab("techboard")}
+                >
+                  <Wrench size={14} style={{ flexShrink: 0 }} />
+                  <span className="nav-text" style={isMobileLayout ? { display: "none" } : {}}>Tech Dashboard</span>
+                </button>
+
+                <button
+                  className="nav-item-style"
+                  style={getItemStyle("technicians", true)}
+                  onClick={() => setActiveTab("technicians")}
+                >
+                  <ClipboardList size={14} style={{ flexShrink: 0 }} />
+                  <span className="nav-text" style={isMobileLayout ? { display: "none" } : {}}>Technicians List</span>
+                </button>
+              </div>
+            </div>
+
+            <button
+              className="nav-item-style"
+              style={getItemStyle("planning")}
+              onClick={() => setActiveTab("planning")}
+            >
+              <Calendar size={18} style={{ flexShrink: 0 }} />
+              <span className="nav-text" style={isMobileLayout ? { display: "none" } : {}}>Planning</span>
+            </button>
+          </nav>
+
+          {/* Active tech switcher and demo controls */}
+          <div style={isMobileLayout ? { display: "none" } : styles.sidebarSimulationControls}>
+            {techList.length > 0 && activeTechId !== null && (
+              <div style={{ fontSize: "11px" }}>
+                <label style={{ display: "block", marginBottom: "4px", color: "#6B7280", fontWeight: 600 }}>Simulated Tech:</label>
+                <select
+                  style={{ width: "100%", padding: "4px", borderRadius: "4px", border: "1px solid #E3ECE7", background: "#FFFFFF", fontSize: "11px" }}
+                  value={activeTechId}
+                  onChange={(e) => setActiveTechId(e.target.value)}
+                >
+                  {techList.map((t) => {
+                    const val = t.tech_id || t.technician_id || t.id;
+                    return (
+                      <option key={val} value={val}>
+                        {t.technician_name || t.name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%" }}>
+              <button
+                type="button"
+                style={{
+                  width: "100%",
+                  height: "28px",
+                  fontSize: "11px",
+                  padding: "0 10px",
+                  background: "#FFFFFF",
+                  border: "1px solid #E3ECE7",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  color: "#374151",
+                  fontWeight: 600,
+                  transition: "all 0.2s"
+                }}
+                onClick={triggerMockNotification}
+                title="Test Notification UI"
+              >
+                Simulate Alert
+              </button>
+            </div>
+          </div>
+
+          <div 
+            style={
+              isMobileLayout
+                ? { display: "none" }
+                : sidebarCollapsed
+                  ? styles.sidebarProfileMiniCollapsed
+                  : styles.sidebarProfileMini
+            }
+          >
+            <div style={styles.miniAvatar}>R</div>
+
+            <div style={sidebarCollapsed ? { display: "none" } : styles.miniInfo}>
+              <span style={styles.miniName}>Rajesh</span>
+              <span style={styles.miniRole}>Admin</span>
+            </div>
+
+            <div style={sidebarCollapsed ? { marginTop: "12px", display: "flex", justifyContent: "center" } : { marginLeft: "auto", display: "flex", alignItems: "center" }}>
+              <NotificationBell
+                unreadCount={unreadCount}
+                onClick={() => setIsNotificationDrawerOpen(true)}
+                isAnimated={isBellAnimated}
+              />
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <div style={isMobileLayout ? { ...styles.mainArea, ...styles.mainAreaMobile } : styles.mainArea}>
+        <main style={isMobileLayout ? { ...styles.pageWrap, ...styles.pageWrapMobile } : styles.pageWrap}>
+          {/* Selected Notification Detail view */}
+          {selectedNotification && (
+            <NotificationDetail
+              notification={selectedNotification}
+              job={selectedJobDetail}
+              onAccept={handleAcceptJob}
+              onReject={handleRejectJob}
+              onReassign={handleReassignJob}
+              onClose={() => {
+                setSelectedNotification(null);
+                setSelectedJobDetail(null);
+              }}
+            />
+          )}
+
+          {/* Tab Pages */}
+          {activeTab === "dashboard" && (
+            <DashboardPage
+              onViewTab={(tab) => setActiveTab(tab)}
+              unreadCount={unreadCount}
+              isBellAnimated={isBellAnimated}
+              onOpenBellDrawer={() => setIsNotificationDrawerOpen(true)}
+            />
+          )}
+          {activeTab === "jobs" && <JobsPage />}
+          {activeTab === "technicians" && <TechniciansPage />}
+          {activeTab === "techboard" && <TechDashboardPage />}
+          {activeTab === "planning" && (
+            <PlanningPage />
+          )}
+        </main>
+      </div>
+
+      {/* Slide-out Drawer */}
+      <NotificationDrawer
+        isOpen={isNotificationDrawerOpen}
+        onClose={() => setIsNotificationDrawerOpen(false)}
+        notifications={notifications}
+        onNotificationClick={handleNotificationClick}
+        onMarkAllAsRead={handleMarkAllAsRead}
+        onDismissNotification={handleDismissNotification}
+      />
+
+      {/* Real-time toast overlay */}
+      <ToastContainer onNavigate={handleToastNavigate} />
+    </div>
+  );
+}
+
+// Wrap with ToastProvider at the root
+function App() {
+  return (
+    <ToastProvider>
+      <AppInner />
+    </ToastProvider>
+  );
+}
+
+export default App;

@@ -3,12 +3,24 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List
 
-from app.database import get_db
-from app import models, schemas, utils
+from ..database import get_db
+from .. import models, schemas, utils
 
 router = APIRouter(
     tags=["Assignment"]
 )
+
+@router.get("/technicians/match-skill", response_model=List[schemas.TechnicianResponse])
+def match_skill(job_type: str, db: Session = Depends(get_db)):
+    """
+    Find available technicians matching the required skill (job_type).
+    """
+    technicians = db.query(models.Technician).filter(
+        models.Technician.technician_skill == job_type,
+        models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"]),
+        models.Technician.current_jobs < models.Technician.max_jobs
+    ).all()
+    return technicians
 
 @router.get("/technicians/nearest", response_model=schemas.NearestTechnicianResponse)
 def get_nearest_technician(job_id: int, db: Session = Depends(get_db)):
@@ -19,10 +31,11 @@ def get_nearest_technician(job_id: int, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Filter technicians by skill and availability
+    # Filter technicians by skill, availability, and workload
     technicians = db.query(models.Technician).filter(
         models.Technician.technician_skill == job.required_skill,
-        models.Technician.technician_status == "AVAILABLE"
+        models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"]),
+        models.Technician.current_jobs < models.Technician.max_jobs
     ).all()
 
     if not technicians:
@@ -48,6 +61,7 @@ def get_nearest_technician(job_id: int, db: Session = Depends(get_db)):
     }
 
 @router.post("/assign-job")
+@router.post("/assign-technician")
 def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(get_db)):
     """
     Assign a technician to a job with full validation.
@@ -59,18 +73,17 @@ def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(g
     - Duplicate assignment prevention
     """
     try:
-        # 1. Fetch Job
-        job = db.query(models.Job).filter(models.Job.id == assignment.job_id).first()
+        # 1. Parse Job ID
+        job_id_str = str(assignment.job_id)
+        if job_id_str.upper().startswith('JOB'):
+            job_id = int(job_id_str[3:])
+        else:
+            job_id = int(job_id_str)
+
+        # 2. Fetch Job
+        job = db.query(models.Job).filter(models.Job.id == job_id).first()
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
-
-        # 2. Fetch Technician
-        technician = db.query(models.Technician).filter(
-            models.Technician.technician_id == assignment.technician_id
-        ).first()
-        
-        if not technician:
-            raise HTTPException(status_code=404, detail="Technician not found")
 
         # 3. Check for Duplicate Assignment
         if job.assigned_technician_id:
@@ -79,24 +92,42 @@ def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(g
                 detail=f"Job #{job.id} is already assigned to technician #{job.assigned_technician_id}"
             )
 
-        # 4. Check Technician Availability
-        if technician.technician_status == "BUSY":
-            raise HTTPException(status_code=400, detail="Technician is currently unavailable")
-        
-        if technician.technician_status == "OFFLINE":
-            raise HTTPException(status_code=400, detail="Technician is offline")
+        # 4. Fetch/Determine Technician
+        technician = None
+        if assignment.technician_id:
+            technician = db.query(models.Technician).filter(
+                models.Technician.technician_id == assignment.technician_id
+            ).first()
+            if not technician:
+                raise HTTPException(status_code=404, detail="Technician not found")
+        elif assignment.job_type:
+            # Auto-assign logic based on skill and availability
+            technicians = db.query(models.Technician).filter(
+                models.Technician.technician_skill == assignment.job_type,
+                models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"]),
+                models.Technician.current_jobs < models.Technician.max_jobs
+            ).all()
+            if not technicians:
+                raise HTTPException(status_code=400, detail=f"No available technicians found with skill: {assignment.job_type}")
+            # Just pick the first available one for basic auto-assignment
+            # In a real scenario, we might sort by distance or workload
+            technicians.sort(key=lambda t: t.current_jobs)
+            technician = technicians[0]
+        else:
+            raise HTTPException(status_code=400, detail="Either technician_id or job_type must be provided")
 
-        # 5. Check Skill Match
-        if technician.technician_skill != job.required_skill:
-             raise HTTPException(
-                 status_code=400, 
-                 detail=f"Skill mismatch: Technician provides '{technician.technician_skill}' but job requires '{job.required_skill}'"
-             )
+        # 5. Comprehensive Validation (Workload, Status, Skill)
+        from ..validation import validate_technician_for_assignment
+        validate_technician_for_assignment(technician, job)
 
-        # 6. Perform Assignment
+
+        # 7. Perform Assignment
         job.assigned_technician_id = technician.technician_id
         job.status = "in progress"
-        technician.technician_status = "BUSY"
+        
+        # Use workload utility for increment and status sync
+        from ..workload_utils import update_workload_count
+        update_workload_count(db, technician.technician_id, 1)
 
         db.commit()
         db.refresh(job)
