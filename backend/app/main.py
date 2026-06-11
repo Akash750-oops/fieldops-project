@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException
+from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -10,10 +11,19 @@ from . import models
 from .services.justification_validator import JustificationValidationError
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from .worker import start_scheduler, stop_scheduler
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
 app = FastAPI(
     title="FieldOps Commander API",
     description="Backend API for managing field operation jobs",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 
@@ -94,9 +104,9 @@ except Exception as e:
 
 app.include_router(jobs.router)
 app.include_router(assignment.router)
+app.include_router(dispatch.router)
 app.include_router(technicians.router)
 app.include_router(planning.router)
-app.include_router(dispatch.router)
 app.include_router(notifications.router)
 app.include_router(in_app_notifications.router)
 app.include_router(templates.router)
@@ -110,15 +120,7 @@ from .services.socket_manager import sio_app
 app.mount("/socket.io", sio_app)
 
 
-from .worker import start_scheduler, stop_scheduler
-
-@app.on_event("startup")
-def on_startup():
-    start_scheduler()
-
-@app.on_event("shutdown")
-def on_shutdown():
-    stop_scheduler()
+# Lifespan events handled via asynccontextmanager lifespan handler
 
 
 @app.get("/")

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from typing import List, Union
+from typing import List, Union, Optional
+from sqlalchemy import func
 
 from ..database import get_db
 from .. import models, schemas
@@ -78,16 +79,44 @@ def create_technician(technician: Union[schemas.TechnicianCreate, List[schemas.T
         )
 
 @router.get("/", response_model=List[schemas.TechnicianResponse])
-def get_all_technicians(db: Session = Depends(get_db)):
+def get_all_technicians(
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    zone: Optional[str] = None,
+    skill: Optional[str] = None,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    db: Session = Depends(get_db)
+):
     """
-    Retrieve all registered technicians.
+    Retrieve all registered technicians, optionally filtered.
     """
     try:
-        return db.query(models.Technician).all()
-    except SQLAlchemyError:
+        query = db.query(models.Technician)
+        if x_tenant_id:
+            query = query.filter(models.Technician.tenant_id == x_tenant_id)
+        
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                (models.Technician.technician_name.ilike(search_pattern)) |
+                (models.Technician.technician_skill.ilike(search_pattern)) |
+                (models.Technician.technician_location.ilike(search_pattern))
+            )
+            
+        if status and status.upper() != "ALL":
+            query = query.filter(func.lower(models.Technician.technician_status) == status.lower())
+            
+        if zone and zone.upper() != "ALL":
+            query = query.filter(func.lower(models.Technician.technician_location) == zone.lower())
+            
+        if skill and skill.upper() != "ALL":
+            query = query.filter(func.lower(models.Technician.technician_skill) == skill.lower())
+            
+        return query.all()
+    except SQLAlchemyError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error while fetching technicians"
+            detail=f"Database error while fetching technicians: {str(e)}"
         )
 
 @router.get("/workload", response_model=schemas.WorkloadResponse)
@@ -168,15 +197,21 @@ def validate_technician_workload_api(technician_id: int, db: Session = Depends(g
 
 
 @router.get("/available", response_model=List[schemas.AvailableTechnicianResponse])
-def get_available_technicians(db: Session = Depends(get_db)):
+def get_available_technicians(
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    db: Session = Depends(get_db)
+):
     """
     Retrieve only available technicians with their workload details.
     Excludes BUSY and OFFLINE technicians from the result entirely.
     """
     # Fetch technicians with AVAILABLE or ASSIGNED status (case-insensitive)
-    techs = db.query(models.Technician).filter(
+    query = db.query(models.Technician).filter(
         models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"])
-    ).all()
+    )
+    if x_tenant_id:
+        query = query.filter(models.Technician.tenant_id == x_tenant_id)
+    techs = query.all()
     
     result = []
     
@@ -196,6 +231,23 @@ def get_available_technicians(db: Session = Depends(get_db)):
         })
         
     return result
+
+
+@router.get("/zones", response_model=List[str])
+def get_all_zones(db: Session = Depends(get_db)):
+    """
+    Retrieve all unique technician zones/locations.
+    """
+    try:
+        results = db.query(models.Technician.technician_location).distinct().all()
+        # Filter out empty or null locations, trim, and sort
+        zones = sorted(list(set(r[0].strip() for r in results if r[0] and r[0].strip())))
+        return zones
+    except SQLAlchemyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error while fetching zones: {str(e)}"
+        )
 
 
 @router.get("/{technician_id}", response_model=schemas.TechnicianResponse)

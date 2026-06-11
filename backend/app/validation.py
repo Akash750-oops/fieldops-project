@@ -1,6 +1,7 @@
 import logging
 from fastapi import HTTPException, status
 from . import models
+from .utils import is_skill_matching
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -43,11 +44,11 @@ def validate_technician_for_assignment(technician: models.Technician, job: model
         raise HTTPException(status_code=400, detail=msg)
 
     # 3. Skill Match Check
-    if job.required_skill and technician.technician_skill != job.required_skill:
+    if not is_skill_matching(technician.technician_skill, job.required_skill, job.service_type):
         logger.warning(f"Assignment blocked: Skill mismatch for Tech {technician.technician_id}")
         raise HTTPException(
             status_code=400, 
-            detail=f"Skill mismatch: Technician provides '{technician.technician_skill}' but job requires '{job.required_skill}'"
+            detail=f"Skill mismatch: Technician provides '{technician.technician_skill}' but job requires '{job.required_skill or job.service_type}'"
         )
 
     return True

@@ -20,3 +20,40 @@ def calculate_distance(loc1: str, loc2: str) -> float:
         if loc1.lower() == loc2.lower():
             return 0.0
         return 999999.0
+
+def map_service_type_to_skill(service_type: str) -> str:
+    if not service_type:
+        return "Other"
+    st = service_type.strip().upper().replace("_", " ")
+    
+    # HVAC
+    if any(x in st for x in ["HVAC", "AC SERVICE", "COOLING SYSTEM", "COMPRESSOR", "CONDENSER", "AC GAS", "THERMOSTAT", "HVAC REPAIR"]):
+        return "HVAC"
+        
+    # Electrical
+    if any(x in st for x in ["WIRING", "SWITCHBOARD", "LIGHTING", "SHORT CIRCUIT", "GENERATOR", "ELECTRICAL", "CCTV"]):
+        return "Electrical"
+        
+    # Plumbing
+    if any(x in st for x in ["PIPE", "TAP", "DRAIN", "PLUMBING", "WATER HEATER"]):
+        return "Plumbing"
+        
+    # Network Support
+    if any(x in st for x in ["NETWORK", "ROUTER", "CABLE"]):
+        return "Network Support"
+        
+    # General Maintenance
+    if any(x in st for x in ["GENERAL", "MAINTENANCE", "MOTOR ALIGNMENT", "PUMP", "VALVE"]):
+        return "General Maintenance"
+        
+    return "Other"
+
+def is_skill_matching(tech_skill: str, job_skill: str, job_service_type: str) -> bool:
+    if not tech_skill:
+        return False
+        
+    t_skill = tech_skill.strip().upper().replace("_", " ")
+    j_skill = job_skill.strip().upper().replace("_", " ") if job_skill else ""
+    j_type = job_service_type.strip().upper().replace("_", " ") if job_service_type else ""
+    
+    return t_skill == j_skill or t_skill == j_type
