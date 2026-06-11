@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { getAllTechnicians, updateTechnicianAvailability, createTechnician, updateTechnician, deleteTechnician } from "../services/technicianService";
+import { getAllTechnicians, updateTechnicianAvailability, createTechnician, updateTechnician, deleteTechnician, getUniqueZones } from "../services/technicianService";
 import usePageVisibility from "../hooks/usePageVisibility";
 import useInterval from "../hooks/useInterval";
 import StatusBadge from "../components/ui/StatusBadge";
@@ -8,8 +8,8 @@ import { Eye, Pencil, Trash2 } from "lucide-react";
 import EmptyState from "../components/ui/EmptyState";
 
 const PAGE_SIZE = 8;
-const REFRESH_MS = 30_000;
-const STALE_MS   = 60_000;
+const REFRESH_MS = 60_000;
+const STALE_MS   = 120_000;
 const SKILLS = ["HVAC Repair","Electrical","Plumbing","Network Support","General Maintenance"];
 
 interface NormalizedTech {
@@ -76,13 +76,15 @@ const styles = {
   tldPage: {
     fontFamily: "'Inter', sans-serif",
     background: "#EEF4F1",
-    minHeight: "100vh",
+    height: "100%",
+    maxHeight: "100%",
     padding: "14px",
     color: "#1F2933",
     display: "flex",
     flexDirection: "column",
     gap: "14px",
     boxSizing: "border-box",
+    overflow: "hidden",
   } as React.CSSProperties,
 
   tldToast: {
@@ -160,7 +162,7 @@ const styles = {
     alignItems: "center",
     flexWrap: "wrap",
     gap: "10px",
-    padding: "16px 20px 14px",
+    padding: "10px 16px",
     borderBottom: "1px solid #E3ECE7",
     boxSizing: "border-box",
   } as React.CSSProperties,
@@ -361,7 +363,7 @@ const styles = {
     background: "transparent",
     border: "none",
     borderRadius: 0,
-    padding: "16px 20px",
+    padding: "10px 16px",
     display: "flex",
     alignItems: "flex-end",
     gap: "12px",
@@ -457,6 +459,7 @@ const styles = {
 
   tldTableWrap: {
     overflowX: "auto",
+    overflowY: "auto",
     flex: 1,
   } as React.CSSProperties,
 
@@ -1049,6 +1052,7 @@ export default function TechnicianListPage(){
   const [sortKey,       setSortKey]       = useState("name");
   const [sortDir,       setSortDir]       = useState("asc");
   const [page,          setPage]          = useState(1);
+  const [uniqueZones,   setUniqueZones]   = useState<string[]>([]);
 
   const [selected,  setSelected]  = useState<NormalizedTech | null>(null);
   const [newStatus, setNewStatus] = useState("");
@@ -1154,8 +1158,17 @@ export default function TechnicianListPage(){
     else { setLoading(true); setInitError(""); }
     const t0=Date.now();
     try{
-      const res=await getAllTechnicians();
+      const res=await getAllTechnicians({
+        search: debSearch || undefined,
+        status: statusFilter !== "ALL" ? statusFilter : undefined,
+        zone: zoneFilter !== "ALL" ? zoneFilter : undefined,
+        skill: skillFilter !== "ALL" ? skillFilter : undefined,
+      });
       setTechnicians((res.data||[]).map(normTech));
+      
+      const zonesRes = await getUniqueZones();
+      setUniqueZones(zonesRes.data || []);
+      
       const latency=Date.now()-t0;
       setLastSuccessAt(Date.now());
       setMetrics(m=>({...m,successCount:m.successCount+1,lastLatencyMs:latency}));
@@ -1168,7 +1181,7 @@ export default function TechnicianListPage(){
       if(silent) setFetching(false);
       else setLoading(false);
     }
-  },[]);
+  },[debSearch, statusFilter, zoneFilter, skillFilter]);
 
   useEffect(()=>{ fetchData(false); }, [fetchData]);
 
@@ -1188,29 +1201,8 @@ export default function TechnicianListPage(){
     return()=>document.removeEventListener("mousedown",handler);
   },[showMetrics]);
 
-  const uniqueZones = useMemo(() => {
-    const seen = new Set<string>();
-    const result: string[] = [];
-    technicians.forEach(t => {
-      if (t.location) {
-        const val = t.location.trim();
-        const norm = val.toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ");
-        if (!seen.has(norm)) {
-          seen.add(norm);
-          result.push(val);
-        }
-      }
-    });
-    return result.sort();
-  }, [technicians]);
-
   const filtered = useMemo(()=>{
-    let list=technicians;
-    if(debSearch){ const s=debSearch.toLowerCase(); list=list.filter(t=>t.name.toLowerCase().includes(s)||t.skill.toLowerCase().includes(s)||t.location.toLowerCase().includes(s)); }
-    if(statusFilter!=="ALL") list=list.filter(t=>normalizeStatus(t.status)===statusFilter);
-    if(skillFilter!=="ALL")  list=list.filter(t=>t.skill===skillFilter);
-    if(zoneFilter!=="ALL")   list=list.filter(t=>(t.location || "").trim().toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ")===zoneFilter.trim().toUpperCase().replace(/_/g, " ").replace(/\s+/g, " "));
-    return [...list].sort((a,b)=>{
+    return [...technicians].sort((a,b)=>{
       let av: any, bv: any;
       if(sortKey==="name"){av=a.name.toLowerCase();bv=b.name.toLowerCase();}
       else if(sortKey==="status"){av=normalizeStatus(a.status);bv=normalizeStatus(b.status);}
@@ -1221,7 +1213,7 @@ export default function TechnicianListPage(){
       if(av>bv) return sortDir==="asc"?1:-1;
       return 0;
     });
-  },[technicians,debSearch,statusFilter,skillFilter,zoneFilter,sortKey,sortDir]);
+  },[technicians,sortKey,sortDir]);
 
   useEffect(() => {
     const total = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -1306,19 +1298,7 @@ export default function TechnicianListPage(){
         </div>
       )}
 
-      {/* Countdown progress rail */}
-      {!loading&&technicians.length>0&&(
-        <div style={styles.tldCountdownRail}>
-          <div
-            className={`tld-countdown-fill${fetching?" fetching":""}`}
-            style={{
-              ...styles.tldCountdownFill,
-              width: `${countdown}%`,
-              background: fetching ? "#D9A441" : "#7AAE8A"
-            }}
-          />
-        </div>
-      )}
+      {/* Countdown progress rail moved inside card header */}
 
       {/* Background error banner */}
       {bgError&&(
@@ -1335,41 +1315,76 @@ export default function TechnicianListPage(){
             <span style={styles.tldSectionBadge}>Dashboard</span>
             <p style={styles.tldCardSubtitle}>Monitor registered technicians, real-time workload, and latency metrics</p>
           </div>
-          <div className="tld-header-right-responsive" style={styles.tldHeaderRight}>
-            {/* Refresh indicator */}
-            <div style={styles.tldRefreshBar}>
-              {fetching
-                ? <><div style={styles.tldRefreshSpinner}/><span style={styles.tldRefreshFetching}>Refreshing…</span></>
-                : !isTabActive
-                  ? <span style={styles.tldRefreshPaused}>Paused</span>
-                  : <span style={styles.tldRefreshLast}>Updated {formatAgo(lastSuccessAt)}</span>
-              }
-              {isStale&&!fetching&&<span style={styles.tldStaleWarning}>Data may be outdated</span>}
-              
-              {/* Metrics popover */}
-              <div style={styles.tldMetricsWrap} ref={metricsRef}>
-                <button className="tld-metrics-trigger-style" style={styles.tldMetricsTrigger} onClick={()=>setShowMetrics(v=>!v)}>
-                  Metrics
-                </button>
-                {showMetrics&&<MetricsPanel metrics={metrics} lastSuccessAt={lastSuccessAt}/>}
+          <div className="tld-header-right-responsive" style={{
+            ...styles.tldHeaderRight,
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: "6px",
+          }}>
+            {/* Top row containing refresh indicator, Metrics, Refresh button and Add button */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              flexWrap: "wrap",
+            }}>
+              {/* Refresh indicator */}
+              <div style={styles.tldRefreshBar}>
+                {fetching
+                  ? <><div style={styles.tldRefreshSpinner}/><span style={styles.tldRefreshFetching}>Refreshing…</span></>
+                  : !isTabActive
+                    ? <span style={styles.tldRefreshPaused}>Paused</span>
+                    : <span style={styles.tldRefreshLast}>Updated {formatAgo(lastSuccessAt)}</span>
+                }
+                {isStale&&!fetching&&<span style={styles.tldStaleWarning}>Data may be outdated</span>}
+                
+                {/* Metrics popover */}
+                <div style={styles.tldMetricsWrap} ref={metricsRef}>
+                  <button className="tld-metrics-trigger-style" style={styles.tldMetricsTrigger} onClick={()=>setShowMetrics(v=>!v)}>
+                    Metrics
+                  </button>
+                  {showMetrics&&<MetricsPanel metrics={metrics} lastSuccessAt={lastSuccessAt}/>}
+                </div>
               </div>
+
+              <button
+                className="tld-refresh-btn-style"
+                style={styles.tldRefreshBtn}
+                onClick={handleManualRefresh}
+                disabled={fetching||loading}
+                title="Refresh now"
+              >
+                {fetching||loading
+                  ? <><div style={styles.tldRefreshBtnSpinner}/>Refreshing…</>
+                  : <>Refresh</>
+                }
+              </button>
+              <button className="tld-add-btn-style" style={styles.tldAddBtn} onClick={openAddForm}>
+                + Add Technician
+              </button>
             </div>
 
-            <button
-              className="tld-refresh-btn-style"
-              style={styles.tldRefreshBtn}
-              onClick={handleManualRefresh}
-              disabled={fetching||loading}
-              title="Refresh now"
-            >
-              {fetching||loading
-                ? <><div style={styles.tldRefreshBtnSpinner}/>Refreshing…</>
-                : <>Refresh</>
-              }
-            </button>
-            <button className="tld-add-btn-style" style={styles.tldAddBtn} onClick={openAddForm}>
-              + Add Technician
-            </button>
+            {/* Bottom row: Expanded countdown progress bar spanning the width of the header controls */}
+            {!loading&&technicians.length>0&&!fetching&&isTabActive&&(
+              <div style={{
+                width: "100%",
+                maxWidth: "380px", // Expanded size to span under the buttons block
+                height: "3px",
+                background: "#E3ECE7",
+                borderRadius: "2px",
+                overflow: "hidden",
+                marginTop: "2px", // a little bit down
+              }}>
+                <div
+                  className="tld-countdown-fill"
+                  style={{
+                    ...styles.tldCountdownFill,
+                    width: `${countdown}%`,
+                    height: "100%"
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
 

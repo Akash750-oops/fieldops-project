@@ -13,6 +13,9 @@ class JobCreate(BaseModel):
     preferred_service_date: date
     required_skill: Optional[str] = None # Made optional to match frontend
     status: str = "active"
+    tenant_id: Optional[str] = None
+    sla_deadline: Optional[datetime] = None
+    attempt_count: Optional[int] = 0
 
     @field_validator(
         "customer_name",
@@ -52,6 +55,9 @@ class JobResponse(BaseModel):
     assigned_technician_id: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    tenant_id: Optional[str] = None
+    sla_deadline: Optional[datetime] = None
+    attempt_count: Optional[int] = 0
 
     model_config = ConfigDict(from_attributes=True)
 

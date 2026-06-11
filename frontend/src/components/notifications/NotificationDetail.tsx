@@ -182,8 +182,27 @@ export const NotificationDetail: React.FC<NotificationDetailProps> = ({
 
     fetchHistory();
 
-    const socket = io(import.meta.env.VITE_SOCKET_URL, {
-      transports: ["websocket", "polling"]
+    // Guard: don't connect socket if URL is not configured
+    const socketUrl = import.meta.env.VITE_SOCKET_URL;
+    if (!socketUrl) {
+      return;
+    }
+
+    let socket: ReturnType<typeof io>;
+    try {
+      socket = io(socketUrl, {
+        transports: ["websocket", "polling"],
+        reconnectionAttempts: 5,
+        reconnectionDelay: 2000,
+        timeout: 10000,
+      });
+    } catch (err) {
+      console.warn("NotificationDetail: Failed to create socket connection", err);
+      return;
+    }
+
+    socket.on("connect_error", (err) => {
+      console.warn("NotificationDetail: Socket connection error:", err.message);
     });
 
     socket.on("override:new", (data: any) => {

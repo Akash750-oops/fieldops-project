@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from app.services.skill import SkillScoringService
 from app.services.workload import WorkloadScoringService
 from app.services.composite import CompositeScoringService
 from app.routes.dispatch import verify_jwt_token
+from app.utils import map_service_type_to_skill, is_skill_matching
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -88,9 +90,30 @@ def get_jobs_stats(db: Session = Depends(get_db)):
         )
 
 
+@router.get("/service-types", response_model=list[str])
+def get_service_types(db: Session = Depends(get_db)):
+    """
+    Retrieve all unique service types.
+    """
+    try:
+        results = db.query(Job.service_type).distinct().all()
+        # Filter out empty/null values, trim, and sort
+        service_types = sorted(list(set(r[0].strip() for r in results if r[0] and r[0].strip())))
+        return service_types
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch unique service types: {str(error)}"
+        )
+
+
 @router.post("/", response_model=JobResponse, status_code=201)
 def create_job(job: JobCreate, db: Session = Depends(get_db)):
     try:
+        req_skill = job.required_skill
+        if not req_skill or not req_skill.strip():
+            req_skill = map_service_type_to_skill(job.service_type)
+
         new_job = Job(
             customer_name=job.customer_name,
             location=job.location,
@@ -100,11 +123,35 @@ def create_job(job: JobCreate, db: Session = Depends(get_db)):
             contact_number=job.contact_number,
             preferred_service_date=job.preferred_service_date,
             status=job.status,
+            required_skill=req_skill,
+            tenant_id=job.tenant_id or "tenant-1",
+            sla_deadline=job.sla_deadline,
+            attempt_count=job.attempt_count or 0
         )
 
         db.add(new_job)
         db.commit()
         db.refresh(new_job)
+
+        if job.status.upper() == "ESCALATED":
+            from app.models import SLAEscalation, AuditEvent
+            now_utc = datetime.now(timezone.utc)
+            escalation = SLAEscalation(
+                job_id=new_job.id,
+                manager_notified_at=now_utc,
+                status="ESCALATED"
+            )
+            db.add(escalation)
+            audit = AuditEvent(
+                tech_id="system",
+                tenant_id=new_job.tenant_id,
+                event_type="SLA_ESCALATION",
+                old_status="active",
+                new_status="ESCALATED",
+                reason="Manager manually created job as ESCALATED"
+            )
+            db.add(audit)
+            db.commit()
 
         return new_job
 
@@ -117,16 +164,103 @@ def create_job(job: JobCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=list[JobResponse])
-def get_jobs(db: Session = Depends(get_db)):
-    return db.query(Job).order_by(Job.id.desc()).all()
+def get_jobs(
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    priority: Optional[str] = None,
+    service_type: Optional[str] = None,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    db: Session = Depends(get_db)
+):
+    try:
+        query = db.query(Job)
+        if x_tenant_id:
+            query = query.filter(Job.tenant_id == x_tenant_id)
+        
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                (Job.customer_name.ilike(search_pattern)) |
+                (Job.location.ilike(search_pattern)) |
+                (Job.issue_description.ilike(search_pattern))
+            )
+            
+        if status and status.upper() != "ALL":
+            s_lower = status.lower().strip().replace(" ", "")
+            if s_lower == "inprogress":
+                query = query.filter(func.lower(func.replace(Job.status, " ", "")).in_(["inprogress"]))
+            elif s_lower == "cancelled" or s_lower == "canceled":
+                query = query.filter(func.lower(Job.status).in_(["cancelled", "canceled"]))
+            else:
+                query = query.filter(func.lower(Job.status) == s_lower)
+                
+        if priority and priority.upper() != "ALL":
+            p_upper = priority.upper()
+            if p_upper == "CRITICAL":
+                query = query.filter(func.upper(Job.priority).in_(["CRITICAL", "P1"]))
+            elif p_upper == "HIGH":
+                query = query.filter(func.upper(Job.priority).in_(["HIGH", "P2"]))
+            elif p_upper == "MEDIUM":
+                query = query.filter(func.upper(Job.priority).in_(["MEDIUM", "P3"]))
+            elif p_upper == "LOW":
+                query = query.filter(func.upper(Job.priority).in_(["LOW", "P4", "P5"]))
+            else:
+                query = query.filter(func.upper(Job.priority) == p_upper)
+                
+        if service_type and service_type.upper() != "ALL":
+            normalized_service = service_type.replace("_", " ").strip().lower()
+            query = query.filter(func.lower(func.replace(Job.service_type, "_", " ")) == normalized_service)
+            
+        return query.order_by(Job.id.desc()).all()
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch jobs: {str(error)}"
+        )
 
 @router.get("/pending", response_model=list[JobResponse])
-def get_pending_jobs(db: Session = Depends(get_db)):
+def get_pending_jobs(
+    search: Optional[str] = None,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    db: Session = Depends(get_db)
+):
     """
-    Retrieve all unassigned/pending jobs.
+    Retrieve all actionable unassigned/pending jobs, optionally filtered.
+    Excludes terminal-status jobs (completed/cancelled) so the row count
+    exactly matches the 'Jobs Pending' KPI card on the Planning Dashboard.
     """
+    TERMINAL_STATUSES = ["completed", "cancelled", "canceled",
+                         "COMPLETED", "CANCELLED", "CANCELED"]
     try:
-        return db.query(Job).filter(Job.assigned_technician_id.is_(None)).order_by(Job.id.desc()).all()
+        query = db.query(Job).filter(
+            Job.assigned_technician_id.is_(None),
+            Job.status.notin_(TERMINAL_STATUSES)
+        )
+        if x_tenant_id:
+            query = query.filter(Job.tenant_id == x_tenant_id)
+        
+        if search:
+            search_pattern = f"%{search}%"
+            id_filter = None
+            try:
+                id_val = int(search.replace("#", "").strip())
+                id_filter = (Job.id == id_val)
+            except ValueError:
+                pass
+                
+            text_filters = (
+                (Job.customer_name.ilike(search_pattern)) |
+                (Job.location.ilike(search_pattern)) |
+                (Job.issue_description.ilike(search_pattern)) |
+                (Job.priority.ilike(search_pattern))
+            )
+            
+            if id_filter is not None:
+                query = query.filter(id_filter | text_filters)
+            else:
+                query = query.filter(text_filters)
+                
+        return query.order_by(Job.id.desc()).all()
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -140,6 +274,10 @@ def update_job(job_id: int, job: JobCreate, db: Session = Depends(get_db)):
     if not existing_job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    req_skill = job.required_skill
+    if not req_skill or not req_skill.strip():
+        req_skill = map_service_type_to_skill(job.service_type)
+
     existing_job.customer_name = job.customer_name
     existing_job.location = job.location
     existing_job.issue_description = job.issue_description
@@ -148,6 +286,10 @@ def update_job(job_id: int, job: JobCreate, db: Session = Depends(get_db)):
     existing_job.contact_number = job.contact_number
     existing_job.preferred_service_date = job.preferred_service_date
     existing_job.status = job.status
+    existing_job.required_skill = req_skill
+    existing_job.tenant_id = job.tenant_id or "tenant-1"
+    existing_job.sla_deadline = job.sla_deadline
+    existing_job.attempt_count = job.attempt_count or 0
 
     db.commit()
     db.refresh(existing_job)
@@ -280,7 +422,7 @@ async def plan_job_assignment(
             continue
             
         # 2. Scoring
-        skill_res = skill_service.calculate_skill_score(job.required_skill or "", tech.technician_skill or "", db)
+        skill_res = skill_service.calculate_skill_score(job.required_skill or "", tech.technician_skill or "", db, job.service_type or "")
         if not skill_res.get("qualified"):
             disq = DisqualifiedTechnician(
                 tech_id=tech.tech_id or str(tech.technician_id),
@@ -513,7 +655,7 @@ def reassign_job(
     if new_tech.technician_status == "OFFLINE":
         raise HTTPException(status_code=400, detail="New technician is OFFLINE")
         
-    if job.required_skill and job.required_skill not in new_tech.technician_skill:
+    if not is_skill_matching(new_tech.technician_skill, job.required_skill, job.service_type):
         raise HTTPException(status_code=400, detail="New technician missing required skills")
         
     if new_tech.current_jobs >= 3:
@@ -568,7 +710,7 @@ async def assign_job(
         if tech.technician_status == "OFFLINE":
             raise HTTPException(status_code=400, detail="Technician is OFFLINE")
             
-        if not req.skip_skill_check and job.required_skill and job.required_skill not in tech.technician_skill:
+        if not req.skip_skill_check and not is_skill_matching(tech.technician_skill, job.required_skill, job.service_type):
             raise HTTPException(status_code=400, detail="Technician missing required skills")
             
         if not req.skip_workload_check and tech.current_jobs >= tech.max_jobs:

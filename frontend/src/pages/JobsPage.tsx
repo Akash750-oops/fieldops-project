@@ -16,6 +16,9 @@ interface JobFormData {
   preferred_service_date: string;
   status: string;
   required_skill?: string;
+  tenant_id: string;
+  sla_deadline?: string;
+  attempt_count?: number;
 }
 
 const initialFormData: JobFormData = {
@@ -28,6 +31,9 @@ const initialFormData: JobFormData = {
   preferred_service_date: "",
   status: "active",
   required_skill: "",
+  tenant_id: "tenant-1",
+  sla_deadline: "",
+  attempt_count: 0,
 };
 
 interface Job {
@@ -115,34 +121,25 @@ function JobCreationForm() {
   // State variables for list rendering and filtering
   const [jobs, setJobs] = useState<Job[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debSearchTerm, setDebSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [priorityFilter, setPriorityFilter] = useState("ALL");
   const [serviceFilter, setServiceFilter] = useState("ALL");
+  const [serviceTypesList, setServiceTypesList] = useState<Array<{ value: string; label: string }>>([]);
   const [jobsPage, setJobsPage] = useState(1);
 
   useEffect(() => {
-    setJobsPage(1);
-  }, [searchTerm, statusFilter, priorityFilter, serviceFilter]);
+    const timer = setTimeout(() => {
+      setDebSearchTerm(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
-  const getFilterServiceTypes = () => {
-    const seenNormal = new Set<string>();
-    const result: Array<{ value: string; label: string }> = [];
-    jobs.forEach(j => {
-      if (j.service_type) {
-        const val = j.service_type;
-        const normalized = val.toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim();
-        if (!seenNormal.has(normalized)) {
-          seenNormal.add(normalized);
-          const predefined = serviceTypes.find(s => (s.value || "").toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim() === normalized);
-          result.push({
-            value: predefined ? predefined.value : val,
-            label: predefined ? predefined.label : val.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
-          });
-        }
-      }
-    });
-    return result;
-  };
+  useEffect(() => {
+    setJobsPage(1);
+  }, [debSearchTerm, statusFilter, priorityFilter, serviceFilter]);
+
+
 
   const getFormServiceTypes = () => {
     const list = [...serviceTypes];
@@ -178,10 +175,32 @@ function JobCreationForm() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewJob, setViewJob] = useState<Job | null>(null);
 
+  const fetchServiceTypes = async () => {
+    try {
+      const response = await api.get("/jobs/service-types");
+      const mapped = response.data.map((st: string) => {
+        const predefined = serviceTypes.find(s => (s.value || "").toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim() === st.toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim());
+        return {
+          value: predefined ? predefined.value : st,
+          label: predefined ? predefined.label : st.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
+        };
+      });
+      setServiceTypesList(mapped);
+    } catch (error) {
+      console.error("Failed to fetch unique service types:", error);
+    }
+  };
+
   const fetchJobs = async () => {
     try {
       setJobsLoading(true);
-      const response = await api.get("/jobs");
+      const params: any = {};
+      if (debSearchTerm) params.search = debSearchTerm;
+      if (statusFilter && statusFilter !== "ALL") params.status = statusFilter;
+      if (priorityFilter && priorityFilter !== "ALL") params.priority = priorityFilter;
+      if (serviceFilter && serviceFilter !== "ALL") params.service_type = serviceFilter;
+
+      const response = await api.get("/jobs", { params });
       setJobs(response.data);
     } catch (error) {
       console.error(error);
@@ -191,7 +210,13 @@ function JobCreationForm() {
     }
   };
 
-  useEffect(() => { fetchJobs(); }, []);
+  useEffect(() => {
+    fetchServiceTypes();
+  }, []);
+
+  useEffect(() => {
+    fetchJobs();
+  }, [debSearchTerm, statusFilter, priorityFilter, serviceFilter]);
 
   const validateForm = () => {
     const newErrors: Partial<Record<keyof JobFormData, string>> = {};
@@ -246,6 +271,9 @@ function JobCreationForm() {
       preferred_service_date: job.preferred_service_date || "",
       status: jobStatus,
       required_skill: job.required_skill || "",
+      tenant_id: (job as any).tenant_id || "tenant-1",
+      sla_deadline: (job as any).sla_deadline ? new Date((job as any).sla_deadline).toISOString().slice(0, 16) : "",
+      attempt_count: (job as any).attempt_count !== undefined ? (job as any).attempt_count : 0,
     });
     setIsFormOpen(true);
   };
@@ -267,18 +295,40 @@ function JobCreationForm() {
     if (!validateForm()) return;
     try {
       setLoading(true);
+      const payload = {
+        ...formData,
+        sla_deadline: formData.sla_deadline && formData.sla_deadline.trim() ? formData.sla_deadline : null,
+        required_skill: formData.required_skill && formData.required_skill.trim() ? formData.required_skill : null,
+        attempt_count: formData.attempt_count !== undefined ? Number(formData.attempt_count) : 0,
+      };
+
       if (isEditing && editingJobId !== null) {
-        const response = await api.put(`/jobs/${editingJobId}`, formData);
+        const response = await api.put(`/jobs/${editingJobId}`, payload);
         setPopup({ show: true, title: "Job Updated Successfully", message: "The job details have been updated successfully.", jobId: response.data?.id ?? editingJobId });
       } else {
-        const response = await api.post("/jobs", formData);
+        const response = await api.post("/jobs", payload);
         setPopup({ show: true, title: "Job Created Successfully", message: "Your job request has been submitted successfully.", jobId: response.data?.id ?? "" });
       }
       resetForm();
       fetchJobs();
+      fetchServiceTypes();
     } catch (error: any) {
       console.error(error);
-      const errorMsg = error.response?.data?.error || error.response?.data?.detail || "Unable to save job. Please check backend API.";
+      let errorMsg = "Unable to save job. Please check backend API.";
+      if (error.response?.data) {
+        const data = error.response.data;
+        if (data.error && data.error !== "Bad request") {
+          errorMsg = data.error;
+        } else if (data.detail && Array.isArray(data.detail)) {
+          errorMsg = data.detail.map((d: any) => {
+            const field = d.loc && d.loc.length > 0 ? d.loc[d.loc.length - 1] : "field";
+            const formattedField = String(field).replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+            return `${formattedField}: ${d.msg}`;
+          }).join(", ");
+        } else if (data.detail) {
+          errorMsg = data.detail;
+        }
+      }
       setApiError(errorMsg);
     } finally {
       setLoading(false);
@@ -294,6 +344,7 @@ function JobCreationForm() {
       await api.delete(`/jobs/${id}`);
       setPopup({ show: true, title: "Job Deleted", message: "The job has been removed successfully.", jobId: id });
       fetchJobs();
+      fetchServiceTypes();
     } catch (error) {
       console.error(error);
       setApiError("Unable to delete job. Please check backend API.");
@@ -302,32 +353,7 @@ function JobCreationForm() {
     }
   };
 
-  const filteredJobs = jobs
-    .filter(j => {
-      if (statusFilter === "ALL") return true;
-      const jobStatus = (j.status || "active").toLowerCase().trim().replace(" ", "");
-      const filterStatus = statusFilter.toLowerCase().trim().replace(" ", "");
-      const normJS = jobStatus === "canceled" ? "cancelled" : jobStatus;
-      const normFS = filterStatus === "canceled" ? "cancelled" : filterStatus;
-      return normJS === normFS;
-    })
-    .filter(j => {
-      if (priorityFilter === "ALL") return true;
-      return normalizeP(j.priority) === priorityFilter;
-    })
-    .filter(j => {
-      if (serviceFilter === "ALL") return true;
-      const norm = (val?: string) => (val || "").toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim();
-      return norm(j.service_type) === norm(serviceFilter);
-    })
-    .filter(j => {
-      const s = searchTerm.toLowerCase();
-      return (
-        (j.customer_name && j.customer_name.toLowerCase().includes(s)) ||
-        (j.location && j.location.toLowerCase().includes(s)) ||
-        (j.issue_description && j.issue_description.toLowerCase().includes(s))
-      );
-    });
+  const filteredJobs = jobs;
 
   const jobsTotalPages = Math.max(1, Math.ceil(filteredJobs.length / JOBS_PAGE_SIZE));
   const safeJobsPage = Math.min(jobsPage, jobsTotalPages);
@@ -481,7 +507,7 @@ function JobCreationForm() {
                 style={focusedInput === 'serviceFilter' ? { ...styles.filterInput, ...styles.filterInputFocus } : styles.filterInput}
               >
                 <option value="ALL">All Services</option>
-                {getFilterServiceTypes().map(st => (
+                {serviceTypesList.map(st => (
                   <option key={st.value} value={st.value}>
                     {st.label}
                   </option>
@@ -814,24 +840,66 @@ function JobCreationForm() {
               {errors.preferred_service_date && <span style={styles.fieldError}>{errors.preferred_service_date}</span>}
             </div>
 
-            {isEditing && (
-              <div style={styles.formGroup}>
-                <label style={styles.formLabel}>Status <span style={styles.req}>*</span></label>
-                <select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleChange}
-                  onFocus={() => setFocusedInput('status')}
-                  onBlur={() => setFocusedInput(null)}
-                  style={getInputStyle('status')}
-                >
-                  <option value="active">Active</option>
-                  <option value="in progress">In Progress</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-            )}
+            <div style={styles.formGroup}>
+              <label style={styles.formLabel}>Status <span style={styles.req}>*</span></label>
+              <select
+                name="status"
+                value={formData.status}
+                onChange={handleChange}
+                onFocus={() => setFocusedInput('status')}
+                onBlur={() => setFocusedInput(null)}
+                style={getInputStyle('status')}
+              >
+                <option value="active">Active</option>
+                <option value="QUEUED">Queued (Dispatch Queue)</option>
+                <option value="ESCALATED">Escalated (SLA Escalations)</option>
+                <option value="in progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.formLabel}>Tenant ID <span style={styles.req}>*</span></label>
+              <input
+                type="text"
+                name="tenant_id"
+                value={formData.tenant_id}
+                onChange={handleChange}
+                onFocus={() => setFocusedInput('tenant_id')}
+                onBlur={() => setFocusedInput(null)}
+                placeholder="tenant-1"
+                style={getInputStyle('tenant_id')}
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.formLabel}>SLA Deadline (Optional)</label>
+              <input
+                type="datetime-local"
+                name="sla_deadline"
+                value={formData.sla_deadline || ""}
+                onChange={handleChange}
+                onFocus={() => setFocusedInput('sla_deadline')}
+                onBlur={() => setFocusedInput(null)}
+                style={getInputStyle('sla_deadline')}
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.formLabel}>Attempt Count (Optional)</label>
+              <input
+                type="number"
+                name="attempt_count"
+                value={formData.attempt_count ?? 0}
+                onChange={handleChange}
+                onFocus={() => setFocusedInput('attempt_count')}
+                onBlur={() => setFocusedInput(null)}
+                min={0}
+                placeholder="0"
+                style={getInputStyle('attempt_count')}
+              />
+            </div>
 
             <div style={styles.formGroup}>
               <label style={styles.formLabel}>Issue Description <span style={styles.req}>*</span></label>
@@ -886,11 +954,14 @@ const styles = {
   jobsPage: {
     fontFamily: "'Inter', sans-serif",
     background: "#EEF4F1",
-    minHeight: "100vh",
-    padding: "14px",
+    height: "100%",
+    maxHeight: "100%",
+    padding: "10px 14px",
     color: "#1F2933",
     display: "flex",
     flexDirection: "column",
+    boxSizing: "border-box",
+    overflow: "hidden",
   } as React.CSSProperties,
   popupOverlay: {
     position: "fixed",
@@ -945,32 +1016,36 @@ const styles = {
     transition: "background .2s",
   } as React.CSSProperties,
   mainContentRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: "20px",
-    alignItems: "start",
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    overflow: "hidden",
   } as React.CSSProperties,
   contentCard: {
     background: "#FFFFFF",
     borderRadius: "12px",
-    padding: "22px",
+    padding: "8px 16px",
     boxShadow: "0 1px 4px rgba(47, 79, 62, 0.07)",
     border: "1px solid #E3ECE7",
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    overflow: "hidden",
   } as React.CSSProperties,
   cardHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: "12px",
-    marginBottom: "16px",
-    paddingBottom: "14px",
+    gap: "8px",
+    marginBottom: "6px",
+    paddingBottom: "6px",
     borderBottom: "1px solid #E3ECE7",
   } as React.CSSProperties,
   cardSubtitle: {
     fontSize: "12px",
     color: "#6B7280",
-    marginTop: "3px",
+    margin: "1px 0 0 0",
   } as React.CSSProperties,
   headerActionsRow: {
     display: "flex",
@@ -1003,13 +1078,13 @@ const styles = {
   filtersRow: {
     display: "grid",
     gridTemplateColumns: "2fr 1fr 1fr 1fr",
-    gap: "10px",
-    marginBottom: "14px",
+    gap: "8px",
+    marginBottom: "4px",
   } as React.CSSProperties,
   filterGroup: {
     display: "flex",
     flexDirection: "column",
-    gap: "4px",
+    gap: "2px",
   } as React.CSSProperties,
   filterLabel: {
     fontSize: "10px",
@@ -1019,7 +1094,7 @@ const styles = {
     letterSpacing: ".05em",
   } as React.CSSProperties,
   filterInput: {
-    padding: "7px 10px",
+    padding: "5px 8px",
     border: "1.5px solid #E3ECE7",
     borderRadius: "8px",
     fontSize: "12px",
@@ -1036,10 +1111,12 @@ const styles = {
     fontSize: "11px",
     color: "#6B7280",
     fontWeight: 500,
-    marginBottom: "10px",
+    marginBottom: "4px",
   } as React.CSSProperties,
   tableContainer: {
     overflowX: "auto",
+    overflowY: "auto",
+    flex: 1,
   } as React.CSSProperties,
   dashboardTable: {
     width: "100%",

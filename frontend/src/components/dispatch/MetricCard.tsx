@@ -61,8 +61,18 @@ const buildSparklinePoints = (values: number[], width = 72, height = 40) => {
 
   const max = Math.max(...values);
   const min = Math.min(...values);
-  const range = max - min || 1;
 
+  if (max === min) {
+    return values
+      .map((_, index) => {
+        const x = 4 + (index / (values.length - 1 || 1)) * (width - 8);
+        const y = height / 2;
+        return `${x},${y}`;
+      })
+      .join(" ");
+  }
+
+  const range = max - min;
   return values
     .map((v, index) => {
       const x = 4 + (index / (values.length - 1 || 1)) * (width - 8);

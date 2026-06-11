@@ -179,13 +179,10 @@ const MetricsCards = ({ onFilterChange }: MetricsCardsProps) => {
   }
 
   return (
-    <section aria-label="Dispatch metrics" className="space-y-3">
+    <section aria-label="Dispatch metrics" className="space-y-1.5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-gray-900">Dispatch Metrics</h2>
-          <p className="text-sm text-gray-500">
-            Auto-refreshes every 60 seconds
-          </p>
+          <h2 className="text-sm font-bold text-gray-700">Dispatch Metrics</h2>
         </div>
 
         {refreshing && (

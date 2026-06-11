@@ -1,9 +1,4 @@
-import { useState, useEffect, useRef } from "react";
-import JobsPage from "./pages/JobsPage";
-import TechniciansPage from "./pages/TechniciansPage";
-import TechDashboardPage from "./pages/TechDashboardPage";
-import PlanningPage from "./pages/PlanningPage";
-import DashboardPage from "./pages/DashboardPage";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import logo from "./assets/logo.png";
 import { ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, LayoutDashboard, Briefcase, Users, Wrench, ClipboardList, Calendar } from "lucide-react";
 
@@ -28,6 +23,14 @@ import {
 import { startHeartbeatLoop, stopHeartbeatLoop } from "./services/heartbeatService";
 import { getAllTechnicians } from "./services/technicianService";
 import { ToastProvider, useToast } from "./hooks/useToast";
+import LoadingSpinner from "./components/ui/LoadingSpinner";
+
+// Lazy load page components
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const JobsPage = lazy(() => import("./pages/JobsPage"));
+const TechniciansPage = lazy(() => import("./pages/TechniciansPage"));
+const TechDashboardPage = lazy(() => import("./pages/TechDashboardPage"));
+const PlanningPage = lazy(() => import("./pages/PlanningPage"));
 
 interface NotificationItem {
   id: string | number;
@@ -373,7 +376,7 @@ const styles = {
   pageWrap: {
     flex: 1,
     background: "#EEF4F1",
-    overflowY: "auto",
+    overflowY: "hidden",
     height: 0,
   } as React.CSSProperties,
 
@@ -428,26 +431,44 @@ function AppInner() {
 
   const isMobileLayout = windowWidth <= 500;
 
-  // Fetch registered technicians to pick one as the active user
-  useEffect(() => {
-    const fetchTechs = async () => {
-      try {
-        const response = await getAllTechnicians();
-        if (response.data && response.data.length > 0) {
-          setTechList(response.data);
-          // Pick the first technician's UUID
-          const firstTech = response.data[0];
-          const techId = firstTech.tech_id || firstTech.technician_id || firstTech.id;
-          if (techId) {
-            setActiveTechId(techId);
-          }
+  // Lazy fetch registered technicians if not already loaded
+  const ensureActiveTechLoaded = async () => {
+    if (techList.length > 0 && activeTechId !== null) {
+      return activeTechId;
+    }
+    try {
+      const response = await getAllTechnicians();
+      if (response.data && response.data.length > 0) {
+        setTechList(response.data);
+        // Pick the first technician's UUID
+        const firstTech = response.data[0];
+        const techId = firstTech.tech_id || firstTech.technician_id || firstTech.id;
+        if (techId) {
+          setActiveTechId(techId);
+          return techId;
         }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch technicians list lazily.", err);
+    }
+    return null;
+  };
+
+  // Fetch notifications only when the notification drawer is opened or notification feature is active
+  useEffect(() => {
+    if (!activeTechId || !isNotificationDrawerOpen) return;
+
+    const loadNotifications = async () => {
+      try {
+        const data = await fetchNotifications(activeTechId);
+        setNotifications(data.notifications);
+        setUnreadCount(data.unreadCount);
       } catch (err) {
-        console.warn("Failed to fetch technicians list, using fallback technician ID.", err);
+        console.error("Failed to load notifications:", err);
       }
     };
-    fetchTechs();
-  }, []);
+    loadNotifications();
+  }, [activeTechId, isNotificationDrawerOpen]);
 
   // Fetch notifications and initialize socket listeners for the active technician
   useEffect(() => {
@@ -458,14 +479,6 @@ function AppInner() {
       last_lat: 13.0827 + (Math.random() - 0.5) * 0.01,
       last_lng: 80.2707 + (Math.random() - 0.5) * 0.01
     }));
-
-    // 1. Initial Load
-    const loadInitialNotifications = async () => {
-      const data = await fetchNotifications(activeTechId);
-      setNotifications(data.notifications);
-      setUnreadCount(data.unreadCount);
-    };
-    loadInitialNotifications();
 
     // 2. Connect Socket.io
     const socketHandlers = {
@@ -806,25 +819,42 @@ function AppInner() {
           </nav>
 
           {/* Active tech switcher and demo controls */}
-          <div style={isMobileLayout ? { display: "none" } : styles.sidebarSimulationControls}>
-            {techList.length > 0 && activeTechId !== null && (
+          <div 
+            style={isMobileLayout ? { display: "none" } : styles.sidebarSimulationControls}
+            onMouseEnter={ensureActiveTechLoaded}
+          >
+            {techList.length === 0 ? (
               <div style={{ fontSize: "11px" }}>
                 <label style={{ display: "block", marginBottom: "4px", color: "#6B7280", fontWeight: 600 }}>Simulated Tech:</label>
                 <select
-                  style={{ width: "100%", padding: "4px", borderRadius: "4px", border: "1px solid #E3ECE7", background: "#FFFFFF", fontSize: "11px" }}
-                  value={activeTechId}
-                  onChange={(e) => setActiveTechId(e.target.value)}
+                  style={{ width: "100%", padding: "4px", borderRadius: "4px", border: "1px solid #E3ECE7", background: "#FFFFFF", fontSize: "11px", color: "#9CA3AF" }}
+                  onClick={ensureActiveTechLoaded}
+                  onFocus={ensureActiveTechLoaded}
+                  readOnly
                 >
-                  {techList.map((t) => {
-                    const val = t.tech_id || t.technician_id || t.id;
-                    return (
-                      <option key={val} value={val}>
-                        {t.technician_name || t.name}
-                      </option>
-                    );
-                  })}
+                  <option>Click to load techs...</option>
                 </select>
               </div>
+            ) : (
+              activeTechId !== null && (
+                <div style={{ fontSize: "11px" }}>
+                  <label style={{ display: "block", marginBottom: "4px", color: "#6B7280", fontWeight: 600 }}>Simulated Tech:</label>
+                  <select
+                    style={{ width: "100%", padding: "4px", borderRadius: "4px", border: "1px solid #E3ECE7", background: "#FFFFFF", fontSize: "11px" }}
+                    value={activeTechId}
+                    onChange={(e) => setActiveTechId(e.target.value)}
+                  >
+                    {techList.map((t) => {
+                      const val = t.tech_id || t.technician_id || t.id;
+                      return (
+                        <option key={val} value={val}>
+                          {t.technician_name || t.name}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              )
             )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%" }}>
@@ -843,7 +873,11 @@ function AppInner() {
                   fontWeight: 600,
                   transition: "all 0.2s"
                 }}
-                onClick={triggerMockNotification}
+                onClick={() => {
+                  ensureActiveTechLoaded().then(() => {
+                    triggerMockNotification();
+                  });
+                }}
                 title="Test Notification UI"
               >
                 Simulate Alert
@@ -870,7 +904,10 @@ function AppInner() {
             <div style={sidebarCollapsed ? { marginTop: "12px", display: "flex", justifyContent: "center" } : { marginLeft: "auto", display: "flex", alignItems: "center" }}>
               <NotificationBell
                 unreadCount={unreadCount}
-                onClick={() => setIsNotificationDrawerOpen(true)}
+                onClick={() => {
+                  setIsNotificationDrawerOpen(true);
+                  ensureActiveTechLoaded();
+                }}
                 isAnimated={isBellAnimated}
               />
             </div>
@@ -879,7 +916,11 @@ function AppInner() {
       </aside>
 
       <div style={isMobileLayout ? { ...styles.mainArea, ...styles.mainAreaMobile } : styles.mainArea}>
-        <main style={isMobileLayout ? { ...styles.pageWrap, ...styles.pageWrapMobile } : styles.pageWrap}>
+        <main style={{
+          ...styles.pageWrap,
+          ...(isMobileLayout ? styles.pageWrapMobile : {}),
+          overflowY: activeTab === "dashboard" ? "auto" : "hidden"
+        }}>
           {/* Selected Notification Detail view */}
           {selectedNotification && (
             <NotificationDetail
@@ -895,21 +936,26 @@ function AppInner() {
             />
           )}
 
-          {/* Tab Pages */}
-          {activeTab === "dashboard" && (
-            <DashboardPage
-              onViewTab={(tab) => setActiveTab(tab)}
-              unreadCount={unreadCount}
-              isBellAnimated={isBellAnimated}
-              onOpenBellDrawer={() => setIsNotificationDrawerOpen(true)}
-            />
-          )}
-          {activeTab === "jobs" && <JobsPage />}
-          {activeTab === "technicians" && <TechniciansPage />}
-          {activeTab === "techboard" && <TechDashboardPage />}
-          {activeTab === "planning" && (
-            <PlanningPage />
-          )}
+          <Suspense fallback={<LoadingSpinner message="Loading page..." />}>
+            {/* Tab Pages */}
+            {activeTab === "dashboard" && (
+              <DashboardPage
+                onViewTab={(tab) => setActiveTab(tab)}
+                unreadCount={unreadCount}
+                isBellAnimated={isBellAnimated}
+                onOpenBellDrawer={() => {
+                  setIsNotificationDrawerOpen(true);
+                  ensureActiveTechLoaded();
+                }}
+              />
+            )}
+            {activeTab === "jobs" && <JobsPage />}
+            {activeTab === "technicians" && <TechniciansPage />}
+            {activeTab === "techboard" && <TechDashboardPage />}
+            {activeTab === "planning" && (
+              <PlanningPage />
+            )}
+          </Suspense>
         </main>
       </div>
 

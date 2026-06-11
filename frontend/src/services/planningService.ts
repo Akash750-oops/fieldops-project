@@ -52,9 +52,11 @@ export const updateTechnicianAvailability = async (
 /**
  * Fetch pending jobs.
  */
-export const getPendingJobs = async (): Promise<any> => {
+export const getPendingJobs = async (search?: string): Promise<any> => {
   try {
-    return await api.get("/jobs/pending");
+    return await api.get("/jobs/pending", {
+      params: search ? { search } : undefined
+    });
   } catch (error) {
     handleApiError(error);
   }
@@ -63,9 +65,11 @@ export const getPendingJobs = async (): Promise<any> => {
 /**
  * Fetch planned assignments.
  */
-export const getPlannedAssignments = async (): Promise<any> => {
+export const getPlannedAssignments = async (search?: string): Promise<any> => {
   try {
-    return await api.get("/planned-assignments");
+    return await api.get("/planned-assignments", {
+      params: search ? { search } : undefined
+    });
   } catch (error) {
     handleApiError(error);
   }

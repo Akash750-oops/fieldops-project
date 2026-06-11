@@ -39,13 +39,15 @@ const styles = {
   techPage: {
     fontFamily: "'Inter', sans-serif",
     background: "#EEF4F1",
-    minHeight: "100vh",
+    height: "100%",
+    maxHeight: "100%",
     padding: "14px",
     color: "#1F2933",
     position: "relative",
     display: "flex",
     flexDirection: "column",
     boxSizing: "border-box",
+    overflow: "hidden",
   } as React.CSSProperties,
 
   toastMessage: {
@@ -77,10 +79,10 @@ const styles = {
   } as React.CSSProperties,
 
   mainContentRow: {
-    display: "grid",
-    gap: "20px",
-    alignItems: "start",
-    gridTemplateColumns: "1fr",
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    overflow: "hidden",
   } as React.CSSProperties,
 
   contentCard: {
@@ -89,6 +91,10 @@ const styles = {
     padding: "22px",
     boxShadow: "0 1px 4px rgba(47,79,62,.07)",
     border: "1px solid #E3ECE7",
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    overflow: "hidden",
     boxSizing: "border-box",
   } as React.CSSProperties,
 
@@ -209,6 +215,8 @@ const styles = {
 
   tableContainer: {
     overflowX: "auto",
+    overflowY: "auto",
+    flex: 1,
   } as React.CSSProperties,
 
   dashboardTable: {
@@ -724,6 +732,7 @@ function TechnicianList() {
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [message, setMessage] = useState({ text: "", type: "" });
   const [searchTerm, setSearchTerm] = useState("");
+  const [debSearchTerm, setDebSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [techPage, setTechPage] = useState(1);
@@ -732,13 +741,24 @@ function TechnicianList() {
   const [viewTech, setViewTech] = useState<Technician | null>(null);
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebSearchTerm(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
     setTechPage(1);
-  }, [searchTerm, statusFilter]);
+  }, [debSearchTerm, statusFilter]);
 
   const fetchTechnicians = async () => {
     try {
       setLoading(true);
-      const response = await api.get("/technicians/");
+      const params: any = {};
+      if (debSearchTerm) params.search = debSearchTerm;
+      if (statusFilter && statusFilter !== "ALL") params.status = statusFilter;
+
+      const response = await api.get("/technicians/", { params });
       setTechnicians(response.data);
       setFetchError("");
     } catch (error) {
@@ -749,7 +769,9 @@ function TechnicianList() {
     }
   };
 
-  useEffect(() => { fetchTechnicians(); }, []);
+  useEffect(() => {
+    fetchTechnicians();
+  }, [debSearchTerm, statusFilter]);
 
   const showMessage = (text: string, type: string) => {
     setMessage({ text, type });
@@ -860,16 +882,7 @@ function TechnicianList() {
     return s;
   };
 
-  const filteredTechnicians = technicians
-    .filter(t => statusFilter === "ALL" || normalizeStatus(t.technician_status) === statusFilter)
-    .filter(t => {
-      const s = searchTerm.toLowerCase();
-      return (
-        (t.technician_name && t.technician_name.toLowerCase().includes(s)) ||
-        (t.technician_skill && t.technician_skill.toLowerCase().includes(s)) ||
-        (t.technician_location && t.technician_location.toLowerCase().includes(s))
-      );
-    });
+  const filteredTechnicians = technicians;
 
   const techTotalPages = Math.max(1, Math.ceil(filteredTechnicians.length / TECH_PAGE_SIZE));
   const safeTechPage = Math.min(techPage, techTotalPages);

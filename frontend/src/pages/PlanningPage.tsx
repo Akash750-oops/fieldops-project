@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
-import { Eye, Trash2, History, Search } from "lucide-react";
+import { Eye, Trash2, History, Search, ChevronDown } from "lucide-react";
 import EmptyState from "../components/ui/EmptyState";
 import OverrideModal from "../components/notifications/OverrideModal";
 import OverrideHistory from "../components/notifications/OverrideHistory";
@@ -19,6 +19,7 @@ import {
   getAuditOverrides,
   assignJobDirect,
 } from "../services/planningService";
+import { getDispatchQueue } from "../services/dispatchQueueService";
 import {
   extendSLA,
   cancelEscalatedJob,
@@ -52,12 +53,22 @@ const getPriorityStyle = (priority: string): React.CSSProperties => {
   return { ...base, background: "#F0F4F2", color: "#6B7280" };
 };
 
+const isSkillMatching = (techSkill: string, jobRequiredSkill?: string, jobServiceType?: string): boolean => {
+  if (!techSkill) return false;
+  const tSkill = techSkill.trim().toUpperCase().replace(/_/g, " ");
+  const jSkill = jobRequiredSkill ? jobRequiredSkill.trim().toUpperCase().replace(/_/g, " ") : "";
+  const jType = jobServiceType ? jobServiceType.trim().toUpperCase().replace(/_/g, " ") : "";
+  
+  return tSkill === jSkill || tSkill === jType;
+};
+
 interface PendingJob {
   id: number;
   customer_name: string;
   location?: string;
   priority?: string;
   service_type?: string;
+  required_skill?: string;
   issue_description?: string;
   acceptance_expired?: boolean;
   is_expired?: boolean;
@@ -66,6 +77,8 @@ interface PendingJob {
   redispatch_count?: number;
   job_status?: string;
   status?: string;
+  sla_deadline?: string;
+  attempt_count?: number;
 }
 
 interface PlannedAssignment {
@@ -124,13 +137,15 @@ const styles = {
   planningDashboard: {
     fontFamily: "'Inter', sans-serif",
     background: "#EEF4F1",
-    minHeight: "100vh",
-    padding: "14px",
+    height: "100%",
+    maxHeight: "100%",
+    padding: "10px 14px",
     color: "#1F2933",
     display: "flex",
     flexDirection: "column",
-    gap: "14px",
+    gap: "8px",
     boxSizing: "border-box",
+    overflow: "hidden",
   } as React.CSSProperties,
 
   refreshIconBtn: {
@@ -150,12 +165,11 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "0 0 10px 0",
+    padding: "0 0 4px 0",
     background: "transparent",
     borderRadius: 0,
-    marginBottom: "12px",
+    marginBottom: "8px",
     border: "none",
-    borderBottom: "2px solid #E2E8F0",
     boxSizing: "border-box",
   } as React.CSSProperties,
 
@@ -164,7 +178,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "8px",
-    padding: "8px 4px 12px 4px",
+    padding: "6px 4px 6px 4px",
     border: "none",
     borderBottom: "2px solid transparent",
     borderRadius: 0,
@@ -224,20 +238,30 @@ const styles = {
     flexDirection: "column",
     overflow: "hidden",
     boxSizing: "border-box",
+    flex: 1,
   } as React.CSSProperties,
 
   topThreeWrapper: {
-    padding: "16px 16px 0",
+    padding: "10px 14px 0",
     boxSizing: "border-box",
+    maxHeight: "280px",
+    overflowY: "auto",
+    borderBottom: "1px solid #E3ECE7",
+    background: "#FAFDFB",
   } as React.CSSProperties,
 
   sectionContent: {
     flex: 1,
     minHeight: "200px",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
   } as React.CSSProperties,
 
   tableContainer: {
     overflowX: "auto",
+    overflowY: "auto",
+    flex: 1,
   } as React.CSSProperties,
 
   dashboardTable: {
@@ -463,11 +487,10 @@ const styles = {
   popupOverlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(31,41,51,.4)",
+    background: "#EEF4F1",
     zIndex: 2000,
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    flexDirection: "column",
   } as React.CSSProperties,
 
   viewJobModal: {
@@ -595,14 +618,14 @@ const styles = {
 
   planningHeaderSearchWrap: {
     position: "relative",
-    maxWidth: "380px",
-    width: "260px",
+    maxWidth: "300px",
+    width: "200px",
     transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
   } as React.CSSProperties,
 
   planningSearchIcon: {
     position: "absolute",
-    left: "14px",
+    left: "10px",
     top: "50%",
     transform: "translateY(-50%)",
     color: "#64748B",
@@ -615,13 +638,13 @@ const styles = {
 
   planningSearchInput: {
     width: "100%",
-    padding: "10px 16px 10px 42px",
-    fontSize: "13.5px",
+    padding: "6px 12px 6px 30px",
+    fontSize: "12px",
     fontWeight: 600,
     color: "#1E293B",
     background: "#FFFFFF",
     border: "1.5px solid #CBD5E1",
-    borderRadius: "12px",
+    borderRadius: "8px",
     outline: "none",
     boxShadow: "0 2px 4px rgba(0, 0, 0, 0.02)",
     transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -640,9 +663,46 @@ const styles = {
     color: "#2F4F3E",
     fontWeight: 500,
   } as React.CSSProperties,
+
+  candidateModal: {
+    background: "#EEF4F1",
+    borderRadius: 0,
+    padding: 0,
+    width: "100%",
+    height: "100%",
+    maxWidth: "100%",
+    maxHeight: "100vh",
+    boxShadow: "none",
+    overflow: "hidden",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+  } as React.CSSProperties,
+
+  candidateModalHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "20px 24px",
+    borderBottom: "1px solid #E3ECE7",
+    background: "#FFFFFF",
+    boxSizing: "border-box",
+  } as React.CSSProperties,
 };
 
 const localCss = `
+  .planning-tab-btn-group {
+    display: flex !important;
+    gap: 24px !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    scrollbar-width: none !important;
+    border-bottom: 2px solid #E2E8F0 !important;
+    width: 100% !important;
+  }
+  .planning-tab-btn-group::-webkit-scrollbar {
+    display: none !important;
+  }
   .planning-tab-style {
     transition: all 0.2s ease !important;
   }
@@ -665,8 +725,8 @@ const localCss = `
     border-color: #7AAE8A !important;
   }
   .planning-header-search-wrap-style:focus-within {
-    width: 380px !important;
-    max-width: 420px !important;
+    width: 260px !important;
+    max-width: 300px !important;
   }
   .planning-header-search-wrap-style:focus-within .planning-search-icon-style {
     color: #2F4F3E !important;
@@ -716,7 +776,7 @@ const localCss = `
     position: fixed;
     bottom: 24px;
     right: 24px;
-    z-index: 1000;
+    z-index: 3000;
     max-width: 380px;
     padding: 12px 16px;
     border-radius: 8px;
@@ -775,12 +835,21 @@ const localCss = `
     }
     .planning-tabs-responsive {
       flex-direction: column !important;
-      align-items: flex-start !important;
+      align-items: stretch !important;
       gap: 12px !important;
     }
     .planning-tab-btn-group {
       width: 100% !important;
-      justify-content: space-between !important;
+      border-bottom: 2px solid #E2E8F0 !important;
+    }
+    .planning-search-row-responsive {
+      width: 100% !important;
+      justify-content: flex-start !important;
+      margin-bottom: 0 !important;
+    }
+    .planning-search-row-responsive .planning-header-search-wrap-style {
+      width: 100% !important;
+      max-width: none !important;
     }
     .alert-style-base {
       right: 16px !important;
@@ -794,9 +863,9 @@ const localCss = `
       gap: 16px !important;
       padding: 0 0 8px 0 !important;
     }
-    .planning-tab-btn-style {
-      padding: 6px 2px 10px 2px !important;
-      font-size: 13px !important;
+    .planning-tab-style {
+      padding: 6px 4px 10px 4px !important;
+      font-size: 12px !important;
       gap: 6px !important;
     }
   }
@@ -814,13 +883,12 @@ function PlanningDashboard() {
 
   const [selectedTechs, setSelectedTechs] = useState<Record<number, string>>({});
   const [assigningJobId, setAssigningJobId] = useState<number | null>(null);
-  
-  const [expandedScores, setExpandedScores] = useState<Record<number, boolean>>({});
-  const [scoreDataMap, setScoreDataMap] = useState<Record<number, ScoreData>>({});
+
+
 
   const [selectedJobForRanking, setSelectedJobForRanking] = useState<PendingJob | null>(null);
   const [rankedCandidates, setRankedCandidates] = useState<RankedTechnician[]>([]);
-  const [showFullCandidatePool, setShowFullCandidatePool] = useState(false);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
 
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -849,19 +917,35 @@ function PlanningDashboard() {
   const [pendingPage, setPendingPage] = useState(1);
   const [plannedPage, setPlannedPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debSearchQuery, setDebSearchQuery] = useState("");
   const [viewAssignment, setViewAssignment] = useState<PlannedAssignment | null>(null);
 
   const [activeMetricFilter, setActiveMetricFilter] = useState("all");
   const [dispatchQueueCount, setDispatchQueueCount] = useState(0);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const handleMetricFilterChange = (filter: string, metricKey: string) => {
     console.log("Metric card clicked:", metricKey, filter);
     setActiveMetricFilter(metricKey);
-    setActiveTab("pending");
+    // Dispatched jobs have an assigned technician → they live in Planned Assignments
+    if (metricKey === "dispatched") {
+      setActiveTab("planned");
+    } else {
+      setActiveTab("pending");
+    }
     setPendingPage(1);
   };
 
   const getMetricEmptyTitle = () => {
+    if (activeMetricFilter === "dispatched") {
+      return "No dispatched jobs found";
+    }
     if (activeMetricFilter === "expired") {
       return "No expired jobs found";
     }
@@ -875,11 +959,14 @@ function PlanningDashboard() {
   };
 
   const getMetricEmptyDescription = () => {
+    if (activeMetricFilter === "dispatched") {
+      return "Dispatched jobs (with an assigned technician) are shown in the Planned Assignments tab.";
+    }
     if (activeMetricFilter === "expired") {
-      return "There are no jobs with expired acceptance timer in the current queue.";
+      return "There are no jobs with an expired SLA in the current unassigned queue.";
     }
     if (activeMetricFilter === "redispatched") {
-      return "There are no re-dispatched jobs in the current queue.";
+      return "There are no re-dispatched jobs (re-attempted more than once) in the current queue.";
     }
     if (activeMetricFilter === "pending") {
       return "There are no queued, assigned, or pending jobs available right now.";
@@ -889,10 +976,10 @@ function PlanningDashboard() {
       : "All jobs are either assigned or completed.";
   };
 
-  const fetchPendingJobs = async () => {
+  const fetchPendingJobs = async (search?: string) => {
     try {
       setJobsLoading(true);
-      const res = await getPendingJobs();
+      const res = await getPendingJobs(search);
       setPendingJobs(res.data);
     } catch {
       setError("Failed to load pending jobs. Please try again.");
@@ -901,10 +988,10 @@ function PlanningDashboard() {
     }
   };
 
-  const fetchPlannedAssignments = async () => {
+  const fetchPlannedAssignments = async (search?: string) => {
     try {
       setAssignmentsLoading(true);
-      const res = await getPlannedAssignments();
+      const res = await getPlannedAssignments(search);
       setPlannedAssignments(res.data);
     } catch {
       setError("Failed to load planned assignments. Please try again.");
@@ -934,16 +1021,37 @@ function PlanningDashboard() {
     }
   };
 
+  const fetchDispatchQueueCount = async () => {
+    try {
+      const res = await getDispatchQueue({ limit: 100 });
+      if (res && res.data) {
+        setDispatchQueueCount(res.data.length);
+      }
+    } catch {
+      console.warn("Could not fetch dispatch queue count");
+    }
+  };
+
   const fetchAllData = () => {
     setError("");
     setSuccessMsg("");
-    fetchPendingJobs();
-    fetchPlannedAssignments();
+    fetchPendingJobs(debSearchQuery);
+    fetchPlannedAssignments(debSearchQuery);
     fetchTechnicianStatus();
     fetchTechniciansList();
+    fetchDispatchQueueCount();
   };
 
-  useEffect(() => { fetchAllData(); }, []);
+  useEffect(() => {
+    fetchTechnicianStatus();
+    fetchTechniciansList();
+    fetchDispatchQueueCount();
+  }, []);
+
+  useEffect(() => {
+    fetchPendingJobs(debSearchQuery);
+    fetchPlannedAssignments(debSearchQuery);
+  }, [debSearchQuery]);
 
   useEffect(() => {
     if (viewAssignment) {
@@ -964,25 +1072,27 @@ function PlanningDashboard() {
     }
   }, [viewAssignment]);
 
-  const generateRankedCandidates = (job: PendingJob): RankedTechnician[] => {
-    if (!allTechsList || allTechsList.length === 0) return [];
-    return allTechsList
+  const generateRankedCandidates = (job: PendingJob, techsOverride?: Technician[]): RankedTechnician[] => {
+    const techs = techsOverride || allTechsList;
+    if (!techs || techs.length === 0) return [];
+    return techs
+      .filter((t) => isSkillMatching(t.technician_skill, job.required_skill, job.service_type))
       .map((t) => {
         const seed = t.technician_id * 13 + (job?.id || 1) * 7;
         const pseudo = (n: number) => ((seed * n * 31 + 17) % 45) + 50;
         const composite = pseudo(1);
         return {
-          technician_id:    t.technician_id,
-          technician_name:  t.technician_name,
+          technician_id: t.technician_id,
+          technician_name: t.technician_name,
           technician_skill: t.technician_skill,
           technician_status: t.technician_status,
-          composite_score:  composite,
-          proximity_score:  Math.min(100, pseudo(2)),
-          skill_score:      Math.min(100, pseudo(3)),
-          workload_score:   Math.min(100, pseudo(4)),
-          distance_km:      parseFloat(((seed % 200) / 10).toFixed(1)),
-          active_jobs:      t.current_jobs ?? Math.floor(seed % 3),
-          max_capacity:     t.max_jobs ?? 5,
+          composite_score: composite,
+          proximity_score: Math.min(100, pseudo(2)),
+          skill_score: 100.0,
+          workload_score: Math.min(100, pseudo(4)),
+          distance_km: parseFloat(((seed % 200) / 10).toFixed(1)),
+          active_jobs: t.current_jobs ?? Math.floor(seed % 3),
+          max_capacity: t.max_jobs ?? 5,
         };
       })
       .sort((a, b) => b.composite_score - a.composite_score);
@@ -995,10 +1105,24 @@ function PlanningDashboard() {
       return;
     }
     setSelectedJobForRanking(job);
-    setShowFullCandidatePool(false);
+    setCandidatesLoading(true);
+    setRankedCandidates([]);
+
+    // Ensure technicians list is loaded for fallback ranking
+    let techs = allTechsList;
+    if (!techs || techs.length === 0) {
+      try {
+        const techRes = await getTechnicians();
+        techs = techRes.data;
+        setAllTechsList(techs);
+      } catch {
+        console.warn("Could not fetch technicians for candidate generation");
+      }
+    }
+
     try {
       const res = await getJobPlan(job.id);
-      if (res && res.ranked_technicians) {
+      if (res && res.ranked_technicians && res.ranked_technicians.length > 0) {
         const mapped: RankedTechnician[] = res.ranked_technicians.map((rt: any) => ({
           technician_id: parseInt(String(rt.tech_id).replace(/\D/g, ''), 10) || 1,
           technician_name: rt.name,
@@ -1014,11 +1138,13 @@ function PlanningDashboard() {
         }));
         setRankedCandidates(mapped);
       } else {
-        setRankedCandidates(generateRankedCandidates(job));
+        setRankedCandidates(generateRankedCandidates(job, techs));
       }
     } catch (err) {
       console.warn("Failed to fetch AI plan from backend, falling back to mock ranking", err);
-      setRankedCandidates(generateRankedCandidates(job));
+      setRankedCandidates(generateRankedCandidates(job, techs));
+    } finally {
+      setCandidatesLoading(false);
     }
   };
 
@@ -1029,50 +1155,6 @@ function PlanningDashboard() {
 
   const handleTechSelect = (jobId: number, techId: string) => {
     setSelectedTechs((prev) => ({ ...prev, [jobId]: techId }));
-    if (techId) {
-      const job = pendingJobs.find((j) => j.id === jobId);
-      if (job) {
-        const candidatesList = generateRankedCandidates(job);
-        const candidate = candidatesList.find((c) => c.technician_id === parseInt(techId, 10));
-        if (candidate) {
-          setScoreDataMap((prev) => ({
-            ...prev,
-            [jobId]: {
-              composite_score: candidate.composite_score,
-              proximity_score: candidate.proximity_score,
-              skill_score:     candidate.skill_score,
-              workload_score:  candidate.workload_score,
-              distance_km:     candidate.distance_km,
-              active_jobs:     candidate.active_jobs,
-              max_capacity:    candidate.max_capacity,
-              is_top_3:        candidatesList.slice(0, 3).some((c) => c.technician_id === candidate.technician_id),
-            },
-          }));
-        } else {
-          const composite = Math.floor(Math.random() * 45) + 50;
-          setScoreDataMap((prev) => ({
-            ...prev,
-            [jobId]: {
-              composite_score: composite,
-              proximity_score: Math.min(100, composite + Math.floor(Math.random() * 12) - 4),
-              skill_score:     Math.min(100, composite + Math.floor(Math.random() * 15)),
-              workload_score:  Math.min(100, composite + Math.floor(Math.random() * 10) - 5),
-              distance_km:     parseFloat((Math.random() * 22).toFixed(1)),
-              active_jobs:     Math.floor(Math.random() * 3),
-              max_capacity:    5,
-              is_top_3:        composite >= 80,
-            },
-          }));
-        }
-      }
-      setExpandedScores((prev) => ({ ...prev, [jobId]: true }));
-    } else {
-      setExpandedScores((prev) => ({ ...prev, [jobId]: false }));
-    }
-  };
-
-  const toggleScorePanel = (jobId: number) => {
-    setExpandedScores((prev) => ({ ...prev, [jobId]: !prev[jobId] }));
   };
 
   const handleAssignJob = async (jobId: number, techIdOverride?: string) => {
@@ -1140,49 +1222,40 @@ function PlanningDashboard() {
     });
   }, [pendingJobs]);
 
-  const filteredPendingJobs = useMemo(() => {
-    if (!searchQuery.trim()) return normalPendingJobs;
-    const q = searchQuery.toLowerCase().trim();
-    return normalPendingJobs.filter(
-      (job) =>
-        String(job.id).includes(q) ||
-        (job.customer_name && job.customer_name.toLowerCase().includes(q)) ||
-        (job.location && job.location.toLowerCase().includes(q)) ||
-        (job.issue_description && job.issue_description.toLowerCase().includes(q)) ||
-        (job.priority && job.priority.toLowerCase().includes(q))
-    );
-  }, [normalPendingJobs, searchQuery]);
+  const filteredPendingJobs = normalPendingJobs;
 
   const metricFilteredPendingJobs = useMemo(() => {
     if (!filteredPendingJobs || filteredPendingJobs.length === 0) return [];
-    if (activeMetricFilter === "all" || activeMetricFilter === "dispatched") {
+    if (activeMetricFilter === "all") {
       return filteredPendingJobs;
     }
+    if (activeMetricFilter === "dispatched") {
+      // Dispatched jobs have an assigned technician; they live in Planned Assignments tab.
+      // The Pending Jobs list only contains unassigned jobs, so return empty here.
+      return [];
+    }
     if (activeMetricFilter === "pending") {
-      return filteredPendingJobs.filter((job) => {
-        const status = String(job.status || job.job_status || "").toLowerCase();
-        return (
-          status === "queued" ||
-          status === "assigned" ||
-          status === "pending" ||
-          !status
-        );
-      });
+      // Pending = all unassigned, non-terminal jobs (everything already in this list)
+      return filteredPendingJobs;
     }
     if (activeMetricFilter === "expired") {
+      // Expired = unassigned jobs with SLA deadline in the past
+      const now = new Date();
       return filteredPendingJobs.filter((job) => {
-        const status = String(job.status || job.job_status || "").toLowerCase();
+        const hasPastSla = job.sla_deadline && new Date(job.sla_deadline) < now;
         return (
-          status === "expired" ||
+          hasPastSla ||
           job.acceptance_expired === true ||
           job.is_expired === true
         );
       });
     }
     if (activeMetricFilter === "redispatched") {
+      // Re-dispatched = jobs that have been attempted more than once (attempt_count > 1)
+      // This matches the backend KPI rule: attempt_count > 1
       return filteredPendingJobs.filter((job) => {
         return (
-          job.redispatched === true ||
+          Number(job.attempt_count || 0) > 1 ||
           job.is_redispatched === true ||
           Number(job.redispatch_count || 0) > 0
         );
@@ -1191,38 +1264,15 @@ function PlanningDashboard() {
     return filteredPendingJobs;
   }, [filteredPendingJobs, activeMetricFilter]);
 
-  const filteredPlannedAssignments = useMemo(() => {
-    if (!searchQuery.trim()) return plannedAssignments;
-    const q = searchQuery.toLowerCase().trim();
-    return plannedAssignments.filter(
-      (item) =>
-        String(item.job_id).includes(q) ||
-        (item.technician && item.technician.toLowerCase().includes(q)) ||
-        (item.skill && item.skill.toLowerCase().includes(q)) ||
-        (item.customer && item.customer.toLowerCase().includes(q)) ||
-        (item.location && item.location.toLowerCase().includes(q)) ||
-        (item.priority && item.priority.toLowerCase().includes(q))
-    );
-  }, [plannedAssignments, searchQuery]);
+  const filteredPlannedAssignments = plannedAssignments;
 
   useEffect(() => {
     setPendingPage(1);
     setPlannedPage(1);
   }, [searchQuery, activeMetricFilter]);
 
-  useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(metricFilteredPendingJobs.length / PAGE_SIZE));
-    if (pendingPage > totalPages) {
-      setPendingPage(totalPages);
-    }
-  }, [metricFilteredPendingJobs.length, pendingPage]);
-
-  useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(filteredPlannedAssignments.length / PAGE_SIZE));
-    if (plannedPage > totalPages) {
-      setPlannedPage(totalPages);
-    }
-  }, [filteredPlannedAssignments.length, plannedPage]);
+  // Page clamping is handled by safePendingPage/safePlannedPage below via Math.min,
+  // so no useEffect is needed here (avoids potential re-render loops).
 
   const pendingTotalPages = Math.max(1, Math.ceil(metricFilteredPendingJobs.length / PAGE_SIZE));
   const safePendingPage = Math.min(pendingPage, pendingTotalPages);
@@ -1247,7 +1297,7 @@ function PlanningDashboard() {
   return (
     <div style={styles.planningDashboard}>
       <style>{localCss}</style>
-      <div style={{ marginBottom: "24px" }}>
+      <div style={{ marginBottom: "10px" }}>
         <MetricsCards onFilterChange={handleMetricFilterChange} />
       </div>
       <AlertBanner
@@ -1260,6 +1310,105 @@ function PlanningDashboard() {
         }}
         currentUserRole="dispatcher"
       />
+
+      {/* ── Candidate Selection Pop-up Modal ── */}
+      {selectedJobForRanking && (
+        <div style={styles.popupOverlay} onClick={handleTopThreeClose}>
+          <div style={styles.candidateModal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.candidateModalHeader}>
+              <div style={{ maxWidth: "1200px", margin: "0 auto", width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <h3 style={{ fontSize: "18px", fontWeight: 800, color: "#1E293B", margin: 0 }}>
+                        Candidate Selection
+                      </h3>
+                      <span style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "#64748B",
+                        background: "#F1F5F9",
+                        padding: "2px 8px",
+                        borderRadius: "6px"
+                      }}>
+                        Job #{selectedJobForRanking.id}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: "13px", color: "#64748B", margin: "4px 0 0 0", fontWeight: 500 }}>
+                      Assigning technician for <strong style={{ color: "#1E293B" }}>{selectedJobForRanking.customer_name}</strong> · {selectedJobForRanking.location}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleTopThreeClose}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: "24px",
+                    cursor: "pointer",
+                    color: "#94A3B8",
+                    padding: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1 }}>
+              <div style={{ maxWidth: "1200px", margin: "0 auto", width: "100%" }}>
+                {candidatesLoading ? (
+                  <LoadingSpinner message="Evaluating technicians against strict routing constraints..." />
+                ) : (
+                  <RankedTechTable
+                    job={{
+                      id: selectedJobForRanking.id,
+                      customer_name: selectedJobForRanking.customer_name,
+                      priority: selectedJobForRanking.priority,
+                      location: selectedJobForRanking.location,
+                      issue_description: selectedJobForRanking.issue_description,
+                      service_type: selectedJobForRanking.service_type,
+                      required_skill: selectedJobForRanking.required_skill,
+                    }}
+                    candidates={rankedCandidates}
+                    selectedTechId={selectedTechs[selectedJobForRanking.id] ? parseInt(selectedTechs[selectedJobForRanking.id], 10) : undefined}
+                    onSelect={(techId) => {
+                      const tech = allTechsList.find(
+                        (t) => t.technician_id === techId
+                      );
+                      if (
+                        tech &&
+                        normalizeStatus(tech.technician_status) !== "available" &&
+                        normalizeStatus(tech.technician_status) !== "assigned"
+                      ) {
+                        setError(
+                          `Cannot assign: ${tech.technician_name} is currently ${tech.technician_status}. Please select an Available or Assigned technician.`
+                        );
+                        return;
+                      }
+                      if (
+                        tech &&
+                        !isSkillMatching(tech.technician_skill, selectedJobForRanking.required_skill, selectedJobForRanking.service_type)
+                      ) {
+                        setError(
+                          `Skill mismatch: Technician provides '${tech.technician_skill || ""}' but job requires '${selectedJobForRanking.required_skill || selectedJobForRanking.service_type}'`
+                        );
+                        return;
+                      }
+                      handleTechSelect(selectedJobForRanking.id, String(techId));
+                      handleTopThreeClose();
+                    }}
+                    onClose={handleTopThreeClose}
+                    hideHeader={true}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Global messages */}
       {error && (
@@ -1301,7 +1450,7 @@ function PlanningDashboard() {
 
       {/* ── Tab Navigation ── */}
       <div className="planning-tabs-responsive" style={styles.planningTabs}>
-        <div className="planning-tab-btn-group" style={{ display: "flex", gap: "24px" }}>
+        <div className="planning-tab-btn-group" style={{ display: "flex", gap: "24px", overflowX: "auto", flexWrap: "nowrap", maxWidth: "100%" }}>
           <button
             className={`planning-tab-style ${activeTab === 'pending' ? 'active-tab-style' : ''}`}
             style={{
@@ -1363,10 +1512,10 @@ function PlanningDashboard() {
             }}>{escalatedJobs.length}</span>
           </button>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
+        <div className="planning-search-row-responsive" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <div className="planning-header-search-wrap-style" style={styles.planningHeaderSearchWrap}>
             <span className="planning-search-icon-style" style={styles.planningSearchIcon}>
-              <Search size={18} />
+              <Search size={14} />
             </span>
             <input
               type="text"
@@ -1377,14 +1526,6 @@ function PlanningDashboard() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <button
-            className="planning-refresh-btn-style"
-            style={{ ...styles.refreshIconBtn, marginBottom: 0 }}
-            onClick={fetchAllData}
-            disabled={isGlobalLoading}
-          >
-            {isGlobalLoading ? "Refreshing..." : "⟳ Refresh"}
-          </button>
         </div>
       </div>
 
@@ -1393,36 +1534,7 @@ function PlanningDashboard() {
       {/* PENDING JOBS TAB */}
       {activeTab === 'pending' && (
         <section style={styles.dashboardSection}>
-          {/* Ranked Technician Selection Panel */}
-          {selectedJobForRanking && rankedCandidates.length > 0 && (
-            <div style={styles.topThreeWrapper}>
-              {!showFullCandidatePool ? (
-                <TopThreeHighlight
-                  technicians={rankedCandidates}
-                  jobId={selectedJobForRanking.id}
-                  jobLabel={`Job #${selectedJobForRanking.id} (${selectedJobForRanking.customer_name})`}
-                  onSelect={(techId) => handleAssignJob(selectedJobForRanking.id, String(techId))}
-                  onSelectOther={() => setShowFullCandidatePool(true)}
-                  onClose={handleTopThreeClose}
-                />
-              ) : (
-                <RankedTechTable
-                  job={{
-                    id: selectedJobForRanking.id,
-                    customer_name: selectedJobForRanking.customer_name,
-                    priority: selectedJobForRanking.priority,
-                    location: selectedJobForRanking.location,
-                    issue_description: selectedJobForRanking.issue_description,
-                  }}
-                  candidates={rankedCandidates}
-                  selectedTechId={selectedTechs[selectedJobForRanking.id] ? parseInt(selectedTechs[selectedJobForRanking.id], 10) : undefined}
-                  onSelect={(techId) => handleTechSelect(selectedJobForRanking.id, String(techId))}
-                  onAssign={(techId) => handleAssignJob(selectedJobForRanking.id, String(techId))}
-                  onClose={handleTopThreeClose}
-                />
-              )}
-            </div>
-          )}
+
 
           <div style={styles.sectionContent}>
             {activeMetricFilter !== "all" && (
@@ -1506,45 +1618,63 @@ function PlanningDashboard() {
                               {job.priority || "UNKNOWN"}
                             </span>
                           </td>
-                          <td style={{ ...styles.dashboardTableTd, ...styles.assignmentActionCell }}>
+                          <td 
+                            style={{ ...styles.dashboardTableTd, ...styles.assignmentActionCell }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <div style={styles.assignmentUi}>
-                              <select
-                                className="tech-select-style"
-                                style={styles.techSelect}
-                                value={selectedTechs[job.id] || ""}
-                                onChange={(e) => handleTechSelect(job.id, e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                                disabled={assigningJobId === job.id}
-                              >
-                                <option value="" disabled>
-                                  {techStatusLoading ? "Loading technicians..." : "Select Technician"}
-                                </option>
-                                {allTechsList.map((tech) => {
-                                  const unavail =
-                                    normalizeStatus(tech.technician_status) !== "available" &&
-                                    normalizeStatus(tech.technician_status) !== "assigned";
-                                  return (
-                                    <option
-                                      key={tech.technician_id}
-                                      value={tech.technician_id}
-                                      disabled={unavail}
-                                    >
-                                      {tech.technician_name} – {tech.technician_skill}
-                                      {unavail ? ` (Unavailable – ${tech.technician_status})` : ""}
-                                    </option>
-                                  );
-                                })}
-                              </select>
                               <button
-                                className="assign-btn-style"
-                                style={styles.assignBtn}
+                                className="tech-select-style"
+                                style={{
+                                  ...styles.techSelect,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  cursor: 'pointer',
+                                  backgroundColor: selectedTechs[job.id] ? '#f0fdf4' : '#fff',
+                                  borderColor: selectedTechs[job.id] ? '#86efac' : '#cbd5e1',
+                                  color: selectedTechs[job.id] ? '#166534' : '#64748b',
+                                  fontWeight: selectedTechs[job.id] ? 600 : 400,
+                                  textAlign: 'left' as const,
+                                  gap: '6px',
+                                }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleAssignJob(job.id);
+                                  handleJobRowClick(job);
+                                }}
+                                disabled={assigningJobId === job.id}
+                                title="Click to open Candidate Selection"
+                              >
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                                  {selectedTechs[job.id]
+                                    ? (() => {
+                                        const t = allTechsList.find(t => t.technician_id === parseInt(selectedTechs[job.id], 10));
+                                        return t ? t.technician_name : 'Selected';
+                                      })()
+                                    : 'Select Technician'
+                                  }
+                                </span>
+                                <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.5 }} />
+                              </button>
+
+                              <button
+                                className="assign-btn-style"
+                                style={{
+                                  ...styles.assignBtn,
+                                  backgroundColor: selectedTechs[job.id] ? '#7AAE8A' : '#94a3b8',
+                                  opacity: selectedTechs[job.id] ? 1 : 0.6,
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (selectedTechs[job.id]) {
+                                    handleAssignJob(job.id);
+                                  }
                                 }}
                                 disabled={!selectedTechs[job.id] || assigningJobId === job.id}
                               >
-                                {assigningJobId === job.id ? "Assigning…" : "Assign"}
+                                {assigningJobId === job.id 
+                                  ? "Assigning…" 
+                                  : "Assign"}
                               </button>
                               <button
                                 className="assign-btn-style"
@@ -1566,57 +1696,7 @@ function PlanningDashboard() {
                               >
                                 <History size={16} />
                               </button>
-                              <button
-                                className="assign-btn-style"
-                                style={{
-                                  ...styles.assignBtn,
-                                  backgroundColor: selectedJobForRanking?.id === job.id ? '#1c1917' : '#0284c7',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  padding: '0 8px',
-                                  fontWeight: 'bold',
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleJobRowClick(job);
-                                }}
-                                title="Get AI Plan / Candidates"
-                              >
-                                AI Plan
-                              </button>
-                              {selectedTechs[job.id] && scoreDataMap[job.id] && (
-                                <button
-                                  className="assign-btn-style"
-                                  style={{
-                                    ...styles.assignBtn,
-                                    backgroundColor: expandedScores[job.id] ? '#6b7280' : '#10b981',
-                                    minWidth: 90,
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleScorePanel(job.id);
-                                  }}
-                                >
-                                  {expandedScores[job.id] ? 'Hide Score' : '★ Score'}
-                                </button>
-                              )}
                             </div>
-                            {/* Inline compact score panel */}
-                            {expandedScores[job.id] && scoreDataMap[job.id] && (
-                              <div onClick={(e) => e.stopPropagation()} style={{ marginTop: "8px" }}>
-                                <CompactScorePanel
-                                  composite_score={scoreDataMap[job.id].composite_score}
-                                  proximity_score={scoreDataMap[job.id].proximity_score}
-                                  skill_score={scoreDataMap[job.id].skill_score}
-                                  workload_score={scoreDataMap[job.id].workload_score}
-                                  distance_km={scoreDataMap[job.id].distance_km}
-                                  active_jobs={scoreDataMap[job.id].active_jobs}
-                                  max_capacity={scoreDataMap[job.id].max_capacity}
-                                  is_top_3={scoreDataMap[job.id].is_top_3}
-                                />
-                              </div>
-                            )}
                           </td>
                         </tr>
                       ))}
@@ -1758,7 +1838,7 @@ function PlanningDashboard() {
                               >
                                 Cancel Job
                               </button>
-                              
+
                               <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
                                 <select
                                   className="tech-select-style"

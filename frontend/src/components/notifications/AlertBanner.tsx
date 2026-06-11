@@ -115,9 +115,29 @@ export default function AlertBanner({
       isFirstLoad.current = false;
     });
 
-    // Connect to WebSocket client
-    const socket: Socket = io(import.meta.env.VITE_SOCKET_URL, {
-      transports: ["websocket", "polling"]
+    // Guard: don't connect socket if URL is not configured
+    const socketUrl = import.meta.env.VITE_SOCKET_URL;
+    if (!socketUrl) {
+      console.warn("AlertBanner: VITE_SOCKET_URL not configured, skipping WebSocket connection.");
+      return;
+    }
+
+    // Connect to WebSocket client with limited reconnection to prevent browser freeze
+    let socket: Socket;
+    try {
+      socket = io(socketUrl, {
+        transports: ["websocket", "polling"],
+        reconnectionAttempts: 5,
+        reconnectionDelay: 2000,
+        timeout: 10000,
+      });
+    } catch (err) {
+      console.warn("AlertBanner: Failed to create socket connection", err);
+      return;
+    }
+
+    socket.on("connect_error", (err) => {
+      console.warn("AlertBanner: Socket connection error:", err.message);
     });
 
     socket.on("redispatch:alert", (data: any) => {

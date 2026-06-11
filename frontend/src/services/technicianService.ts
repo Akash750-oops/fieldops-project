@@ -6,7 +6,15 @@
 import api from "./api";
 
 /** Fetch all technicians */
-export const getAllTechnicians = (): Promise<any> => api.get("/technicians/");
+export const getAllTechnicians = (params?: {
+  search?: string;
+  status?: string;
+  zone?: string;
+  skill?: string;
+}): Promise<any> => api.get("/technicians/", { params });
+
+/** Fetch all unique zones */
+export const getUniqueZones = (): Promise<any> => api.get("/technicians/zones");
 
 /** Fetch available technicians with workload details */
 export const getAvailableTechnicians = (): Promise<any> => api.get("/technicians/available");

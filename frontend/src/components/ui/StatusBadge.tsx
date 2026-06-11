@@ -124,7 +124,7 @@ const styleConfig = {
     ON_SITE: { background: "#EDE9FE", color: "#6D28D9", borderColor: "#DDD6FE", dot: "#7C3AED" },
     ON_BREAK: { background: "#FEF0D6", color: "#92400E", borderColor: "#FCD29A", dot: "#D97706" },
     SUSPENDED: { background: "#FEE2E2", color: "#991B1B", borderColor: "#FECACA", dot: "#DC2626" },
-  },
+  } as Record<StatusBadgeProps["status"], { background: string; color: string; borderColor: string; dot: string; opacity?: number }>,
   
   tooltip: {
     position: "absolute",
