@@ -92,9 +92,11 @@ export const assignJob = async (jobId: string | number, technicianId: string | n
 /**
  * Fetch dashboard stats.
  */
-export const getDashboardStats = async (): Promise<any> => {
+export const getDashboardStats = async (timeRange?: string): Promise<any> => {
   try {
-    return await api.get("/jobs/stats");
+    return await api.get("/jobs/stats", {
+      params: timeRange ? { time_range: timeRange } : undefined
+    });
   } catch (error) {
     handleApiError(error);
   }

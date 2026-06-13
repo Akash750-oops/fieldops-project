@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import logo from "./assets/logo.png";
-import { ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, LayoutDashboard, Briefcase, Users, Wrench, ClipboardList, Calendar } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, LayoutDashboard, Briefcase, Users, Calendar, FlaskConical, Info, User, ChevronDown, Activity, BellRing } from "lucide-react";
 
 // Import notification modules
 import NotificationBell from "./components/notifications/NotificationBell";
@@ -28,7 +28,6 @@ import LoadingSpinner from "./components/ui/LoadingSpinner";
 // Lazy load page components
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const JobsPage = lazy(() => import("./pages/JobsPage"));
-const TechniciansPage = lazy(() => import("./pages/TechniciansPage"));
 const TechDashboardPage = lazy(() => import("./pages/TechDashboardPage"));
 const PlanningPage = lazy(() => import("./pages/PlanningPage"));
 
@@ -127,7 +126,7 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    padding: "15px 0 14px",
+    padding: "4px 0 14px",
     marginBottom: "8px",
   } as React.CSSProperties,
 
@@ -139,7 +138,7 @@ const styles = {
   } as React.CSSProperties,
 
   brandLogoImg: {
-    width: "120px",
+    width: "140px",
     objectFit: "contain",
     display: "block",
     transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -169,7 +168,7 @@ const styles = {
     color: "#7AAE8A",
     letterSpacing: ".08em",
     textTransform: "uppercase",
-    padding: "0 10px",
+    padding: "0 6px",
     marginBottom: "6px",
   } as React.CSSProperties,
 
@@ -178,7 +177,7 @@ const styles = {
     alignItems: "center",
     gap: "10px",
     width: "100%",
-    padding: "8px 10px",
+    padding: "8px 10px 8px 6px",
     border: "none",
     borderRadius: "8px",
     background: "transparent",
@@ -278,7 +277,7 @@ const styles = {
 
   sidebarToggle: {
     position: "absolute",
-    top: "16px",
+    top: "93px",
     right: "12px",
     width: "30px",
     height: "30px",
@@ -296,6 +295,7 @@ const styles = {
 
   sidebarToggleCollapsed: {
     right: "15px",
+    top: "40px",
   } as React.CSSProperties,
 
   sidebarProfileMini: {
@@ -351,12 +351,137 @@ const styles = {
   } as React.CSSProperties,
 
   sidebarSimulationControls: {
-    padding: "10px 8px",
+    padding: "12px 10px",
     borderTop: "1px solid #E3ECE7",
     marginTop: "auto",
     display: "flex",
     flexDirection: "column",
     gap: "8px",
+  } as React.CSSProperties,
+
+  simulationCard: {
+    background: "#F9FAF9",
+    border: "1px solid #E3ECE7",
+    borderRadius: "12px",
+    padding: "10px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  } as React.CSSProperties,
+
+  simulationHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  } as React.CSSProperties,
+
+  simulationTitleWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+  } as React.CSSProperties,
+
+  simulationTitle: {
+    fontSize: "12px",
+    fontWeight: 700,
+    color: "#1F2937",
+  } as React.CSSProperties,
+
+  simulationLabel: {
+    fontSize: "10px",
+    color: "#6B7280",
+    fontWeight: 500,
+  } as React.CSSProperties,
+
+  dropdownWrapper: {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    background: "#FFFFFF",
+    border: "1.5px solid #CBD5E1",
+    borderRadius: "10px",
+    width: "100%",
+    height: "36px",
+  } as React.CSSProperties,
+
+  userCircle: {
+    width: "24px",
+    height: "24px",
+    borderRadius: "50%",
+    background: "#E6F4EA",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "absolute",
+    left: "8px",
+  } as React.CSSProperties,
+
+  simulationSelect: {
+    width: "100%",
+    height: "100%",
+    border: "none",
+    background: "transparent",
+    paddingLeft: "38px",
+    paddingRight: "28px",
+    fontSize: "12px",
+    fontWeight: 600,
+    color: "#1F2937",
+    outline: "none",
+    cursor: "pointer",
+    appearance: "none",
+  } as React.CSSProperties,
+
+  dropdownChevron: {
+    position: "absolute",
+    right: "10px",
+    pointerEvents: "none",
+  } as React.CSSProperties,
+
+  statusActiveBar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "6px 10px",
+    background: "#EDF7F2",
+    borderRadius: "8px",
+  } as React.CSSProperties,
+
+  statusActiveLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+  } as React.CSSProperties,
+
+  statusDot: {
+    width: "6px",
+    height: "6px",
+    borderRadius: "50%",
+    background: "#0F9D58",
+    display: "inline-block",
+  } as React.CSSProperties,
+
+  statusText: {
+    fontSize: "9.5px",
+    fontWeight: 700,
+    color: "#0F9D58",
+    letterSpacing: "0.02em",
+  } as React.CSSProperties,
+
+  simulateAlertBtn: {
+    width: "100%",
+    height: "36px",
+    background: "#7AAE8A",
+    border: "none",
+    borderRadius: "8px",
+    color: "#FFFFFF",
+    fontSize: "12px",
+    fontWeight: 700,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    transition: "all 0.2s ease",
   } as React.CSSProperties,
 
   mainArea: {
@@ -403,13 +528,18 @@ const localCss = `
   .sidebar-content-style::-webkit-scrollbar {
     display: none !important;
   }
+  .simulate-alert-btn-style:hover {
+    background-color: #5C9470 !important;
+  }
+  .simulate-alert-btn-style:active {
+    transform: scale(0.98) !important;
+  }
 `;
 
 function AppInner() {
   const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [isTechGroupOpen, setIsTechGroupOpen] = useState(true);
 
   // Notification States
   const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
@@ -642,11 +772,11 @@ function AppInner() {
 
   // Helper function to trigger mock dispatch events (cycles through all types)
   const MOCK_EVENTS = [
-    { eventType: 'job.assigned', type: 'info' as const,    title: 'Job Assigned',   message: 'AC Repair Service → Rajesh Kumar',          autoDismiss: 5000,  priority: 'normal',   jobId: 101 },
-    { eventType: 'job.accepted', type: 'success' as const, title: 'Job Accepted',   message: 'Rajesh Kumar accepted AC Repair at ABC Corp', autoDismiss: 5000,  priority: 'normal',   jobId: 101 },
-    { eventType: 'job.rejected', type: 'warning' as const, title: 'Job Rejected',   message: 'Vijay Iyer rejected Plumbing — Too far',       autoDismiss: 8000,  priority: 'critical', jobId: 102 },
-    { eventType: 'job.expired',  type: 'error' as const,   title: 'Job Expired',    message: 'Electrical Repair — Re-dispatching…',          autoDismiss: 10000, priority: 'critical', jobId: 103 },
-    { eventType: 'job.en_route', type: 'info' as const,    title: 'Tech En Route',  message: 'Arjun Sharma is en route — ETA 12 min',        autoDismiss: 5000,  priority: 'normal',   jobId: 104 },
+    { eventType: 'job.assigned', type: 'info' as const, title: 'Job Assigned', message: 'AC Repair Service → Rajesh Kumar', autoDismiss: 5000, priority: 'normal', jobId: 101 },
+    { eventType: 'job.accepted', type: 'success' as const, title: 'Job Accepted', message: 'Rajesh Kumar accepted AC Repair at ABC Corp', autoDismiss: 5000, priority: 'normal', jobId: 101 },
+    { eventType: 'job.rejected', type: 'warning' as const, title: 'Job Rejected', message: 'Vijay Iyer rejected Plumbing — Too far', autoDismiss: 8000, priority: 'critical', jobId: 102 },
+    { eventType: 'job.expired', type: 'error' as const, title: 'Job Expired', message: 'Electrical Repair — Re-dispatching…', autoDismiss: 10000, priority: 'critical', jobId: 103 },
+    { eventType: 'job.en_route', type: 'info' as const, title: 'Tech En Route', message: 'Arjun Sharma is en route — ETA 12 min', autoDismiss: 5000, priority: 'normal', jobId: 104 },
   ];
   const mockCursorRef = useRef(0);
 
@@ -707,7 +837,7 @@ function AppInner() {
   return (
     <div style={styles.appShell}>
       <style>{localCss}</style>
-      <aside 
+      <aside
         style={
           isMobileLayout
             ? styles.sidebarMobile
@@ -731,7 +861,7 @@ function AppInner() {
           {sidebarCollapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
         </button>
 
-        <div 
+        <div
           className="sidebar-content-style"
           style={{
             ...styles.sidebarContent,
@@ -746,7 +876,7 @@ function AppInner() {
           </div>
 
           <nav style={isMobileLayout ? styles.sidebarNavMobile : styles.sidebarNav}>
-            <span style={isMobileLayout ? { display: "none" } : styles.navGroupLabel}>MAIN MENU</span>
+            <span style={isMobileLayout || sidebarCollapsed ? { display: "none" } : styles.navGroupLabel}>MAIN MENU</span>
 
             <button
               className="nav-item-style"
@@ -754,7 +884,7 @@ function AppInner() {
               onClick={() => setActiveTab("dashboard")}
             >
               <LayoutDashboard size={18} style={{ flexShrink: 0 }} />
-              <span className="nav-text" style={isMobileLayout ? { display: "none" } : {}}>Dashboard</span>
+              <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Dashboard</span>
             </button>
 
             <button
@@ -763,50 +893,17 @@ function AppInner() {
               onClick={() => setActiveTab("jobs")}
             >
               <Briefcase size={18} style={{ flexShrink: 0 }} />
-              <span className="nav-text" style={isMobileLayout ? { display: "none" } : {}}>Jobs</span>
+              <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Jobs</span>
             </button>
 
-            <div style={isMobileLayout ? styles.navGroupMobile : styles.navGroup}>
-              <button
-                type="button"
-                className="nav-group-header-style"
-                style={isMobileLayout ? { display: "none" } : styles.navGroupHeader}
-                onClick={() => setIsTechGroupOpen(!isTechGroupOpen)}
-              >
-                <span style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", justifyContent: isMobileLayout ? "center" : "flex-start" }}>
-                  <Users size={18} style={{ flexShrink: 0, marginRight: "10px" }} />
-                  <span className="nav-text">Technicians</span>
-                </span>
-                <span className="chevron-icon-style nav-text" style={{ display: "flex", alignItems: "center", color: "#9CA3AF" }}>
-                  {isTechGroupOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                </span>
-              </button>
-
-              <div 
-                style={{
-                  ...(isMobileLayout ? styles.navGroupItemsMobile : styles.navGroupItems),
-                  ...(!isMobileLayout && !isTechGroupOpen ? { display: "none" } : {})
-                }}
-              >
-                <button
-                  className="nav-item-style"
-                  style={getItemStyle("techboard", true)}
-                  onClick={() => setActiveTab("techboard")}
-                >
-                  <Wrench size={14} style={{ flexShrink: 0 }} />
-                  <span className="nav-text" style={isMobileLayout ? { display: "none" } : {}}>Tech Dashboard</span>
-                </button>
-
-                <button
-                  className="nav-item-style"
-                  style={getItemStyle("technicians", true)}
-                  onClick={() => setActiveTab("technicians")}
-                >
-                  <ClipboardList size={14} style={{ flexShrink: 0 }} />
-                  <span className="nav-text" style={isMobileLayout ? { display: "none" } : {}}>Technicians List</span>
-                </button>
-              </div>
-            </div>
+            <button
+              className="nav-item-style"
+              style={getItemStyle("techboard")}
+              onClick={() => setActiveTab("techboard")}
+            >
+              <Users size={18} style={{ flexShrink: 0 }} />
+              <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Technicians</span>
+            </button>
 
             <button
               className="nav-item-style"
@@ -814,65 +911,69 @@ function AppInner() {
               onClick={() => setActiveTab("planning")}
             >
               <Calendar size={18} style={{ flexShrink: 0 }} />
-              <span className="nav-text" style={isMobileLayout ? { display: "none" } : {}}>Planning</span>
+              <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Planning</span>
             </button>
           </nav>
 
           {/* Active tech switcher and demo controls */}
-          <div 
-            style={isMobileLayout ? { display: "none" } : styles.sidebarSimulationControls}
+          <div
+            style={isMobileLayout || sidebarCollapsed ? { display: "none" } : styles.sidebarSimulationControls}
             onMouseEnter={ensureActiveTechLoaded}
           >
-            {techList.length === 0 ? (
-              <div style={{ fontSize: "11px" }}>
-                <label style={{ display: "block", marginBottom: "4px", color: "#6B7280", fontWeight: 600 }}>Simulated Tech:</label>
-                <select
-                  style={{ width: "100%", padding: "4px", borderRadius: "4px", border: "1px solid #E3ECE7", background: "#FFFFFF", fontSize: "11px", color: "#9CA3AF" }}
-                  onClick={ensureActiveTechLoaded}
-                  onFocus={ensureActiveTechLoaded}
-                  readOnly
-                >
-                  <option>Click to load techs...</option>
-                </select>
-              </div>
-            ) : (
-              activeTechId !== null && (
-                <div style={{ fontSize: "11px" }}>
-                  <label style={{ display: "block", marginBottom: "4px", color: "#6B7280", fontWeight: 600 }}>Simulated Tech:</label>
-                  <select
-                    style={{ width: "100%", padding: "4px", borderRadius: "4px", border: "1px solid #E3ECE7", background: "#FFFFFF", fontSize: "11px" }}
-                    value={activeTechId}
-                    onChange={(e) => setActiveTechId(e.target.value)}
-                  >
-                    {techList.map((t) => {
-                      const val = t.tech_id || t.technician_id || t.id;
-                      return (
-                        <option key={val} value={val}>
-                          {t.technician_name || t.name}
-                        </option>
-                      );
-                    })}
-                  </select>
+            <div style={styles.simulationCard}>
+              {/* Header */}
+              <div style={styles.simulationHeader}>
+                <div style={styles.simulationTitleWrap}>
+                  <FlaskConical size={14} color="#0F9D58" style={{ flexShrink: 0 }} />
+                  <span style={styles.simulationTitle}>Simulation Lab</span>
                 </div>
-              )
-            )}
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%" }}>
+              </div>
+
+              {/* Simulated Technician Dropdown */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <span style={styles.simulationLabel}>Simulated Technician</span>
+                <div style={styles.dropdownWrapper}>
+                  <div style={styles.userCircle}>
+                    <User size={12} color="#0F9D58" />
+                  </div>
+                  {techList.length === 0 ? (
+                    <select
+                      style={styles.simulationSelect}
+                      onClick={ensureActiveTechLoaded}
+                      onFocus={ensureActiveTechLoaded}
+                      readOnly
+                    >
+                      <option>Click to load techs...</option>
+                    </select>
+                  ) : (
+                    activeTechId !== null && (
+                      <select
+                        style={styles.simulationSelect}
+                        value={activeTechId}
+                        onChange={(e) => setActiveTechId(e.target.value)}
+                      >
+                        {techList.map((t) => {
+                          const val = t.tech_id || t.technician_id || t.id;
+                          return (
+                            <option key={val} value={val}>
+                              {t.technician_name || t.name}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )
+                  )}
+                  <ChevronDown size={14} color="#64748B" style={styles.dropdownChevron} />
+                </div>
+              </div>
+
+
+              {/* Simulate Alert Button */}
               <button
                 type="button"
-                style={{
-                  width: "100%",
-                  height: "28px",
-                  fontSize: "11px",
-                  padding: "0 10px",
-                  background: "#FFFFFF",
-                  border: "1px solid #E3ECE7",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  color: "#374151",
-                  fontWeight: 600,
-                  transition: "all 0.2s"
-                }}
+                className="simulate-alert-btn-style"
+                style={styles.simulateAlertBtn}
                 onClick={() => {
                   ensureActiveTechLoaded().then(() => {
                     triggerMockNotification();
@@ -880,12 +981,13 @@ function AppInner() {
                 }}
                 title="Test Notification UI"
               >
-                Simulate Alert
+                <BellRing size={16} color="#FFFFFF" style={{ flexShrink: 0 }} />
+                <span>Simulate Alert</span>
               </button>
             </div>
           </div>
 
-          <div 
+          <div
             style={
               isMobileLayout
                 ? { display: "none" }
@@ -950,7 +1052,6 @@ function AppInner() {
               />
             )}
             {activeTab === "jobs" && <JobsPage />}
-            {activeTab === "technicians" && <TechniciansPage />}
             {activeTab === "techboard" && <TechDashboardPage />}
             {activeTab === "planning" && (
               <PlanningPage />

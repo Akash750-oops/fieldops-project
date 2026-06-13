@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 import uuid
 import logging
@@ -31,16 +31,28 @@ router = APIRouter(
 
 
 @router.get("/stats")
-def get_jobs_stats(db: Session = Depends(get_db)):
+def get_jobs_stats(time_range: Optional[str] = None, db: Session = Depends(get_db)):
     try:
+        # Filter by time range if provided
+        start_date = None
+        if time_range == "week":
+            start_date = datetime.now(timezone.utc) - timedelta(days=7)
+        elif time_range == "month":
+            start_date = datetime.now(timezone.utc) - timedelta(days=30)
+
+        # Base query for jobs
+        query = db.query(Job)
+        if start_date:
+            query = query.filter(Job.created_at >= start_date)
+
         # Total Jobs
-        total_jobs = db.query(Job).count()
+        total_jobs = query.count()
 
         # Jobs counts by status
-        completed_count = db.query(Job).filter(func.lower(Job.status) == "completed").count()
-        in_progress_count = db.query(Job).filter(func.lower(Job.status) == "in progress").count()
-        active_count = db.query(Job).filter(func.lower(Job.status) == "active", Job.assigned_technician_id.isnot(None)).count()
-        pending_count = db.query(Job).filter(func.lower(Job.status) == "active", Job.assigned_technician_id.is_(None)).count()
+        completed_count = query.filter(func.lower(Job.status) == "completed").count()
+        in_progress_count = query.filter(func.lower(Job.status) == "in progress").count()
+        active_count = query.filter(func.lower(Job.status) == "active", Job.assigned_technician_id.isnot(None)).count()
+        pending_count = query.filter(func.lower(Job.status) == "active", Job.assigned_technician_id.is_(None)).count()
 
         # Technician availability counts
         tech_available = db.query(Technician).filter(func.lower(Technician.technician_status) == "available").count()
@@ -52,11 +64,11 @@ def get_jobs_stats(db: Session = Depends(get_db)):
         tech_break = db.query(Technician).filter(func.lower(Technician.technician_status) == "break").count()
         tech_offline = db.query(Technician).filter(func.lower(Technician.technician_status) == "offline").count()
 
-        # Category splits based on service type
-        hvac_count = db.query(Job).filter(func.lower(Job.service_type).like("%hvac%")).count()
-        electrical_count = db.query(Job).filter(func.lower(Job.service_type).like("%elec%")).count()
-        plumbing_count = db.query(Job).filter(func.lower(Job.service_type).like("%plumb%")).count()
-        mechanical_count = db.query(Job).filter(func.lower(Job.service_type).like("%mech%")).count()
+        # Category splits based on required_skill
+        hvac_count = query.filter(func.lower(Job.required_skill) == "hvac").count()
+        electrical_count = query.filter(func.lower(Job.required_skill) == "electrical").count()
+        plumbing_count = query.filter(func.lower(Job.required_skill) == "plumbing").count()
+        mechanical_count = query.filter(func.lower(Job.required_skill) == "mechanical").count()
         other_count = total_jobs - (hvac_count + electrical_count + plumbing_count + mechanical_count)
         if other_count < 0:
             other_count = 0
@@ -107,7 +119,7 @@ def get_service_types(db: Session = Depends(get_db)):
         )
 
 
-@router.post("/", response_model=JobResponse, status_code=201)
+@router.post("", response_model=JobResponse, status_code=201)
 def create_job(job: JobCreate, db: Session = Depends(get_db)):
     try:
         req_skill = job.required_skill
@@ -163,7 +175,7 @@ def create_job(job: JobCreate, db: Session = Depends(get_db)):
         )
 
 
-@router.get("/", response_model=list[JobResponse])
+@router.get("", response_model=list[JobResponse])
 def get_jobs(
     search: Optional[str] = None,
     status: Optional[str] = None,
@@ -335,7 +347,7 @@ async def plan_job_assignment(
         
     technicians = db.query(Technician).filter(
         (Technician.tenant_id == x_tenant_id) | (Technician.tenant_id.is_(None)),
-        Technician.technician_status == "AVAILABLE"
+        func.lower(Technician.technician_status).in_(["available", "assigned"])
     ).all()
     
     if not technicians:
@@ -707,8 +719,9 @@ async def assign_job(
         if not tech:
             raise HTTPException(status_code=404, detail="Technician not found")
             
-        if tech.technician_status == "OFFLINE":
-            raise HTTPException(status_code=400, detail="Technician is OFFLINE")
+        status_upper = (tech.technician_status or "").upper().strip()
+        if status_upper in ["OFFLINE", "BUSY"]:
+            raise HTTPException(status_code=400, detail="Technician is unavailable. Busy or Offline technicians cannot be assigned jobs.")
             
         if not req.skip_skill_check and not is_skill_matching(tech.technician_skill, job.required_skill, job.service_type):
             raise HTTPException(status_code=400, detail="Technician missing required skills")

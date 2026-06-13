@@ -4,10 +4,10 @@ import usePageVisibility from "../hooks/usePageVisibility";
 import useInterval from "../hooks/useInterval";
 import StatusBadge from "../components/ui/StatusBadge";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
-import { Eye, Pencil, Trash2 } from "lucide-react";
+import { Eye, Pencil, Trash2, ChevronDown } from "lucide-react";
 import EmptyState from "../components/ui/EmptyState";
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 6;
 const REFRESH_MS = 60_000;
 const STALE_MS   = 120_000;
 const SKILLS = ["HVAC Repair","Electrical","Plumbing","Network Support","General Maintenance"];
@@ -42,6 +42,10 @@ function normalizeStatus(s: string) {
   if (l==="busy")      return "Busy";
   if (l==="assigned")  return "Assigned";
   if (l==="offline")   return "Offline";
+  if (l==="en route" || l==="en_route") return "En Route";
+  if (l==="on site" || l==="on_site") return "On Site";
+  if (l==="on break" || l==="on_break") return "On Break";
+  if (l==="suspended") return "Suspended";
   return s||"Unknown";
 }
 
@@ -89,7 +93,7 @@ const styles = {
 
   tldToast: {
     position: "fixed",
-    bottom: "24px",
+    top: "80px",
     right: "24px",
     padding: "12px 20px",
     borderRadius: "10px",
@@ -153,6 +157,7 @@ const styles = {
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
+    flex: 1,
     boxSizing: "border-box",
   } as React.CSSProperties,
 
@@ -560,8 +565,21 @@ const styles = {
 
   tldActions: {
     display: "flex",
-    gap: "6px",
+    gap: "12px",
     alignItems: "center",
+  } as React.CSSProperties,
+
+  iconActionBtn: {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "4px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "4px",
+    transition: "transform .15s, opacity .15s",
+    outline: "none",
   } as React.CSSProperties,
 
   tldStateCell: {
@@ -585,16 +603,18 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "8px 14px",
+    padding: "14px 20px",
     borderTop: "1px solid #E3ECE7",
     flexWrap: "wrap",
     gap: "8px",
-    background: "#FAFCFB",
+    background: "#FFFFFF",
+    borderBottomLeftRadius: "12px",
+    borderBottomRightRadius: "12px",
     boxSizing: "border-box",
   } as React.CSSProperties,
 
   tldPageInfo: {
-    fontSize: "10px",
+    fontSize: "11px",
     color: "#6B7280",
     fontWeight: 500,
   } as React.CSSProperties,
@@ -610,7 +630,7 @@ const styles = {
     background: "#FFFFFF",
     border: "1.5px solid #E3ECE7",
     borderRadius: "7px",
-    fontSize: "10px",
+    fontSize: "11px",
     fontWeight: 600,
     color: "#2F4F3E",
     cursor: "pointer",
@@ -628,7 +648,7 @@ const styles = {
     borderRadius: "7px",
     border: "1.5px solid #E3ECE7",
     background: "#FFFFFF",
-    fontSize: "10px",
+    fontSize: "11px",
     fontWeight: 600,
     color: "#6B7280",
     cursor: "pointer",
@@ -846,11 +866,22 @@ const localCss = `
     color: #2F4F3E !important;
     background-color: #EAF4EE !important;
   }
+  .tld-page-btn:hover:not(:disabled) {
+    background-color: #EAF4EE !important;
+    border-color: #7AAE8A !important;
+  }
+  .tld-page-num:hover {
+    border-color: #7AAE8A !important;
+    color: #2F4F3E !important;
+  }
   .tld-table th.sortable-style:hover {
     color: #2F4F3E !important;
   }
-  .tld-table tbody tr.tld-row-style:hover td {
-    background-color: #F6FAF8 !important;
+  tr.tld-row-style {
+    cursor: pointer !important;
+  }
+  tr.tld-row-style:hover td {
+    background-color: #EAF4EE !important;
   }
   .icon-action-btn-style {
     transition: transform .15s, opacity .15s !important;
@@ -989,6 +1020,38 @@ const localCss = `
   }
 `;
 
+const getStatusSelectStyle = (status: string): React.CSSProperties => {
+  const s = (status || "").toLowerCase().trim();
+  const base: React.CSSProperties = {
+    ...styles.tldStatusSelect
+  };
+  if (s === "available") {
+    return { ...base, background: "#DDEEE5", color: "#2F4F3E", borderColor: "#B0D4BC" };
+  }
+  if (s === "busy") {
+    return { ...base, background: "#FEF0D6", color: "#7A5120", borderColor: "#F0D09A" };
+  }
+  if (s === "offline") {
+    return { ...base, background: "#F0F4F2", color: "#6B7280", borderColor: "#D0DCD4" };
+  }
+  if (s === "assigned") {
+    return { ...base, background: "#E0F2FE", color: "#0369A1", borderColor: "#7DD3FC" };
+  }
+  if (s === "en route" || s === "en_route") {
+    return { ...base, background: "#FEF9C3", color: "#854D0E", borderColor: "#FDE68A" };
+  }
+  if (s === "on site" || s === "on_site") {
+    return { ...base, background: "#EDE9FE", color: "#6D28D9", borderColor: "#DDD6FE" };
+  }
+  if (s === "on break" || s === "on_break") {
+    return { ...base, background: "#FEF0D6", color: "#92400E", borderColor: "#FCD29A" };
+  }
+  if (s === "suspended") {
+    return { ...base, background: "#FEE2E2", color: "#991B1B", borderColor: "#FECACA" };
+  }
+  return base;
+};
+
 function SkeletonRows({n=8}){
   return (
     <>
@@ -1057,6 +1120,7 @@ export default function TechnicianListPage(){
   const [selected,  setSelected]  = useState<NormalizedTech | null>(null);
   const [newStatus, setNewStatus] = useState("");
   const [saving,    setSaving]    = useState(false);
+  const [updatingId, setUpdatingId] = useState<string|number|null>(null);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -1242,6 +1306,20 @@ export default function TechnicianListPage(){
   function clearFilters(){ setSearch(""); setStatusFilter("ALL"); setSkillFilter("ALL"); setZoneFilter("ALL"); setPage(1); }
   const hasFilters=search||statusFilter!=="ALL"||skillFilter!=="ALL"||zoneFilter!=="ALL";
 
+  async function handleInlineStatusChange(techId: string|number, ns: string) {
+    setUpdatingId(techId);
+    try {
+      await updateTechnicianAvailability(techId, ns);
+      setTechnicians(prev => prev.map(t => t.id === techId ? { ...t, status: ns } : t));
+      const tech = technicians.find(t => t.id === techId);
+      showToast(`${tech?.name || 'Technician'} set to ${ns}`);
+    } catch(err: any) {
+      showToast(err.response?.data?.error || err.response?.data?.detail || "Failed to update status", "error");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
   async function handleSaveStatus(){
     if(!selected) return;
     setSaving(true);
@@ -1419,6 +1497,10 @@ export default function TechnicianListPage(){
               <option value="Busy">Busy</option>
               <option value="Assigned">Assigned</option>
               <option value="Offline">Offline</option>
+              <option value="En Route">En Route</option>
+              <option value="On Site">On Site</option>
+              <option value="On Break">On Break</option>
+              <option value="Suspended">Suspended</option>
             </select>
           </div>
           <div className="tld-filter-group-responsive" style={styles.tldFilterGroup}>
@@ -1462,11 +1544,17 @@ export default function TechnicianListPage(){
                 <th className={`sortable-style ${sortKey==="name"?"sort-active":""}`} style={styles.tldTableTh} onClick={()=>handleSort("name")}>
                   Technician Name <SortIcon col="name" sortKey={sortKey} sortDir={sortDir}/>
                 </th>
+                <th className={`sortable-style ${sortKey==="skill"?"sort-active":""}`} style={styles.tldTableTh} onClick={()=>handleSort("skill")}>
+                  Skill <SortIcon col="skill" sortKey={sortKey} sortDir={sortDir}/>
+                </th>
+                <th className={`sortable-style ${sortKey==="location"?"sort-active":""}`} style={styles.tldTableTh} onClick={()=>handleSort("location")}>
+                  Location <SortIcon col="location" sortKey={sortKey} sortDir={sortDir}/>
+                </th>
                 <th className={`sortable-style ${sortKey==="status"?"sort-active":""}`} style={{ ...styles.tldTableTh, textAlign: "center" }} onClick={()=>handleSort("status")}>
                   Status <SortIcon col="status" sortKey={sortKey} sortDir={sortDir}/>
                 </th>
                 <th className={`sortable-style ${sortKey==="jobs"?"sort-active":""}`} style={styles.tldTableTh} onClick={()=>handleSort("jobs")}>
-                  Active Jobs <SortIcon col="jobs" sortKey={sortKey} sortDir={sortDir}/>
+                  Workload <SortIcon col="jobs" sortKey={sortKey} sortDir={sortDir}/>
                 </th>
                 <th className={`sortable-style ${sortKey==="ping"?"sort-active":""}`} style={styles.tldTableTh} onClick={()=>handleSort("ping")}>
                   Last Ping <SortIcon col="ping" sortKey={sortKey} sortDir={sortDir}/>
@@ -1477,7 +1565,7 @@ export default function TechnicianListPage(){
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={5} style={styles.tldStateCell}>
+                  <td colSpan={7} style={styles.tldStateCell}>
                     <LoadingSpinner message="Loading technician dashboard..." />
                   </td>
                 </tr>
@@ -1485,7 +1573,7 @@ export default function TechnicianListPage(){
 
               {!loading&&initError&&(
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={7}>
                     <EmptyState
                       title="Failed to load technicians"
                       description={initError}
@@ -1499,7 +1587,7 @@ export default function TechnicianListPage(){
 
               {!loading&&!initError&&filtered.length===0&&(
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={7}>
                     <EmptyState
                       title={hasFilters ? "No technicians match your filters" : "No technicians found"}
                       description={hasFilters ? "Try adjusting filters." : "Add technicians to get started."}
@@ -1526,14 +1614,48 @@ export default function TechnicianListPage(){
                         <div style={styles.tldAvatar}>{getInitials(tech.name)}</div>
                         <div style={styles.tldNameInfo}>
                           <span style={styles.tldNamePrimary}>{tech.name}</span>
-                          <span style={styles.tldNameSecondary}>
-                            {tech.skill!=="—"?`${tech.skill}`:""}{tech.location!=="—"?` · ${tech.location}`:""}
-                          </span>
                         </div>
                       </div>
                     </td>
-                    <td data-label="Status" style={{ ...styles.tldTableTd, textAlign: "center" }}><StatusBadge status={tech.status as any}/></td>
-                    <td data-label="Active Jobs" style={styles.tldTableTd}>
+                    <td data-label="Skill" style={styles.tldTableTd}>
+                      <span style={{ color: "#475569", fontWeight: 500 }}>{tech.skill}</span>
+                    </td>
+                    <td data-label="Location" style={styles.tldTableTd}>
+                      <span style={{ color: "#6B7280" }}>{tech.location}</span>
+                    </td>
+                    <td data-label="Status" style={{ ...styles.tldTableTd, textAlign: "center", position: "relative" }}>
+                      <div style={{ display: "inline-block", position: "relative", minWidth: "110px" }} onClick={e=>e.stopPropagation()}>
+                        <select
+                          value={normalizeStatus(tech.status)}
+                          onChange={e => handleInlineStatusChange(tech.id, e.target.value)}
+                          disabled={updatingId === tech.id}
+                          className="tld-status-select-style"
+                          style={{
+                            ...getStatusSelectStyle(tech.status),
+                            width: "100%",
+                            padding: "4px 20px 4px 8px",
+                            fontSize: "10px",
+                            borderRadius: "6px",
+                            appearance: "none",
+                            opacity: updatingId === tech.id ? 0.6 : 1,
+                            fontWeight: 600
+                          }}
+                        >
+                          <option value="Available">Available</option>
+                          <option value="Busy">Busy</option>
+                          <option value="Assigned">Assigned</option>
+                          <option value="Offline">Offline</option>
+                          <option value="En Route">En Route</option>
+                          <option value="On Site">On Site</option>
+                          <option value="On Break">On Break</option>
+                          <option value="Suspended">Suspended</option>
+                        </select>
+                        <div style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: getStatusSelectStyle(tech.status).color as string, opacity: 0.8 }}>
+                          <ChevronDown size={11} />
+                        </div>
+                      </div>
+                    </td>
+                    <td data-label="Workload" style={styles.tldTableTd}>
                       <div style={styles.tldWorkloadCell}>
                         <div style={styles.tldWorkloadNumbers}>{tech.currentJobs} / {tech.maxJobs}</div>
                         <div style={styles.tldWorkloadTrack}>
@@ -1592,13 +1714,13 @@ export default function TechnicianListPage(){
           <div style={styles.tldPagination}>
             <span style={styles.tldPageInfo}>Page <strong>{safePage}</strong> of <strong>{totalPages}</strong> · {filtered.length} results</span>
             <div style={styles.tldPageControls}>
-              <button className="tld-page-btn" onClick={()=>setPage(1)} disabled={safePage===1}>«</button>
-              <button className="tld-page-btn" onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={safePage===1}>‹ Prev</button>
+              <button className="tld-page-btn" style={styles.tldPageBtn} onClick={()=>setPage(1)} disabled={safePage===1}>«</button>
+              <button className="tld-page-btn" style={styles.tldPageBtn} onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={safePage===1}>‹ Prev</button>
               <div style={styles.tldPageNumbers}>
                 {getPageNums().map(n=><button key={n} className={`tld-page-num${n===safePage?" active":""}`} style={{ ...styles.tldPageNum, ...(n===safePage ? styles.tldPageNumActive : {}) }} onClick={()=>setPage(n)}>{n}</button>)}
               </div>
-              <button className="tld-page-btn" onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={safePage===totalPages}>Next ›</button>
-              <button className="tld-page-btn" onClick={()=>setPage(totalPages)} disabled={safePage===totalPages}>»</button>
+              <button className="tld-page-btn" style={styles.tldPageBtn} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={safePage===totalPages}>Next ›</button>
+              <button className="tld-page-btn" style={styles.tldPageBtn} onClick={()=>setPage(totalPages)} disabled={safePage===totalPages}>»</button>
             </div>
           </div>
         )}
@@ -1646,6 +1768,10 @@ export default function TechnicianListPage(){
                 <option value="Busy">Busy</option>
                 <option value="Assigned">Assigned</option>
                 <option value="Offline">Offline</option>
+                <option value="En Route">En Route</option>
+                <option value="On Site">On Site</option>
+                <option value="On Break">On Break</option>
+                <option value="Suspended">Suspended</option>
               </select>
               <button className="tld-save-btn-style" style={styles.tldSaveBtn} onClick={handleSaveStatus}
                 disabled={saving||newStatus===normalizeStatus(selected.status)}>
@@ -1730,6 +1856,10 @@ export default function TechnicianListPage(){
                 <option value="Busy">Busy</option>
                 <option value="Assigned">Assigned</option>
                 <option value="Offline">Offline</option>
+                <option value="En Route">En Route</option>
+                <option value="On Site">On Site</option>
+                <option value="On Break">On Break</option>
+                <option value="Suspended">Suspended</option>
               </select>
             </div>
 

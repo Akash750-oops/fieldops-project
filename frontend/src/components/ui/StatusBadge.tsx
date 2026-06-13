@@ -77,7 +77,7 @@ const styleConfig = {
   badge: {
     display: "inline-flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     gap: "5px",
     borderRadius: "20px",
     border: "1px solid transparent",
@@ -92,9 +92,9 @@ const styleConfig = {
   } as React.CSSProperties,
   
   sizes: {
-    sm: { fontSize: "10px", padding: "2px 4px", gap: "4px", width: "80px" },
-    md: { fontSize: "12px", padding: "4px 6px", gap: "5px", width: "92px" },
-    lg: { fontSize: "14px", padding: "6px 8px", gap: "6px", width: "106px" },
+    sm: { fontSize: "10px", padding: "2px 8px", gap: "4px", width: "95px" },
+    md: { fontSize: "12px", padding: "4px 12px", gap: "5px", width: "115px" },
+    lg: { fontSize: "14px", padding: "6px 14px", gap: "6px", width: "135px" },
   },
   
   icon: {
