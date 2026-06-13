@@ -11,7 +11,7 @@ export const getAllTechnicians = (params?: {
   status?: string;
   zone?: string;
   skill?: string;
-}): Promise<any> => api.get("/technicians/", { params });
+}): Promise<any> => api.get("/technicians", { params });
 
 /** Fetch all unique zones */
 export const getUniqueZones = (): Promise<any> => api.get("/technicians/zones");
@@ -36,7 +36,7 @@ export const deleteTechnician = (technicianId: string | number): Promise<any> =>
 
 /** Create a technician */
 export const createTechnician = (technicianData: any): Promise<any> =>
-  api.post("/technicians/", technicianData);
+  api.post("/technicians", technicianData);
 
 /** Fetch notification preferences for a technician */
 export const getPreferences = (techId: string | number): Promise<any> =>

@@ -306,7 +306,12 @@ export default function RankedTechTable({
             <option value="All">All Statuses</option>
             <option value="Available">Available</option>
             <option value="Busy">Busy</option>
+            <option value="Assigned">Assigned</option>
             <option value="Offline">Offline</option>
+            <option value="En Route">En Route</option>
+            <option value="On Site">On Site</option>
+            <option value="On Break">On Break</option>
+            <option value="Suspended">Suspended</option>
           </select>
         </div>
       </div>
@@ -372,6 +377,7 @@ export default function RankedTechTable({
               const tier = (idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'bronze') as MedalTier;
               const cfg = MEDAL_CONFIG[tier];
               const isSelected = selectedTechId === tech.technician_id;
+              const isUnavailable = ["busy", "offline"].includes((tech.technician_status || "").toLowerCase().trim());
 
               return (
                 <tr
@@ -432,24 +438,35 @@ export default function RankedTechTable({
                   <td className="px-6 py-4 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        onClick={() => onSelect(tech.technician_id)}
+                        onClick={() => !isUnavailable && onSelect(tech.technician_id)}
+                        disabled={isUnavailable}
                         className={[
                           'px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm focus:outline-none focus:ring-2',
-                          isSelected
+                          isUnavailable
+                            ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                            : isSelected
                             ? 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500'
                             : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 focus:ring-slate-300',
                         ].join(' ')}
                         aria-label={`Select ${tech.technician_name} for Job ${job.id}`}
                         data-testid={`table-pinned-select-${idx + 1}`}
+                        title={isUnavailable ? `Cannot select: Technician is ${tech.technician_status}` : undefined}
                       >
-                        {isSelected ? 'Selected' : 'Select'}
+                        {isUnavailable ? 'Unavailable' : isSelected ? 'Selected' : 'Select'}
                       </button>
                       {onAssign && (
                         <button
-                          onClick={() => onAssign(tech.technician_id)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm"
+                          onClick={() => !isUnavailable && onAssign(tech.technician_id)}
+                          disabled={isUnavailable}
+                          className={[
+                            'px-3 py-1.5 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 shadow-sm',
+                            isUnavailable
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
+                              : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 focus:ring-emerald-400'
+                          ].join(' ')}
                           aria-label={`Assign ${tech.technician_name} immediately`}
                           data-testid={`table-pinned-assign-${idx + 1}`}
+                          title={isUnavailable ? `Cannot assign: Technician is ${tech.technician_status}` : undefined}
                         >
                           Assign
                         </button>
@@ -475,6 +492,7 @@ export default function RankedTechTable({
             {filteredAndSortedOthers.map((tech, idx) => {
               const overallRank = idx + 4;
               const isSelected = selectedTechId === tech.technician_id;
+              const isUnavailable = ["busy", "offline"].includes((tech.technician_status || "").toLowerCase().trim());
 
               return (
                 <tr
@@ -525,24 +543,35 @@ export default function RankedTechTable({
                   <td className="px-6 py-4 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        onClick={() => onSelect(tech.technician_id)}
+                        onClick={() => !isUnavailable && onSelect(tech.technician_id)}
+                        disabled={isUnavailable}
                         className={[
                           'px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm focus:outline-none focus:ring-2',
-                          isSelected
+                          isUnavailable
+                            ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                            : isSelected
                             ? 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500'
                             : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 focus:ring-slate-300',
                         ].join(' ')}
                         aria-label={`Select ${tech.technician_name} for Job ${job.id}`}
                         data-testid={`table-other-select-${idx}`}
+                        title={isUnavailable ? `Cannot select: Technician is ${tech.technician_status}` : undefined}
                       >
-                        {isSelected ? 'Selected' : 'Select'}
+                        {isUnavailable ? 'Unavailable' : isSelected ? 'Selected' : 'Select'}
                       </button>
                       {onAssign && (
                         <button
-                          onClick={() => onAssign(tech.technician_id)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm"
+                          onClick={() => !isUnavailable && onAssign(tech.technician_id)}
+                          disabled={isUnavailable}
+                          className={[
+                            'px-3 py-1.5 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 shadow-sm',
+                            isUnavailable
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
+                              : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 focus:ring-emerald-400'
+                          ].join(' ')}
                           aria-label={`Assign ${tech.technician_name} immediately`}
                           data-testid={`table-other-assign-${idx}`}
+                          title={isUnavailable ? `Cannot assign: Technician is ${tech.technician_status}` : undefined}
                         >
                           Assign
                         </button>

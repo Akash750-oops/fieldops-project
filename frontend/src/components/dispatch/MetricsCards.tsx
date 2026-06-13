@@ -67,15 +67,15 @@ const MetricsSkeleton = () => {
           <div
             className="flex items-center gap-2 rounded-2xl border border-gray-100 bg-white px-2.5 py-2 shadow-sm"
           >
-            <div className="h-8 w-8 flex-shrink-0 animate-pulse rounded-lg bg-gray-200" />
+            <div className="h-8 w-8 flex-shrink-0 animate-pulse rounded-xl bg-gray-200" />
             <div className="flex-1 min-w-0">
               <div className="h-3 w-16 animate-pulse rounded bg-gray-200" />
               <div className="mt-0.5 flex items-center gap-0.5">
-                <div className="h-4 w-8 animate-pulse rounded bg-gray-200" />
-                <div className="h-3 w-8 animate-pulse rounded bg-gray-100" />
+                <div className="h-2.5 w-8 animate-pulse rounded bg-gray-100" />
               </div>
             </div>
-            <div className="h-8 w-14 flex-shrink-0 animate-pulse rounded bg-gray-100" />
+            <div className="h-6 w-px bg-gray-100" />
+            <div className="h-8 w-14 flex-shrink-0 animate-pulse rounded-xl bg-gray-50" />
           </div>
         </div>
       ))}

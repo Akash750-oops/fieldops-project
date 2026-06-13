@@ -31,7 +31,8 @@ def validate_technician_for_assignment(technician: models.Technician, job: model
     - Skill match
     """
     # 1. Status Check
-    if technician.technician_status in ["OFFLINE", "BUSY"]:
+    status_upper = (technician.technician_status or "").upper().strip()
+    if status_upper in ["OFFLINE", "BUSY"]:
         logger.warning(f"Assignment blocked: Technician {technician.technician_id} is {technician.technician_status}")
         raise HTTPException(
             status_code=400, 
@@ -59,12 +60,13 @@ def get_workload_validation_status(technician: models.Technician):
     """
     can_assign, msg = validate_workload_constraints(technician)
     
+    status_upper = (technician.technician_status or "").upper().strip()
     # Also check if status is OFFLINE/BUSY for the final can_assign flag
-    final_can_assign = can_assign and technician.technician_status == "AVAILABLE"
+    final_can_assign = can_assign and status_upper == "AVAILABLE"
     
-    if technician.technician_status == "OFFLINE":
+    if status_upper == "OFFLINE":
         msg = "Technician is offline"
-    elif technician.technician_status == "BUSY" and can_assign:
+    elif status_upper == "BUSY" and can_assign:
          msg = "Technician is currently unavailable"
     elif not can_assign:
         msg = "Maximum workload reached"

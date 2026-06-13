@@ -133,6 +133,10 @@ async def force_assign(
     if not tech:
         raise HTTPException(status_code=404, detail="Technician not found")
         
+    status_upper = (tech.technician_status or "").upper().strip()
+    if status_upper in ["OFFLINE", "BUSY"]:
+        raise HTTPException(status_code=400, detail="Technician is unavailable. Busy or Offline technicians cannot be assigned jobs.")
+        
     esc = get_active_escalation(db, job_id)
     
     old_status = job.status

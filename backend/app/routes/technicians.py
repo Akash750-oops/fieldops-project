@@ -13,8 +13,12 @@ router = APIRouter(
     tags=["Technicians"]
 )
 
-@router.post("/", response_model=Union[schemas.TechnicianResponse, List[schemas.TechnicianResponse]], status_code=status.HTTP_200_OK)
-def create_technician(technician: Union[schemas.TechnicianCreate, List[schemas.TechnicianCreate]], db: Session = Depends(get_db)):
+@router.post("", response_model=Union[schemas.TechnicianResponse, List[schemas.TechnicianResponse]], status_code=status.HTTP_200_OK)
+def create_technician(
+    technician: Union[schemas.TechnicianCreate, List[schemas.TechnicianCreate]],
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    db: Session = Depends(get_db)
+):
     """
     Register one or more new technicians.
     Prevents duplicate entries based on name and skill.
@@ -45,7 +49,8 @@ def create_technician(technician: Union[schemas.TechnicianCreate, List[schemas.T
                 technician_name=tech_data.technician_name,
                 technician_skill=tech_data.technician_skill,
                 technician_location=tech_data.technician_location,
-                technician_status=tech_data.technician_status
+                technician_status=tech_data.technician_status,
+                tenant_id=x_tenant_id or "tenant-1"
             )
             db.add(new_tech)
             created_techs.append(new_tech)
@@ -78,7 +83,7 @@ def create_technician(technician: Union[schemas.TechnicianCreate, List[schemas.T
             detail=f"An unexpected error occurred: {str(e)}"
         )
 
-@router.get("/", response_model=List[schemas.TechnicianResponse])
+@router.get("", response_model=List[schemas.TechnicianResponse])
 def get_all_technicians(
     search: Optional[str] = None,
     status: Optional[str] = None,
@@ -112,7 +117,7 @@ def get_all_technicians(
         if skill and skill.upper() != "ALL":
             query = query.filter(func.lower(models.Technician.technician_skill) == skill.lower())
             
-        return query.all()
+        return query.order_by(models.Technician.technician_id.desc()).all()
     except SQLAlchemyError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -261,16 +266,21 @@ def get_technician_by_id(technician_id: int, db: Session = Depends(get_db)):
     return tech
 
 
-@router.put("/{technician_id}/availability")
+@router.put("/{id}/availability")
 def update_technician_availability(
-    technician_id: int,
+    id: str,
     update_data: schemas.TechnicianAvailabilityUpdate,
     db: Session = Depends(get_db)
 ):
     """
-    Update the availability status of a technician.
+    Update the availability status of a technician by their integer ID or string tech_id.
     """
-    tech = db.query(models.Technician).filter(models.Technician.technician_id == technician_id).first()
+    tech = None
+    if id.isdigit():
+        tech = db.query(models.Technician).filter(models.Technician.technician_id == int(id)).first()
+    if not tech:
+        tech = db.query(models.Technician).filter(models.Technician.tech_id == id).first()
+        
     if not tech:
         raise HTTPException(status_code=404, detail="Technician not found")
     
@@ -283,6 +293,7 @@ def update_technician_availability(
         "message": "Technician availability updated successfully",
         "technician": {
             "id": tech.technician_id,
+            "tech_id": tech.tech_id,
             "name": tech.technician_name,
             "technician_status": tech.technician_status
         }

@@ -1076,7 +1076,11 @@ function PlanningDashboard() {
     const techs = techsOverride || allTechsList;
     if (!techs || techs.length === 0) return [];
     return techs
-      .filter((t) => isSkillMatching(t.technician_skill, job.required_skill, job.service_type))
+      .filter((t) => {
+        const status = normalizeStatus(t.technician_status);
+        const isEligible = status === "available" || status === "assigned";
+        return isEligible && isSkillMatching(t.technician_skill, job.required_skill, job.service_type);
+      })
       .map((t) => {
         const seed = t.technician_id * 13 + (job?.id || 1) * 7;
         const pseudo = (n: number) => ((seed * n * 31 + 17) % 45) + 50;
@@ -1565,8 +1569,9 @@ function PlanningDashboard() {
             {jobsLoading ? (
               <LoadingSpinner message="Loading pending jobs..." />
             ) : (
-              <div style={styles.tableContainer}>
-                {metricFilteredPendingJobs.length === 0 ? (
+              <>
+                <div style={styles.tableContainer}>
+                  {metricFilteredPendingJobs.length === 0 ? (
                   <EmptyState
                     title={getMetricEmptyTitle()}
                     description={getMetricEmptyDescription()}
@@ -1703,6 +1708,7 @@ function PlanningDashboard() {
                     </tbody>
                   </table>
                 )}
+                </div>
                 {/* Pagination */}
                 <div style={styles.planningPagination}>
                   <span style={styles.planningPageInfo}>
@@ -1730,7 +1736,7 @@ function PlanningDashboard() {
                     <button className="planning-page-btn-style" style={styles.planningPageBtn} onClick={() => setPendingPage(pendingTotalPages)} disabled={safePendingPage === pendingTotalPages}>»</button>
                   </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </section>
@@ -1840,19 +1846,22 @@ function PlanningDashboard() {
                               </button>
 
                               <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                                <select
-                                  className="tech-select-style"
-                                  style={{ ...styles.techSelect, margin: 0, padding: "4px 8px" }}
-                                  value={selectedTechs[job.id] || ""}
-                                  onChange={(e) => setSelectedTechs(prev => ({ ...prev, [job.id]: e.target.value }))}
-                                >
-                                  <option value="" disabled>Select Tech</option>
-                                  {allTechsList.map(t => (
-                                    <option key={t.technician_id} value={t.technician_id}>
-                                      {t.technician_name}
-                                    </option>
-                                  ))}
-                                </select>
+                                  <select
+                                    className="tech-select-style"
+                                    style={{ ...styles.techSelect, margin: 0, padding: "4px 8px" }}
+                                    value={selectedTechs[job.id] || ""}
+                                    onChange={(e) => setSelectedTechs(prev => ({ ...prev, [job.id]: e.target.value }))}
+                                  >
+                                    <option value="" disabled>Select Tech</option>
+                                    {allTechsList.map(t => {
+                                      const isUnavailable = ["busy", "offline"].includes((t.technician_status || "").toLowerCase().trim());
+                                      return (
+                                        <option key={t.technician_id} value={t.technician_id} disabled={isUnavailable}>
+                                          {t.technician_name} {isUnavailable ? `(${t.technician_status})` : ""}
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
                                 <button
                                   className="assign-btn-style"
                                   style={{
@@ -1908,8 +1917,9 @@ function PlanningDashboard() {
             {assignmentsLoading ? (
               <LoadingSpinner message="Loading assignments..." />
             ) : (
-              <div style={styles.tableContainer}>
-                {filteredPlannedAssignments.length === 0 ? (
+              <>
+                <div style={styles.tableContainer}>
+                  {filteredPlannedAssignments.length === 0 ? (
                   <EmptyState
                     title={searchQuery.trim() ? "No assignments match your search" : "No planned assignments"}
                     description={searchQuery.trim() ? "Try adjusting your search terms." : "No jobs have been assigned to technicians yet."}
@@ -2017,6 +2027,7 @@ function PlanningDashboard() {
                     </tbody>
                   </table>
                 )}
+                </div>
                 {/* Pagination */}
                 <div style={styles.planningPagination}>
                   <span style={styles.planningPageInfo}>
@@ -2044,7 +2055,7 @@ function PlanningDashboard() {
                     <button className="planning-page-btn-style" style={styles.planningPageBtn} onClick={() => setPlannedPage(plannedTotalPages)} disabled={safePlannedPage === plannedTotalPages}>»</button>
                   </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </section>

@@ -21,6 +21,13 @@ interface JobFormData {
   attempt_count?: number;
 }
 
+const getActiveTenantId = () => {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("tenant_id") || "tenant-1";
+  }
+  return "tenant-1";
+};
+
 const initialFormData: JobFormData = {
   customer_name: "",
   location: "",
@@ -31,7 +38,7 @@ const initialFormData: JobFormData = {
   preferred_service_date: "",
   status: "active",
   required_skill: "",
-  tenant_id: "tenant-1",
+  tenant_id: getActiveTenantId(),
   sla_deadline: "",
   attempt_count: 0,
 };
@@ -305,12 +312,22 @@ function JobCreationForm() {
       if (isEditing && editingJobId !== null) {
         const response = await api.put(`/jobs/${editingJobId}`, payload);
         setPopup({ show: true, title: "Job Updated Successfully", message: "The job details have been updated successfully.", jobId: response.data?.id ?? editingJobId });
+        resetForm();
+        fetchJobs();
       } else {
         const response = await api.post("/jobs", payload);
         setPopup({ show: true, title: "Job Created Successfully", message: "Your job request has been submitted successfully.", jobId: response.data?.id ?? "" });
+        resetForm();
+        setJobsPage(1);
+        setSearchTerm("");
+        setDebSearchTerm("");
+        setStatusFilter("ALL");
+        setPriorityFilter("ALL");
+        setServiceFilter("ALL");
+        if (debSearchTerm === "" && statusFilter === "ALL" && priorityFilter === "ALL" && serviceFilter === "ALL") {
+          fetchJobs();
+        }
       }
-      resetForm();
-      fetchJobs();
       fetchServiceTypes();
     } catch (error: any) {
       console.error(error);
@@ -860,16 +877,16 @@ function JobCreationForm() {
             </div>
 
             <div style={styles.formGroup}>
-              <label style={styles.formLabel}>Tenant ID <span style={styles.req}>*</span></label>
+              <label style={styles.formLabel}>
+                Tenant ID <span style={styles.req}>*</span>{" "}
+                <span style={{ fontSize: "11px", color: "#6B7280", fontWeight: 400 }}>(Active Session)</span>
+              </label>
               <input
                 type="text"
                 name="tenant_id"
                 value={formData.tenant_id}
-                onChange={handleChange}
-                onFocus={() => setFocusedInput('tenant_id')}
-                onBlur={() => setFocusedInput(null)}
-                placeholder="tenant-1"
-                style={getInputStyle('tenant_id')}
+                readOnly
+                style={{ ...getInputStyle('tenant_id'), background: "#EEF2F6", cursor: "not-allowed" }}
               />
             </div>
 
