@@ -11,6 +11,8 @@ export const getAllTechnicians = (params?: {
   status?: string;
   zone?: string;
   skill?: string;
+  page?: number;
+  limit?: number;
 }): Promise<any> => api.get("/technicians", { params });
 
 /** Fetch all unique zones */

@@ -64,7 +64,7 @@ const CopyJobIdButton = ({ jobId }: { jobId: string }) => {
     e.stopPropagation();
     navigator.clipboard.writeText(jobId).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setTimeout(() => setCopied(false), 1000);
     });
   };
 

@@ -51,11 +51,9 @@ def technician_heartbeat(
     log_extra = {"correlation_id": correlation_id, "tenant_id": x_tenant_id, "tech_id": id}
 
     try:
-        # Validate UUID format
-        try:
-            uuid.UUID(id)
-        except ValueError:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid UUID format")
+        # Validate tech ID format (accepts custom format like 'tech-7e0304af' or standard UUIDs)
+        if not id or not id.strip():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tech ID")
 
         # Rate limiting: max 1 per 30 seconds
         rate_limit_key = f"rate_limit:{x_tenant_id}:{id}"

@@ -1094,7 +1094,7 @@ export default function ReDispatchHistory({
                             onClick={() => {
                               navigator.clipboard.writeText(String(jobId));
                               setCopiedJobId(true);
-                              setTimeout(() => setCopiedJobId(false), 1500);
+                              setTimeout(() => setCopiedJobId(false), 1000);
                               addToast({
                                 type: "success",
                                 title: "Copied!",

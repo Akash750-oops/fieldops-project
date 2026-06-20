@@ -147,7 +147,7 @@ def cleanup_old_notifications():
 def check_assignment_timers():
     db = SessionLocal()
     redis_client = get_redis_client()
-    if not redis_client:
+    if not redis_client or redis_client.ping() is None:
         db.close()
         return
 
@@ -166,7 +166,7 @@ def check_assignment_timers():
             
             timer_ttl = redis_client.ttl(timer_key) if hasattr(redis_client, 'ttl') else 0
             # handling if redis client returns None for ttl or -1/-2
-            if timer_ttl < 0:
+            if timer_ttl is None or timer_ttl < 0:
                 timer_ttl = 0
             
             tech = db.query(Technician).filter(Technician.technician_id == job.assigned_technician_id).first()

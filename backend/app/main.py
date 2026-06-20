@@ -9,11 +9,11 @@ from .database import Base, engine
 from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics
 from . import models
 from .services.justification_validator import JustificationValidationError
+from .worker import start_scheduler, stop_scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from .worker import start_scheduler, stop_scheduler
     start_scheduler()
     yield
     stop_scheduler()
