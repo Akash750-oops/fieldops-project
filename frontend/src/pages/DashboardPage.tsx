@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getDashboardStats, getJobs } from "../services/planningService";
 import NotificationBell from "../components/notifications/NotificationBell";
-import PermissionRequest from "../components/notifications/PermissionRequest";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
 import {
   Briefcase,
@@ -70,6 +69,7 @@ const styles = {
     background: "#F9FAFB",
     minHeight: "100vh",
     boxSizing: "border-box",
+    flexShrink: 0,
   } as React.CSSProperties,
 
   dashboardHeaderCard: {
@@ -899,12 +899,12 @@ interface SegmentedProgressBarProps {
 
 const SegmentedProgressBar: React.FC<SegmentedProgressBarProps> = ({ percentage, colorClass }) => {
   const activeCount = Math.round(percentage / 10);
-  
+
   // Color mappings
   const getDotStyle = (isActive: boolean, type: string): React.CSSProperties => {
     let activeColor = "#828282";
     let inactiveColor = "rgba(130, 130, 130, 0.15)";
-    
+
     if (type === "fill-hvac") {
       activeColor = "#02B075";
       inactiveColor = "rgba(2, 176, 117, 0.15)";
@@ -918,7 +918,7 @@ const SegmentedProgressBar: React.FC<SegmentedProgressBarProps> = ({ percentage,
       activeColor = "#9B51E0";
       inactiveColor = "rgba(155, 81, 224, 0.15)";
     }
-    
+
     return {
       ...styles.segmentedBarDot,
       background: isActive ? activeColor : inactiveColor
@@ -968,9 +968,9 @@ const AnimatedGauge: React.FC<AnimatedGaugeProps> = ({ percentage, count, label,
     const animate = (currentTime: number) => {
       const elapsedTime = currentTime - startTime;
       const progress = Math.min(elapsedTime / duration, 1);
-      
+
       const easeProgress = progress * (2 - progress);
-      
+
       const currentVal = Math.round(easeProgress * end);
       setDisplayPct(currentVal);
 
@@ -1067,7 +1067,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
   }
 
   if (loading || stats === null) {
-    return <LoadingSpinner message="Assembling Operations Center Dashboard..." />;
+    return <LoadingSpinner message="Assembling Operations Center Dashboard..." fullPage={true} />;
   }
 
   const pendingCount = stats.jobs.pending;
@@ -1119,10 +1119,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
         <div className="header-controls-responsive" style={styles.headerControlsArea}>
           <div style={styles.dropdownCalendarWrap}>
             <Calendar size={14} style={styles.dropdownCalendarIcon} />
-            <select 
-              className="dropdown-this-week-style" 
-              style={styles.dropdownThisWeek} 
-              value={timeRange} 
+            <select
+              className="dropdown-this-week-style"
+              style={styles.dropdownThisWeek}
+              value={timeRange}
               onChange={(e) => setTimeRange(e.target.value)}
             >
               <option value="week">This Week</option>
@@ -1130,8 +1130,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
               <option value="all">All Time</option>
             </select>
           </div>
-
-          <PermissionRequest compact={true} />
 
           <NotificationBell
             unreadCount={unreadCount}
@@ -1386,9 +1384,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
           <div style={styles.opsCardHeader}>
             <h3 style={styles.opsCardHeaderH3}>JOBS OVERVIEW</h3>
             <div style={styles.dropdownCalendarWrap}>
-              <select 
-                style={styles.dropdownSmall} 
-                value={timeRange} 
+              <select
+                style={styles.dropdownSmall}
+                value={timeRange}
                 onChange={(e) => setTimeRange(e.target.value)}
               >
                 <option value="week">This Week</option>
@@ -1500,9 +1498,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
         <div style={styles.opsCard}>
           <div style={styles.opsCardHeader}>
             <h3 style={styles.opsCardHeaderH3}>TECHNICIAN AVAILABILITY</h3>
-            <select 
-              style={styles.dropdownSmall} 
-              value={timeRange} 
+            <select
+              style={styles.dropdownSmall}
+              value={timeRange}
               onChange={(e) => setTimeRange(e.target.value)}
             >
               <option value="week">This Week</option>
@@ -1565,9 +1563,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
         <div style={styles.opsCard}>
           <div style={styles.opsCardHeader}>
             <h3 style={styles.opsCardHeaderH3}>SERVICE CATEGORY SPLIT</h3>
-            <select 
-              style={styles.dropdownSmall} 
-              value={timeRange} 
+            <select
+              style={styles.dropdownSmall}
+              value={timeRange}
               onChange={(e) => setTimeRange(e.target.value)}
             >
               <option value="week">This Week</option>

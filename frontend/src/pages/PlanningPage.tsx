@@ -58,7 +58,7 @@ const isSkillMatching = (techSkill: string, jobRequiredSkill?: string, jobServic
   const tSkill = techSkill.trim().toUpperCase().replace(/_/g, " ");
   const jSkill = jobRequiredSkill ? jobRequiredSkill.trim().toUpperCase().replace(/_/g, " ") : "";
   const jType = jobServiceType ? jobServiceType.trim().toUpperCase().replace(/_/g, " ") : "";
-  
+
   return tSkill === jSkill || tSkill === jType;
 };
 
@@ -70,11 +70,7 @@ interface PendingJob {
   service_type?: string;
   required_skill?: string;
   issue_description?: string;
-  acceptance_expired?: boolean;
-  is_expired?: boolean;
   redispatched?: boolean;
-  is_redispatched?: boolean;
-  redispatch_count?: number;
   job_status?: string;
   status?: string;
   sla_deadline?: string;
@@ -165,38 +161,42 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "0 0 4px 0",
-    background: "transparent",
-    borderRadius: 0,
     marginBottom: "8px",
-    border: "none",
+    background: "#FFFFFF",
+    border: "1px solid #E2E8F0",
+    borderRadius: "10px",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+    padding: "0 12px",
     boxSizing: "border-box",
+    minHeight: "48px",
   } as React.CSSProperties,
 
   planningTab: {
     flex: "none",
     display: "flex",
     alignItems: "center",
-    gap: "8px",
-    padding: "6px 4px 6px 4px",
+    gap: "7px",
+    padding: "0 4px",
     border: "none",
-    borderBottom: "2px solid transparent",
     borderRadius: 0,
     background: "transparent",
-    color: "#64748B",
-    fontSize: "14px",
+    color: "#94A3B8",
+    fontSize: "13px",
     fontWeight: 600,
     cursor: "pointer",
-    transition: "all 0.2s ease",
+    transition: "color 0.18s ease, border-color 0.18s ease",
     position: "relative",
     whiteSpace: "nowrap",
-    bottom: "-2px",
+    height: "48px",
+    letterSpacing: "0.01em",
+    boxShadow: "none",
+    outline: "none",
   } as React.CSSProperties,
 
   planningTabActive: {
     background: "transparent",
-    color: "#2F4F3E",
-    borderBottomColor: "#2F4F3E",
+    color: "#16A34A",
+    borderBottom: "2.5px solid #16A34A",
     fontWeight: 700,
   } as React.CSSProperties,
 
@@ -204,26 +204,26 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    minWidth: "22px",
-    height: "22px",
-    padding: "0 7px",
-    borderRadius: "8px",
+    minWidth: "20px",
+    height: "20px",
+    padding: "0 6px",
+    borderRadius: "6px",
     fontSize: "11px",
-    fontWeight: 800,
+    fontWeight: 700,
     lineHeight: 1,
-    background: "#E2E8F0",
+    background: "#F1F5F9",
     color: "#64748B",
     transition: "all 0.25s ease",
   } as React.CSSProperties,
 
   planningTabCountActive: {
     background: "#DCFCE7",
-    color: "#166534",
+    color: "#15803D",
   } as React.CSSProperties,
 
   planningTabDot: {
-    width: "8px",
-    height: "8px",
+    width: "7px",
+    height: "7px",
     borderRadius: "50%",
     transition: "transform 0.2s ease",
     flexShrink: 0,
@@ -255,13 +255,13 @@ const styles = {
     minHeight: "200px",
     display: "flex",
     flexDirection: "column",
-    overflow: "hidden",
+    overflow: "visible",
   } as React.CSSProperties,
-
   tableContainer: {
     overflowX: "auto",
     overflowY: "auto",
     flex: 1,
+    minHeight: 0,
   } as React.CSSProperties,
 
   dashboardTable: {
@@ -271,7 +271,7 @@ const styles = {
 
   dashboardTableTh: {
     background: "#F6FAF8",
-    padding: "6px 8px",
+    padding: "4px 8px",
     textAlign: "left",
     fontSize: "9.5px",
     fontWeight: 700,
@@ -282,7 +282,7 @@ const styles = {
   } as React.CSSProperties,
 
   dashboardTableTd: {
-    padding: "6px 8px",
+    padding: "4px 8px",
     fontSize: "11.5px",
     color: "#1F2933",
     borderBottom: "1px solid #F0F6F2",
@@ -308,17 +308,20 @@ const styles = {
   } as React.CSSProperties,
 
   assignmentActionCell: {
-    minWidth: "140px",
+    width: "330px",
+    minWidth: "330px",
   } as React.CSSProperties,
 
   assignmentUi: {
     display: "flex",
     gap: "8px",
     alignItems: "center",
+    width: "100%",
   } as React.CSSProperties,
 
   techSelect: {
-    padding: "5px 8px",
+    height: "34px",
+    padding: "0 10px",
     borderRadius: "6px",
     border: "1.5px solid #E3ECE7",
     fontSize: "12px",
@@ -327,37 +330,42 @@ const styles = {
     background: "#FFFFFF",
     width: "100%",
     maxWidth: "170px",
+    boxSizing: "border-box",
     transition: "border-color .2s",
   } as React.CSSProperties,
 
   assignBtn: {
-    padding: "5px 12px",
+    height: "34px",
+    padding: "0 14px",
     background: "#7AAE8A",
     color: "#fff",
     border: "none",
     borderRadius: "6px",
-    fontSize: "11.5px",
+    fontSize: "12px",
     fontWeight: 700,
     cursor: "pointer",
     whiteSpace: "nowrap",
-    transition: "background 0.2s",
-    boxShadow: "0 1px 4px rgba(122, 174, 138, .25)",
+    boxSizing: "border-box",
+    transition: "all 0.2s ease",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
   } as React.CSSProperties,
 
   planningPagination: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "8px 14px",
+    padding: "6px 10px",
     borderTop: "1px solid #E3ECE7",
     flexWrap: "wrap",
-    gap: "8px",
+    gap: "6px",
     background: "#FAFCFB",
     boxSizing: "border-box",
   } as React.CSSProperties,
 
   planningPageInfo: {
-    fontSize: "10px",
+    fontSize: "11px",
     color: "#6B7280",
     fontWeight: 500,
   } as React.CSSProperties,
@@ -369,10 +377,10 @@ const styles = {
   } as React.CSSProperties,
 
   planningPageBtn: {
-    padding: "5px 12px",
+    padding: "3px 8px",
     background: "#FFFFFF",
     border: "1.5px solid #E3ECE7",
-    borderRadius: "7px",
+    borderRadius: "6px",
     fontSize: "10px",
     fontWeight: 600,
     color: "#2F4F3E",
@@ -386,15 +394,16 @@ const styles = {
   } as React.CSSProperties,
 
   planningPageNum: {
-    width: "26px",
-    height: "26px",
-    borderRadius: "7px",
+    width: "22px",
+    height: "22px",
+    borderRadius: "6px",
     border: "1.5px solid #E3ECE7",
     background: "#FFFFFF",
     fontSize: "10px",
     fontWeight: 600,
     color: "#6B7280",
     cursor: "pointer",
+    padding: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -491,6 +500,17 @@ const styles = {
     zIndex: 2000,
     display: "flex",
     flexDirection: "column",
+  } as React.CSSProperties,
+
+  centeredModalOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15, 23, 42, 0.5)",
+    backdropFilter: "blur(4px)",
+    zIndex: 2000,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   } as React.CSSProperties,
 
   viewJobModal: {
@@ -693,24 +713,33 @@ const styles = {
 const localCss = `
   .planning-tab-btn-group {
     display: flex !important;
-    gap: 24px !important;
+    gap: 0 !important;
     overflow-x: auto !important;
     white-space: nowrap !important;
     scrollbar-width: none !important;
-    border-bottom: 2px solid #E2E8F0 !important;
+    border-bottom: none !important;
     width: 100% !important;
+    align-items: center !important;
   }
   .planning-tab-btn-group::-webkit-scrollbar {
     display: none !important;
   }
+  .planning-tab-divider {
+    width: 1px;
+    height: 20px;
+    background: #E2E8F0;
+    flex-shrink: 0;
+    margin: 0 2px;
+  }
   .planning-tab-style {
-    transition: all 0.2s ease !important;
+    transition: color 0.18s ease, border-color 0.18s ease !important;
   }
   .planning-tab-style:hover:not(.active-tab-style) {
-    color: #1E293B !important;
+    color: #475569 !important;
+    border-bottom-color: transparent !important;
   }
   .planning-tab-style:hover .planning-tab-dot-style {
-    transform: scale(1.25) !important;
+    transform: scale(1.2) !important;
   }
   .planning-page-btn-style:hover:not(:disabled) {
     background-color: #EAF4EE !important;
@@ -836,11 +865,16 @@ const localCss = `
     .planning-tabs-responsive {
       flex-direction: column !important;
       align-items: stretch !important;
-      gap: 12px !important;
+      gap: 0 !important;
+      padding: 8px 12px !important;
     }
     .planning-tab-btn-group {
       width: 100% !important;
-      border-bottom: 2px solid #E2E8F0 !important;
+      border-bottom: none !important;
+      padding-bottom: 0 !important;
+    }
+    .planning-tab-divider {
+      display: none !important;
     }
     .planning-search-row-responsive {
       width: 100% !important;
@@ -860,14 +894,25 @@ const localCss = `
   }
   @media (max-width: 640px) {
     .planning-tabs-responsive {
-      gap: 16px !important;
-      padding: 0 0 8px 0 !important;
+      padding: 6px 10px 8px !important;
     }
     .planning-tab-style {
-      padding: 6px 4px 10px 4px !important;
-      font-size: 12px !important;
-      gap: 6px !important;
+      padding-left: 8px !important;
+      padding-right: 8px !important;
+      font-size: 11.5px !important;
+      gap: 5px !important;
     }
+    .planning-tab-divider {
+      display: none !important;
+    }
+  }
+
+  @keyframes planningFadeInRow {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .planning-table-body tr {
+    animation: planningFadeInRow 0.25s ease-out forwards !important;
   }
 `;
 
@@ -876,6 +921,8 @@ function PlanningDashboard() {
   const [plannedAssignments, setPlannedAssignments] = useState<PlannedAssignment[]>([]);
   const [allTechsStatus, setAllTechsStatus] = useState<TechnicianStatus[]>([]);
   const [allTechsList, setAllTechsList] = useState<Technician[]>([]);
+  const [totalPendingCount, setTotalPendingCount] = useState(0);
+  const [totalPlannedCount, setTotalPlannedCount] = useState(0);
 
   const [jobsLoading, setJobsLoading] = useState(false);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
@@ -979,8 +1026,18 @@ function PlanningDashboard() {
   const fetchPendingJobs = async (search?: string) => {
     try {
       setJobsLoading(true);
-      const res = await getPendingJobs(search);
+      const [res] = await Promise.all([
+        getPendingJobs({
+          search: search || undefined,
+          page: pendingPage,
+          limit: PAGE_SIZE,
+          active_filter: activeMetricFilter !== "all" && activeMetricFilter !== "dispatched" && activeMetricFilter !== "pending" ? activeMetricFilter : undefined
+        }),
+        new Promise(resolve => setTimeout(resolve, 1000))
+      ]);
       setPendingJobs(res.data);
+      const totalHeader = res.headers["x-total-count"] || res.headers["X-Total-Count"];
+      setTotalPendingCount(totalHeader ? parseInt(totalHeader, 10) : res.data.length);
     } catch {
       setError("Failed to load pending jobs. Please try again.");
     } finally {
@@ -991,8 +1048,17 @@ function PlanningDashboard() {
   const fetchPlannedAssignments = async (search?: string) => {
     try {
       setAssignmentsLoading(true);
-      const res = await getPlannedAssignments(search);
+      const [res] = await Promise.all([
+        getPlannedAssignments({
+          search: search || undefined,
+          page: plannedPage,
+          limit: PAGE_SIZE
+        }),
+        new Promise(resolve => setTimeout(resolve, 1000))
+      ]);
       setPlannedAssignments(res.data);
+      const totalHeader = res.headers["x-total-count"] || res.headers["X-Total-Count"];
+      setTotalPlannedCount(totalHeader ? parseInt(totalHeader, 10) : res.data.length);
     } catch {
       setError("Failed to load planned assignments. Please try again.");
     } finally {
@@ -1003,7 +1069,10 @@ function PlanningDashboard() {
   const fetchTechnicianStatus = async () => {
     try {
       setTechStatusLoading(true);
-      const res = await getAvailableTechnicians();
+      const [res] = await Promise.all([
+        getAvailableTechnicians(),
+        new Promise(resolve => setTimeout(resolve, 1000))
+      ]);
       setAllTechsStatus(res.data);
     } catch {
       setError("Failed to load technician status. Please try again.");
@@ -1049,9 +1118,17 @@ function PlanningDashboard() {
   }, []);
 
   useEffect(() => {
+    setPendingPage(1);
+    setPlannedPage(1);
+  }, [debSearchQuery, activeMetricFilter]);
+
+  useEffect(() => {
     fetchPendingJobs(debSearchQuery);
+  }, [debSearchQuery, pendingPage, activeMetricFilter]);
+
+  useEffect(() => {
     fetchPlannedAssignments(debSearchQuery);
-  }, [debSearchQuery]);
+  }, [debSearchQuery, plannedPage]);
 
   useEffect(() => {
     if (viewAssignment) {
@@ -1125,7 +1202,10 @@ function PlanningDashboard() {
     }
 
     try {
-      const res = await getJobPlan(job.id);
+      const [res] = await Promise.all([
+        getJobPlan(job.id),
+        new Promise(resolve => setTimeout(resolve, 1000))
+      ]);
       if (res && res.ranked_technicians && res.ranked_technicians.length > 0) {
         const mapped: RankedTechnician[] = res.ranked_technicians.map((rt: any) => ({
           technician_id: parseInt(String(rt.tech_id).replace(/\D/g, ''), 10) || 1,
@@ -1146,6 +1226,7 @@ function PlanningDashboard() {
       }
     } catch (err) {
       console.warn("Failed to fetch AI plan from backend, falling back to mock ranking", err);
+      await new Promise(resolve => setTimeout(resolve, 1000));
       setRankedCandidates(generateRankedCandidates(job, techs));
     } finally {
       setCandidatesLoading(false);
@@ -1229,65 +1310,26 @@ function PlanningDashboard() {
   const filteredPendingJobs = normalPendingJobs;
 
   const metricFilteredPendingJobs = useMemo(() => {
-    if (!filteredPendingJobs || filteredPendingJobs.length === 0) return [];
-    if (activeMetricFilter === "all") {
-      return filteredPendingJobs;
-    }
     if (activeMetricFilter === "dispatched") {
-      // Dispatched jobs have an assigned technician; they live in Planned Assignments tab.
-      // The Pending Jobs list only contains unassigned jobs, so return empty here.
       return [];
-    }
-    if (activeMetricFilter === "pending") {
-      // Pending = all unassigned, non-terminal jobs (everything already in this list)
-      return filteredPendingJobs;
-    }
-    if (activeMetricFilter === "expired") {
-      // Expired = unassigned jobs with SLA deadline in the past
-      const now = new Date();
-      return filteredPendingJobs.filter((job) => {
-        const hasPastSla = job.sla_deadline && new Date(job.sla_deadline) < now;
-        return (
-          hasPastSla ||
-          job.acceptance_expired === true ||
-          job.is_expired === true
-        );
-      });
-    }
-    if (activeMetricFilter === "redispatched") {
-      // Re-dispatched = jobs that have been attempted more than once (attempt_count > 1)
-      // This matches the backend KPI rule: attempt_count > 1
-      return filteredPendingJobs.filter((job) => {
-        return (
-          Number(job.attempt_count || 0) > 1 ||
-          job.is_redispatched === true ||
-          Number(job.redispatch_count || 0) > 0
-        );
-      });
     }
     return filteredPendingJobs;
   }, [filteredPendingJobs, activeMetricFilter]);
 
   const filteredPlannedAssignments = plannedAssignments;
 
-  useEffect(() => {
-    setPendingPage(1);
-    setPlannedPage(1);
-  }, [searchQuery, activeMetricFilter]);
+  // Page reset is handled by the debSearchQuery and activeMetricFilter effect.
 
   // Page clamping is handled by safePendingPage/safePlannedPage below via Math.min,
   // so no useEffect is needed here (avoids potential re-render loops).
 
-  const pendingTotalPages = Math.max(1, Math.ceil(metricFilteredPendingJobs.length / PAGE_SIZE));
+  const pendingTotalPages = Math.max(1, Math.ceil(totalPendingCount / PAGE_SIZE));
   const safePendingPage = Math.min(pendingPage, pendingTotalPages);
-  const paginatedPendingJobs = metricFilteredPendingJobs.slice(
-    (safePendingPage - 1) * PAGE_SIZE,
-    safePendingPage * PAGE_SIZE
-  );
+  const paginatedPendingJobs = metricFilteredPendingJobs;
 
-  const plannedTotalPages = Math.max(1, Math.ceil(filteredPlannedAssignments.length / PAGE_SIZE));
+  const plannedTotalPages = Math.max(1, Math.ceil(totalPlannedCount / PAGE_SIZE));
   const safePlannedPage = Math.min(plannedPage, plannedTotalPages);
-  const paginatedPlannedAssignments = filteredPlannedAssignments.slice((safePlannedPage - 1) * PAGE_SIZE, safePlannedPage * PAGE_SIZE);
+  const paginatedPlannedAssignments = filteredPlannedAssignments;
 
   const getPageNums = (currentPage: number, totalPages: number) => {
     const nums: number[] = [];
@@ -1454,61 +1496,100 @@ function PlanningDashboard() {
 
       {/* ── Tab Navigation ── */}
       <div className="planning-tabs-responsive" style={styles.planningTabs}>
-        <div className="planning-tab-btn-group" style={{ display: "flex", gap: "24px", overflowX: "auto", flexWrap: "nowrap", maxWidth: "100%" }}>
+        <div className="planning-tab-btn-group" style={{ display: "flex", overflowX: "auto", flexWrap: "nowrap", flex: 1 }}>
           <button
             className={`planning-tab-style ${activeTab === 'pending' ? 'active-tab-style' : ''}`}
             style={{
               ...styles.planningTab,
-              ...(activeTab === 'pending' ? styles.planningTabActive : {})
+              ...(activeTab === 'pending' ? styles.planningTabActive : {}),
+              paddingLeft: "10px",
+              paddingRight: "16px",
             }}
             onClick={() => setActiveTab('pending')}
           >
-            <span className="planning-tab-dot-style" style={{ ...styles.planningTabDot, backgroundColor: "#EF4444" }}></span>
+            <span
+              className="planning-tab-dot-style"
+              style={{
+                ...styles.planningTabDot,
+                backgroundColor: "#EF4444",
+                boxShadow: "0 0 0 2px rgba(239,68,68,0.15)",
+              }}
+            />
             <span>Pending Jobs</span>
             <span style={{
               ...styles.planningTabCount,
               ...(activeTab === 'pending' ? styles.planningTabCountActive : {})
-            }}>{normalPendingJobs.length}</span>
+            }}>{totalPendingCount}</span>
           </button>
+          <div className="planning-tab-divider" />
           <button
             className={`planning-tab-style ${activeTab === 'planned' ? 'active-tab-style' : ''}`}
             style={{
               ...styles.planningTab,
-              ...(activeTab === 'planned' ? styles.planningTabActive : {})
+              ...(activeTab === 'planned' ? styles.planningTabActive : {}),
+              paddingLeft: "16px",
+              paddingRight: "16px",
             }}
             onClick={() => setActiveTab('planned')}
           >
-            <span className="planning-tab-dot-style" style={{ ...styles.planningTabDot, backgroundColor: "#10B981" }}></span>
+            <span
+              className="planning-tab-dot-style"
+              style={{
+                ...styles.planningTabDot,
+                backgroundColor: "#10B981",
+                boxShadow: "0 0 0 2px rgba(16,185,129,0.15)",
+              }}
+            />
             <span>Planned Assignments</span>
             <span style={{
               ...styles.planningTabCount,
               ...(activeTab === 'planned' ? styles.planningTabCountActive : {})
-            }}>{plannedAssignments.length}</span>
+            }}>{totalPlannedCount}</span>
           </button>
+          <div className="planning-tab-divider" />
           <button
             className={`planning-tab-style ${activeTab === 'dispatch' ? 'active-tab-style' : ''}`}
             style={{
               ...styles.planningTab,
-              ...(activeTab === 'dispatch' ? styles.planningTabActive : {})
+              ...(activeTab === 'dispatch' ? styles.planningTabActive : {}),
+              paddingLeft: "16px",
+              paddingRight: "16px",
             }}
             onClick={() => setActiveTab('dispatch')}
           >
-            <span className="planning-tab-dot-style" style={{ ...styles.planningTabDot, backgroundColor: '#3B82F6' }}></span>
+            <span
+              className="planning-tab-dot-style"
+              style={{
+                ...styles.planningTabDot,
+                backgroundColor: "#3B82F6",
+                boxShadow: "0 0 0 2px rgba(59,130,246,0.15)",
+              }}
+            />
             <span>Dispatch Queue</span>
             <span style={{
               ...styles.planningTabCount,
               ...(activeTab === 'dispatch' ? styles.planningTabCountActive : {})
             }}>{dispatchQueueCount}</span>
           </button>
+          <div className="planning-tab-divider" />
           <button
             className={`planning-tab-style ${activeTab === 'escalated' ? 'active-tab-style' : ''}`}
             style={{
               ...styles.planningTab,
-              ...(activeTab === 'escalated' ? styles.planningTabActive : {})
+              ...(activeTab === 'escalated' ? styles.planningTabActive : {}),
+              paddingLeft: "16px",
+              paddingRight: "16px",
             }}
             onClick={() => setActiveTab('escalated')}
           >
-            <span className="planning-tab-dot-style" style={{ ...styles.planningTabDot, backgroundColor: '#F59E0B' }}></span>
+            <span
+              className="planning-tab-dot-style"
+              style={{
+                ...styles.planningTabDot,
+                backgroundColor: "#F59E0B",
+                boxShadow: "0 0 0 2px rgba(245,158,11,0.15)",
+              }}
+            />
             <span>SLA Escalations</span>
             <span style={{
               ...styles.planningTabCount,
@@ -1516,7 +1597,7 @@ function PlanningDashboard() {
             }}>{escalatedJobs.length}</span>
           </button>
         </div>
-        <div className="planning-search-row-responsive" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div className="planning-search-row-responsive" style={{ display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
           <div className="planning-header-search-wrap-style" style={styles.planningHeaderSearchWrap}>
             <span className="planning-search-icon-style" style={styles.planningSearchIcon}>
               <Search size={14} />
@@ -1572,147 +1653,178 @@ function PlanningDashboard() {
               <>
                 <div style={styles.tableContainer}>
                   {metricFilteredPendingJobs.length === 0 ? (
-                  <EmptyState
-                    title={getMetricEmptyTitle()}
-                    description={getMetricEmptyDescription()}
-                    action={
-                      searchQuery.trim() || activeMetricFilter !== "all" ? (
-                        <button
-                          className="planning-refresh-btn-style"
-                          style={styles.refreshIconBtn}
-                          onClick={() => {
-                            setSearchQuery("");
-                            setActiveMetricFilter("all");
-                          }}
-                        >
-                          Clear Filters
-                        </button>
-                      ) : undefined
-                    }
-                  />
-                ) : (
-                  <table style={styles.dashboardTable}>
-                    <thead>
-                      <tr>
-                        <th style={styles.dashboardTableTh}>ID</th>
-                        <th style={styles.dashboardTableTh}>Customer</th>
-                        <th style={styles.dashboardTableTh}>Location</th>
-                        <th style={styles.dashboardTableTh}>Priority</th>
-                        <th style={styles.dashboardTableTh}>Assign Technician</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedPendingJobs.map((job) => (
-                        <tr
-                          key={job.id}
-                          onClick={() => handleJobRowClick(job)}
-                          className={`dashboard-table-row ${selectedJobForRanking?.id === job.id ? 'selected-row-style' : ''}`}
-                          style={{ cursor: 'pointer' }}
-                          title="Click to see top recommended technicians"
-                        >
-                          <td style={{ ...styles.dashboardTableTd, ...styles.jobIdCell }}>#{job.id}</td>
-                          <td style={{ ...styles.dashboardTableTd, ...styles.customerCell }}>
-                            <div>{job.customer_name}</div>
-                            {job.issue_description && (
-                              <div style={styles.issueSub}>{job.issue_description}</div>
-                            )}
-                          </td>
-                          <td style={styles.dashboardTableTd}>{job.location}</td>
-                          <td style={styles.dashboardTableTd}>
-                            <span style={getPriorityStyle(job.priority || "")}>
-                              {job.priority || "UNKNOWN"}
-                            </span>
-                          </td>
-                          <td 
-                            style={{ ...styles.dashboardTableTd, ...styles.assignmentActionCell }}
-                            onClick={(e) => e.stopPropagation()}
+                    <EmptyState
+                      title={getMetricEmptyTitle()}
+                      description={getMetricEmptyDescription()}
+                      action={
+                        searchQuery.trim() || activeMetricFilter !== "all" ? (
+                          <button
+                            className="planning-refresh-btn-style"
+                            style={styles.refreshIconBtn}
+                            onClick={() => {
+                              setSearchQuery("");
+                              setActiveMetricFilter("all");
+                            }}
                           >
-                            <div style={styles.assignmentUi}>
-                              <button
-                                className="tech-select-style"
-                                style={{
-                                  ...styles.techSelect,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  cursor: 'pointer',
-                                  backgroundColor: selectedTechs[job.id] ? '#f0fdf4' : '#fff',
-                                  borderColor: selectedTechs[job.id] ? '#86efac' : '#cbd5e1',
-                                  color: selectedTechs[job.id] ? '#166534' : '#64748b',
-                                  fontWeight: selectedTechs[job.id] ? 600 : 400,
-                                  textAlign: 'left' as const,
-                                  gap: '6px',
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleJobRowClick(job);
-                                }}
-                                disabled={assigningJobId === job.id}
-                                title="Click to open Candidate Selection"
-                              >
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                                  {selectedTechs[job.id]
-                                    ? (() => {
+                            Clear Filters
+                          </button>
+                        ) : undefined
+                      }
+                    />
+                  ) : (
+                    <table style={styles.dashboardTable}>
+                      <thead>
+                        <tr>
+                          <th style={styles.dashboardTableTh}>ID</th>
+                          <th style={styles.dashboardTableTh}>Customer</th>
+                          <th style={styles.dashboardTableTh}>Location</th>
+                          <th style={styles.dashboardTableTh}>Priority</th>
+                          <th style={{ ...styles.dashboardTableTh, ...styles.assignmentActionCell }}>Assign Technician</th>
+                        </tr>
+                      </thead>
+                      <tbody key={safePendingPage} className="planning-table-body">
+                        {paginatedPendingJobs.map((job) => (
+                          <tr
+                            key={job.id}
+                            onClick={() => handleJobRowClick(job)}
+                            className={`dashboard-table-row ${selectedJobForRanking?.id === job.id ? 'selected-row-style' : ''}`}
+                            style={{ cursor: 'pointer' }}
+                            title="Click to see top recommended technicians"
+                          >
+                            <td style={{ ...styles.dashboardTableTd, ...styles.jobIdCell }}>#{job.id}</td>
+                            <td style={{ ...styles.dashboardTableTd, ...styles.customerCell }}>
+                              <div>{job.customer_name}</div>
+                              {job.issue_description && (
+                                <div style={styles.issueSub}>{job.issue_description}</div>
+                              )}
+                            </td>
+                            <td style={styles.dashboardTableTd}>{job.location}</td>
+                            <td style={styles.dashboardTableTd}>
+                              <span style={getPriorityStyle(job.priority || "")}>
+                                {job.priority || "UNKNOWN"}
+                              </span>
+                            </td>
+                            <td
+                              style={{ ...styles.dashboardTableTd, ...styles.assignmentActionCell }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div style={styles.assignmentUi}>
+                                <button
+                                  className="tech-select-style"
+                                  style={{
+                                    ...styles.techSelect,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    cursor: 'pointer',
+                                    backgroundColor: selectedTechs[job.id] ? '#f0fdf4' : '#fff',
+                                    borderColor: selectedTechs[job.id] ? '#86efac' : '#cbd5e1',
+                                    color: selectedTechs[job.id] ? '#166534' : '#64748b',
+                                    fontWeight: selectedTechs[job.id] ? 600 : 400,
+                                    textAlign: 'left' as const,
+                                    gap: '6px',
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleJobRowClick(job);
+                                  }}
+                                  disabled={assigningJobId === job.id}
+                                  title="Click to open Candidate Selection"
+                                >
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                                    {selectedTechs[job.id]
+                                      ? (() => {
                                         const t = allTechsList.find(t => t.technician_id === parseInt(selectedTechs[job.id], 10));
                                         return t ? t.technician_name : 'Selected';
                                       })()
-                                    : 'Select Technician'
-                                  }
-                                </span>
-                                <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.5 }} />
-                              </button>
+                                      : 'Select Technician'
+                                    }
+                                  </span>
+                                  <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.5 }} />
+                                </button>
 
-                              <button
-                                className="assign-btn-style"
-                                style={{
-                                  ...styles.assignBtn,
-                                  backgroundColor: selectedTechs[job.id] ? '#7AAE8A' : '#94a3b8',
-                                  opacity: selectedTechs[job.id] ? 1 : 0.6,
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (selectedTechs[job.id]) {
-                                    handleAssignJob(job.id);
-                                  }
-                                }}
-                                disabled={!selectedTechs[job.id] || assigningJobId === job.id}
-                              >
-                                {assigningJobId === job.id 
-                                  ? "Assigning…" 
-                                  : "Assign"}
-                              </button>
-                              <button
-                                className="assign-btn-style"
-                                style={{
-                                  ...styles.assignBtn,
-                                  backgroundColor: '#475569',
-                                  minWidth: 40,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  padding: '0 8px'
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setShowHistoryJobId(job.id);
-                                  setShowHistoryJobTitle(`${job.service_type || "Job"} - ${job.location || ""}`);
-                                }}
-                                title="View Re-Dispatch History"
-                              >
-                                <History size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                                <button
+                                  className={`assign-btn-style ${selectedTechs[job.id] ? 'active' : 'disabled'}`}
+                                  style={{
+                                    ...styles.assignBtn,
+                                    backgroundColor: selectedTechs[job.id] ? '#10B981' : '#f1f5f9',
+                                    color: selectedTechs[job.id] ? '#ffffff' : '#94a3b8',
+                                    border: selectedTechs[job.id] ? 'none' : '1px solid #cbd5e1',
+                                    opacity: selectedTechs[job.id] ? 1 : 0.7,
+                                    cursor: selectedTechs[job.id] ? 'pointer' : 'not-allowed',
+                                    boxShadow: selectedTechs[job.id] ? '0 2px 6px rgba(16, 185, 129, 0.25)' : 'none',
+                                    fontWeight: 600,
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (selectedTechs[job.id] && assigningJobId !== job.id) {
+                                      e.currentTarget.style.backgroundColor = '#059669';
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (selectedTechs[job.id] && assigningJobId !== job.id) {
+                                      e.currentTarget.style.backgroundColor = '#10B981';
+                                    }
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (selectedTechs[job.id]) {
+                                      handleAssignJob(job.id);
+                                    }
+                                  }}
+                                  disabled={!selectedTechs[job.id] || assigningJobId === job.id}
+                                >
+                                  {assigningJobId === job.id
+                                    ? "Assigning…"
+                                    : "Assign"}
+                                </button>
+                                <button
+                                  className="history-action-btn-style"
+                                  style={{
+                                    height: '34px',
+                                    width: '34px',
+                                    minWidth: '34px',
+                                    background: 'transparent',
+                                    border: '1.5px solid #cbd5e1',
+                                    color: '#64748b',
+                                    borderRadius: '6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    boxSizing: 'border-box',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = '#f8fafc';
+                                    e.currentTarget.style.borderColor = '#94a3b8';
+                                    e.currentTarget.style.color = '#334155';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'transparent';
+                                    e.currentTarget.style.borderColor = '#cbd5e1';
+                                    e.currentTarget.style.color = '#64748b';
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowHistoryJobId(job.id);
+                                    setShowHistoryJobTitle(`${job.service_type || "Job"} - ${job.location || ""}`);
+                                  }}
+                                  title="View Re-Dispatch History"
+                                >
+                                  <History size={15} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
                 {/* Pagination */}
                 <div style={styles.planningPagination}>
                   <span style={styles.planningPageInfo}>
-                    Page <strong>{safePendingPage}</strong> of <strong>{pendingTotalPages}</strong> · {metricFilteredPendingJobs.length} results
+                    Page <strong style={{ color: "#2F4F3E" }}>{safePendingPage}</strong> of <strong style={{ color: "#2F4F3E" }}>{pendingTotalPages}</strong> · {totalPendingCount} results
                   </span>
                   <div style={styles.planningPageControls}>
                     <button className="planning-page-btn-style" style={styles.planningPageBtn} onClick={() => setPendingPage(1)} disabled={safePendingPage === 1}>«</button>
@@ -1763,7 +1875,7 @@ function PlanningDashboard() {
                       <th style={styles.dashboardTableTh}>Location</th>
                       <th style={styles.dashboardTableTh}>Priority</th>
                       <th style={styles.dashboardTableTh}>Escalation Level</th>
-                      <th style={styles.dashboardTableTh}>Escalation Actions</th>
+                      <th style={{ ...styles.dashboardTableTh, minWidth: "480px" }}>Escalation Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1797,13 +1909,19 @@ function PlanningDashboard() {
                               {isCTO ? "CTO ESCALATED" : "MANAGER ESCALATED"}
                             </span>
                           </td>
-                          <td style={{ ...styles.dashboardTableTd, minWidth: "320px" }}>
+                          <td style={{ ...styles.dashboardTableTd, minWidth: "480px" }}>
                             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                               <button
                                 className="assign-btn-style"
                                 style={{
                                   ...styles.assignBtn,
                                   backgroundColor: "#10B981"
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.backgroundColor = '#059669';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.backgroundColor = '#10B981';
                                 }}
                                 onClick={async () => {
                                   const minsStr = prompt("Enter SLA extension time in minutes:", "30");
@@ -1830,6 +1948,12 @@ function PlanningDashboard() {
                                   ...styles.assignBtn,
                                   backgroundColor: "#EF4444"
                                 }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.backgroundColor = '#dc2626';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.backgroundColor = '#EF4444';
+                                }}
                                 onClick={async () => {
                                   const reason = prompt("Enter cancellation reason:", "SLA breach - cancel job");
                                   if (!reason) return;
@@ -1846,28 +1970,50 @@ function PlanningDashboard() {
                               </button>
 
                               <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                                  <select
-                                    className="tech-select-style"
-                                    style={{ ...styles.techSelect, margin: 0, padding: "4px 8px" }}
-                                    value={selectedTechs[job.id] || ""}
-                                    onChange={(e) => setSelectedTechs(prev => ({ ...prev, [job.id]: e.target.value }))}
-                                  >
-                                    <option value="" disabled>Select Tech</option>
-                                    {allTechsList.map(t => {
-                                      const isUnavailable = ["busy", "offline"].includes((t.technician_status || "").toLowerCase().trim());
-                                      return (
-                                        <option key={t.technician_id} value={t.technician_id} disabled={isUnavailable}>
-                                          {t.technician_name} {isUnavailable ? `(${t.technician_status})` : ""}
-                                        </option>
-                                      );
-                                    })}
-                                  </select>
+                                <select
+                                  className="tech-select-style"
+                                  style={{
+                                    ...styles.techSelect,
+                                    margin: 0,
+                                    padding: "0 8px",
+                                    height: "34px",
+                                    lineHeight: "34px",
+                                    boxSizing: "border-box"
+                                  }}
+                                  value={selectedTechs[job.id] || ""}
+                                  onChange={(e) => setSelectedTechs(prev => ({ ...prev, [job.id]: e.target.value }))}
+                                >
+                                  <option value="" disabled>Select Tech</option>
+                                  {allTechsList.map(t => {
+                                    const isUnavailable = ["busy", "offline"].includes((t.technician_status || "").toLowerCase().trim());
+                                    return (
+                                      <option key={t.technician_id} value={t.technician_id} disabled={isUnavailable}>
+                                        {t.technician_name} {isUnavailable ? `(${t.technician_status})` : ""}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
                                 <button
-                                  className="assign-btn-style"
+                                  className={`assign-btn-style ${selectedTechs[job.id] ? 'active' : 'disabled'}`}
                                   style={{
                                     ...styles.assignBtn,
-                                    backgroundColor: "#f59e0b",
-                                    opacity: selectedTechs[job.id] ? 1 : 0.6
+                                    backgroundColor: selectedTechs[job.id] ? '#F59E0B' : '#f1f5f9',
+                                    color: selectedTechs[job.id] ? '#ffffff' : '#94a3b8',
+                                    border: selectedTechs[job.id] ? 'none' : '1px solid #cbd5e1',
+                                    opacity: selectedTechs[job.id] ? 1 : 0.7,
+                                    cursor: selectedTechs[job.id] ? 'pointer' : 'not-allowed',
+                                    boxShadow: selectedTechs[job.id] ? '0 2px 6px rgba(245, 158, 11, 0.25)' : 'none',
+                                    fontWeight: 600,
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (selectedTechs[job.id]) {
+                                      e.currentTarget.style.backgroundColor = '#d97706';
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (selectedTechs[job.id]) {
+                                      e.currentTarget.style.backgroundColor = '#F59E0B';
+                                    }
                                   }}
                                   disabled={!selectedTechs[job.id]}
                                   onClick={async () => {
@@ -1920,118 +2066,118 @@ function PlanningDashboard() {
               <>
                 <div style={styles.tableContainer}>
                   {filteredPlannedAssignments.length === 0 ? (
-                  <EmptyState
-                    title={searchQuery.trim() ? "No assignments match your search" : "No planned assignments"}
-                    description={searchQuery.trim() ? "Try adjusting your search terms." : "No jobs have been assigned to technicians yet."}
-                    action={
-                      searchQuery.trim() ? (
-                        <button
-                          className="planning-refresh-btn-style"
-                          style={styles.refreshIconBtn}
-                          onClick={() => setSearchQuery("")}
-                        >
-                          Clear Search
-                        </button>
-                      ) : undefined
-                    }
-                  />
-                ) : (
-                  <table style={styles.dashboardTable}>
-                    <thead>
-                      <tr>
-                        <th style={styles.dashboardTableTh}>Job ID</th>
-                        <th style={styles.dashboardTableTh}>Technician</th>
-                        <th style={styles.dashboardTableTh}>Customer</th>
-                        <th style={styles.dashboardTableTh}>Location</th>
-                        <th style={styles.dashboardTableTh}>Priority</th>
-                        <th style={styles.dashboardTableTh}>Status</th>
-                        <th style={styles.dashboardTableTh}>Workload</th>
-                        <th style={styles.dashboardTableTh}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedPlannedAssignments.map((item) => (
-                        <tr key={item.job_id} className="dashboard-table-row">
-                          <td style={{ ...styles.dashboardTableTd, ...styles.jobIdCell }}>#{item.job_id}</td>
-                          <td style={{ ...styles.dashboardTableTd, ...styles.techCell }}>
-                            <strong>{item.technician}</strong>
-                            <span style={styles.skillSub}>{item.skill}</span>
-                          </td>
-                          <td style={{ ...styles.dashboardTableTd, ...styles.customerCell }}>{item.customer}</td>
-                          <td style={styles.dashboardTableTd}>{item.location}</td>
-                          <td style={styles.dashboardTableTd}>
-                            <span style={getPriorityStyle(item.priority || "")}>
-                              {item.priority || "UNKNOWN"}
-                            </span>
-                          </td>
-                          <td style={styles.dashboardTableTd}>
-                            <span style={{ ...styles.statusBadge, ...styles.statusAssigned }}>ASSIGNED</span>
-                          </td>
-                          <td style={styles.dashboardTableTd}>
-                            <div style={styles.workloadInfo}>
-                              <div style={styles.workloadBar}>
-                                <div
-                                  style={{
-                                    ...styles.workloadFill,
-                                    width: `${Math.min(
-                                      (item.current_jobs / (item.max_jobs || 5)) * 100,
-                                      100
-                                    )}%`,
-                                  }}
-                                />
-                              </div>
-                              <span style={styles.workloadText}>
-                                {item.current_jobs}/{item.max_jobs}
-                              </span>
-                            </div>
-                          </td>
-                          <td style={styles.dashboardTableTd}>
-                            <div style={styles.jobItemActions}>
-                              <button
-                                className="icon-action-btn-style"
-                                style={{ ...styles.iconActionBtn, color: '#16a34a' }}
-                                onClick={() => setViewAssignment(item)}
-                                title="View assignment"
-                                aria-label="View assignment"
-                              >
-                                <Eye size={15} />
-                              </button>
-                              <button
-                                className="icon-action-btn-style"
-                                style={{ ...styles.iconActionBtn, color: '#475569' }}
-                                onClick={() => {
-                                  setShowOverrideHistoryForJob({ id: item.job_id, title: `${item.customer}'s Job` });
-                                }}
-                                title="View Override History"
-                                aria-label="View Override History"
-                              >
-                                <History size={15} />
-                              </button>
-                              <button
-                                className="icon-action-btn-style"
-                                style={{ ...styles.iconActionBtn, color: '#dc2626' }}
-                                onClick={() => {
-                                  if (window.confirm(`Are you sure you want to delete assignment for "${item.technician}" → "${item.customer}" (Job #${item.job_id})?`)) {
-                                    showSuccess(`Assignment for Job #${item.job_id} removed (connect API for persistence).`);
-                                  }
-                                }}
-                                title="Delete assignment"
-                                aria-label="Delete assignment"
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            </div>
-                          </td>
+                    <EmptyState
+                      title={searchQuery.trim() ? "No assignments match your search" : "No planned assignments"}
+                      description={searchQuery.trim() ? "Try adjusting your search terms." : "No jobs have been assigned to technicians yet."}
+                      action={
+                        searchQuery.trim() ? (
+                          <button
+                            className="planning-refresh-btn-style"
+                            style={styles.refreshIconBtn}
+                            onClick={() => setSearchQuery("")}
+                          >
+                            Clear Search
+                          </button>
+                        ) : undefined
+                      }
+                    />
+                  ) : (
+                    <table style={styles.dashboardTable}>
+                      <thead>
+                        <tr>
+                          <th style={styles.dashboardTableTh}>Job ID</th>
+                          <th style={styles.dashboardTableTh}>Technician</th>
+                          <th style={styles.dashboardTableTh}>Customer</th>
+                          <th style={styles.dashboardTableTh}>Location</th>
+                          <th style={styles.dashboardTableTh}>Priority</th>
+                          <th style={styles.dashboardTableTh}>Status</th>
+                          <th style={styles.dashboardTableTh}>Workload</th>
+                          <th style={styles.dashboardTableTh}>Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                      </thead>
+                      <tbody key={safePlannedPage} className="planning-table-body">
+                        {paginatedPlannedAssignments.map((item) => (
+                          <tr key={item.job_id} className="dashboard-table-row">
+                            <td style={{ ...styles.dashboardTableTd, ...styles.jobIdCell }}>#{item.job_id}</td>
+                            <td style={{ ...styles.dashboardTableTd, ...styles.techCell }}>
+                              <strong>{item.technician}</strong>
+                              <span style={styles.skillSub}>{item.skill}</span>
+                            </td>
+                            <td style={{ ...styles.dashboardTableTd, ...styles.customerCell }}>{item.customer}</td>
+                            <td style={styles.dashboardTableTd}>{item.location}</td>
+                            <td style={styles.dashboardTableTd}>
+                              <span style={getPriorityStyle(item.priority || "")}>
+                                {item.priority || "UNKNOWN"}
+                              </span>
+                            </td>
+                            <td style={styles.dashboardTableTd}>
+                              <span style={{ ...styles.statusBadge, ...styles.statusAssigned }}>ASSIGNED</span>
+                            </td>
+                            <td style={styles.dashboardTableTd}>
+                              <div style={styles.workloadInfo}>
+                                <div style={styles.workloadBar}>
+                                  <div
+                                    style={{
+                                      ...styles.workloadFill,
+                                      width: `${Math.min(
+                                        (item.current_jobs / (item.max_jobs || 5)) * 100,
+                                        100
+                                      )}%`,
+                                    }}
+                                  />
+                                </div>
+                                <span style={styles.workloadText}>
+                                  {item.current_jobs}/{item.max_jobs}
+                                </span>
+                              </div>
+                            </td>
+                            <td style={styles.dashboardTableTd}>
+                              <div style={styles.jobItemActions}>
+                                <button
+                                  className="icon-action-btn-style"
+                                  style={{ ...styles.iconActionBtn, color: '#16a34a' }}
+                                  onClick={() => setViewAssignment(item)}
+                                  title="View assignment"
+                                  aria-label="View assignment"
+                                >
+                                  <Eye size={15} />
+                                </button>
+                                <button
+                                  className="icon-action-btn-style"
+                                  style={{ ...styles.iconActionBtn, color: '#475569' }}
+                                  onClick={() => {
+                                    setShowOverrideHistoryForJob({ id: item.job_id, title: `${item.customer}'s Job` });
+                                  }}
+                                  title="View Override History"
+                                  aria-label="View Override History"
+                                >
+                                  <History size={15} />
+                                </button>
+                                <button
+                                  className="icon-action-btn-style"
+                                  style={{ ...styles.iconActionBtn, color: '#dc2626' }}
+                                  onClick={() => {
+                                    if (window.confirm(`Are you sure you want to delete assignment for "${item.technician}" → "${item.customer}" (Job #${item.job_id})?`)) {
+                                      showSuccess(`Assignment for Job #${item.job_id} removed (connect API for persistence).`);
+                                    }
+                                  }}
+                                  title="Delete assignment"
+                                  aria-label="Delete assignment"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
                 {/* Pagination */}
                 <div style={styles.planningPagination}>
                   <span style={styles.planningPageInfo}>
-                    Page <strong>{safePlannedPage}</strong> of <strong>{plannedTotalPages}</strong> · {filteredPlannedAssignments.length} results
+                    Page <strong>{safePlannedPage}</strong> of <strong>{plannedTotalPages}</strong> · {totalPlannedCount} results
                   </span>
                   <div style={styles.planningPageControls}>
                     <button className="planning-page-btn-style" style={styles.planningPageBtn} onClick={() => setPlannedPage(1)} disabled={safePlannedPage === 1}>«</button>
@@ -2063,7 +2209,7 @@ function PlanningDashboard() {
 
       {/* View Assignment Modal */}
       {viewAssignment && (
-        <div style={styles.popupOverlay} onClick={() => setViewAssignment(null)}>
+        <div style={styles.centeredModalOverlay} onClick={() => setViewAssignment(null)}>
           <div style={styles.viewJobModal} onClick={e => e.stopPropagation()}>
             <div style={styles.viewModalHeader}>
               <h3 style={styles.viewModalHeaderH3}>Assignment Details</h3>

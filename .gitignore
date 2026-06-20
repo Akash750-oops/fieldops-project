@@ -31,3 +31,9 @@ __pycache__/
 *.db
 
 fieldops-projects.git/
+
+# Test coverage
+coverage/
+htmlcov/
+.nyc_output/
+

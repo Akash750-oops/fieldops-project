@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response, Query
 from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -177,10 +177,13 @@ def create_job(job: JobCreate, db: Session = Depends(get_db)):
 
 @router.get("", response_model=list[JobResponse])
 def get_jobs(
+    response: Response,
     search: Optional[str] = None,
     status: Optional[str] = None,
     priority: Optional[str] = None,
     service_type: Optional[str] = None,
+    page: Optional[int] = Query(None, ge=1),
+    limit: Optional[int] = Query(None, ge=1),
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     db: Session = Depends(get_db)
 ):
@@ -223,7 +226,15 @@ def get_jobs(
             normalized_service = service_type.replace("_", " ").strip().lower()
             query = query.filter(func.lower(func.replace(Job.service_type, "_", " ")) == normalized_service)
             
-        return query.order_by(Job.id.desc()).all()
+        total_count = query.count()
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+        
+        query = query.order_by(Job.id.desc())
+        if page and limit:
+            query = query.offset((page - 1) * limit).limit(limit)
+            
+        return query.all()
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -232,7 +243,11 @@ def get_jobs(
 
 @router.get("/pending", response_model=list[JobResponse])
 def get_pending_jobs(
+    response: Response,
     search: Optional[str] = None,
+    active_filter: Optional[str] = Query(None, description="Active filter key e.g., expired, redispatched"),
+    page: Optional[int] = Query(None, ge=1),
+    limit: Optional[int] = Query(None, ge=1),
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     db: Session = Depends(get_db)
 ):
@@ -272,7 +287,21 @@ def get_pending_jobs(
             else:
                 query = query.filter(text_filters)
                 
-        return query.order_by(Job.id.desc()).all()
+        if active_filter == "expired":
+            now_utc = datetime.now(timezone.utc)
+            query = query.filter(Job.sla_deadline.isnot(None), Job.sla_deadline < now_utc)
+        elif active_filter == "redispatched":
+            query = query.filter(Job.attempt_count > 1)
+            
+        total_count = query.count()
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+        
+        query = query.order_by(Job.id.desc())
+        if page and limit:
+            query = query.offset((page - 1) * limit).limit(limit)
+            
+        return query.all()
     except Exception as error:
         raise HTTPException(
             status_code=500,

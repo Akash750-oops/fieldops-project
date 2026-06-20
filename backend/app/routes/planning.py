@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Response, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timezone, timedelta
@@ -14,7 +14,10 @@ router = APIRouter(
 
 @router.get("/planned-assignments", response_model=list[schemas.PlannedAssignmentResponse])
 def get_planned_assignments(
+    response: Response,
     search: Optional[str] = None,
+    page: Optional[int] = Query(None, ge=1),
+    limit: Optional[int] = Query(None, ge=1),
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     db: Session = Depends(get_db)
 ):
@@ -58,6 +61,14 @@ def get_planned_assignments(
         else:
             query = query.filter(text_filters)
             
+    total_count = query.count()
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+    
+    query = query.order_by(Job.id.desc())
+    if page and limit:
+        query = query.offset((page - 1) * limit).limit(limit)
+        
     return query.all()
 
 
@@ -88,19 +99,26 @@ def get_planning_kpi(
 
     # --- ALL-TIME totals (for KPI cards - always meaningful) ---
     # Dispatched = jobs that have a technician actively assigned to them
-    EXCLUDED_FROM_PENDING = ["completed", "cancelled", "canceled", "COMPLETED", "CANCELLED", "CANCELED"]
+    # NOTE: EXCLUDED_FROM_PENDING must match the statuses removed by normalPendingJobs
+    # in the frontend (PlanningPage.tsx). ESCALATED jobs go to the SLA Escalations tab,
+    # not the Pending Jobs tab, so they must be excluded from Pending/Expired/Re-Dispatched KPIs.
+    EXCLUDED_FROM_PENDING = [
+        "completed", "cancelled", "canceled",
+        "COMPLETED", "CANCELLED", "CANCELED",
+        "ESCALATED", "ESCALATED_TO_CTO"
+    ]
 
     jobs_dispatched = base.filter(
         Job.assigned_technician_id.isnot(None)
     ).count()
 
-    # Pending = unassigned jobs excluding terminal statuses (completed/cancelled)
+    # Pending = unassigned jobs excluding terminal + escalated statuses
     jobs_pending = base.filter(
         Job.assigned_technician_id.is_(None),
         Job.status.notin_(EXCLUDED_FROM_PENDING)
     ).count()
 
-    # Expired = unresolved jobs with SLA past due (excluding completed/cancelled)
+    # Expired = unresolved, non-escalated jobs with SLA past due
     jobs_expired = base.filter(
         Job.sla_deadline.isnot(None),
         Job.sla_deadline < now_utc,
@@ -108,9 +126,13 @@ def get_planning_kpi(
         Job.status.notin_(EXCLUDED_FROM_PENDING)
     ).count()
 
-    # Re-dispatched = jobs that have been re-dispatched (attempt_count > 1 means it
-    # has been dispatched, rejected, and re-dispatched at least once)
-    jobs_redispatched = base.filter(Job.attempt_count > 1).count()
+    # Re-dispatched = unassigned, non-terminal, non-escalated jobs attempted more than once.
+    # Must match /jobs/pending endpoint + normalPendingJobs frontend filter.
+    jobs_redispatched = base.filter(
+        Job.attempt_count > 1,
+        Job.assigned_technician_id.is_(None),
+        Job.status.notin_(EXCLUDED_FROM_PENDING)
+    ).count()
 
     # --- TODAY vs YESTERDAY trend ---
     def count_today(q, filters):
@@ -145,11 +167,23 @@ def get_planning_kpi(
         Job.status.notin_(EXCLUDED_FROM_PENDING)
     ).count()
 
-    t_redispatched = today_q.filter(Job.attempt_count > 1).count()
-    y_redispatched = yesterday_q.filter(Job.attempt_count > 1).count()
+    t_redispatched = today_q.filter(
+        Job.attempt_count > 1,
+        Job.assigned_technician_id.is_(None),
+        Job.status.notin_(EXCLUDED_FROM_PENDING)
+    ).count()
+    y_redispatched = yesterday_q.filter(
+        Job.attempt_count > 1,
+        Job.assigned_technician_id.is_(None),
+        Job.status.notin_(EXCLUDED_FROM_PENDING)
+    ).count()
 
     def safe_change_pct(today_val: int, yesterday_val: int):
+        """Return percentage change, or None when comparison is not meaningful."""
         if yesterday_val == 0:
+            # No yesterday baseline — cannot compute meaningful trend
+            return None
+        if today_val == 0 and yesterday_val == 0:
             return None
         return round(((today_val - yesterday_val) / yesterday_val) * 100, 1)
 

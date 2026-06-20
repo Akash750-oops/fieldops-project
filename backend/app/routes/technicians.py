@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Response, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Union, Optional
@@ -85,10 +85,13 @@ def create_technician(
 
 @router.get("", response_model=List[schemas.TechnicianResponse])
 def get_all_technicians(
+    response: Response,
     search: Optional[str] = None,
     status: Optional[str] = None,
     zone: Optional[str] = None,
     skill: Optional[str] = None,
+    page: Optional[int] = Query(None, ge=1),
+    limit: Optional[int] = Query(None, ge=1),
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     db: Session = Depends(get_db)
 ):
@@ -117,10 +120,18 @@ def get_all_technicians(
         if skill and skill.upper() != "ALL":
             query = query.filter(func.lower(models.Technician.technician_skill) == skill.lower())
             
-        return query.order_by(models.Technician.technician_id.desc()).all()
+        total_count = query.count()
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+        
+        query = query.order_by(models.Technician.technician_id.desc())
+        if page and limit:
+            query = query.offset((page - 1) * limit).limit(limit)
+            
+        return query.all()
     except SQLAlchemyError as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"Database error while fetching technicians: {str(e)}"
         )
 

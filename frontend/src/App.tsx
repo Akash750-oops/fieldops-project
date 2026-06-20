@@ -138,7 +138,7 @@ const styles = {
   } as React.CSSProperties,
 
   brandLogoImg: {
-    width: "140px",
+    width: "90px",
     objectFit: "contain",
     display: "block",
     transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -277,7 +277,7 @@ const styles = {
 
   sidebarToggle: {
     position: "absolute",
-    top: "93px",
+    top: "78px",
     right: "12px",
     width: "30px",
     height: "30px",
@@ -503,6 +503,8 @@ const styles = {
     background: "#EEF4F1",
     overflowY: "hidden",
     height: 0,
+    display: "flex",
+    flexDirection: "column",
   } as React.CSSProperties,
 
   pageWrapMobile: {
@@ -540,6 +542,31 @@ function AppInner() {
   const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  const handleTabChange = (tab: string) => {
+    if (tab === activeTab) return;
+    setIsNavigating(true);
+    setActiveTab(tab);
+    setTimeout(() => {
+      setIsNavigating(false);
+    }, 1000);
+  };
+
+  const getLoadingMessage = (tab: string) => {
+    switch (tab) {
+      case "dashboard":
+        return "Assembling Operations Center Dashboard...";
+      case "jobs":
+        return "Loading Jobs & Service Requests...";
+      case "techboard":
+        return "Loading Technician Dashboard...";
+      case "planning":
+        return "Loading Planning Board...";
+      default:
+        return "Loading page...";
+    }
+  };
 
   // Notification States
   const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
@@ -881,7 +908,7 @@ function AppInner() {
             <button
               className="nav-item-style"
               style={getItemStyle("dashboard")}
-              onClick={() => setActiveTab("dashboard")}
+              onClick={() => handleTabChange("dashboard")}
             >
               <LayoutDashboard size={18} style={{ flexShrink: 0 }} />
               <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Dashboard</span>
@@ -890,7 +917,7 @@ function AppInner() {
             <button
               className="nav-item-style"
               style={getItemStyle("jobs")}
-              onClick={() => setActiveTab("jobs")}
+              onClick={() => handleTabChange("jobs")}
             >
               <Briefcase size={18} style={{ flexShrink: 0 }} />
               <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Jobs</span>
@@ -899,7 +926,7 @@ function AppInner() {
             <button
               className="nav-item-style"
               style={getItemStyle("techboard")}
-              onClick={() => setActiveTab("techboard")}
+              onClick={() => handleTabChange("techboard")}
             >
               <Users size={18} style={{ flexShrink: 0 }} />
               <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Technicians</span>
@@ -908,7 +935,7 @@ function AppInner() {
             <button
               className="nav-item-style"
               style={getItemStyle("planning")}
-              onClick={() => setActiveTab("planning")}
+              onClick={() => handleTabChange("planning")}
             >
               <Calendar size={18} style={{ flexShrink: 0 }} />
               <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Planning</span>
@@ -1038,25 +1065,29 @@ function AppInner() {
             />
           )}
 
-          <Suspense fallback={<LoadingSpinner message="Loading page..." />}>
-            {/* Tab Pages */}
-            {activeTab === "dashboard" && (
-              <DashboardPage
-                onViewTab={(tab) => setActiveTab(tab)}
-                unreadCount={unreadCount}
-                isBellAnimated={isBellAnimated}
-                onOpenBellDrawer={() => {
-                  setIsNotificationDrawerOpen(true);
-                  ensureActiveTechLoaded();
-                }}
-              />
-            )}
-            {activeTab === "jobs" && <JobsPage />}
-            {activeTab === "techboard" && <TechDashboardPage />}
-            {activeTab === "planning" && (
-              <PlanningPage />
-            )}
-          </Suspense>
+          {isNavigating ? (
+            <LoadingSpinner message={getLoadingMessage(activeTab)} fullPage={true} />
+          ) : (
+            <Suspense fallback={<LoadingSpinner message="Loading page..." fullPage={true} />}>
+              {/* Tab Pages */}
+              {activeTab === "dashboard" && (
+                <DashboardPage
+                  onViewTab={(tab) => handleTabChange(tab)}
+                  unreadCount={unreadCount}
+                  isBellAnimated={isBellAnimated}
+                  onOpenBellDrawer={() => {
+                    setIsNotificationDrawerOpen(true);
+                    ensureActiveTechLoaded();
+                  }}
+                />
+              )}
+              {activeTab === "jobs" && <JobsPage />}
+              {activeTab === "techboard" && <TechDashboardPage />}
+              {activeTab === "planning" && (
+                <PlanningPage />
+              )}
+            </Suspense>
+          )}
         </main>
       </div>
 

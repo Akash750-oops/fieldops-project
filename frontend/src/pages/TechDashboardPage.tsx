@@ -7,7 +7,7 @@ import LoadingSpinner from "../components/ui/LoadingSpinner";
 import { Eye, Pencil, Trash2, ChevronDown } from "lucide-react";
 import EmptyState from "../components/ui/EmptyState";
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 8;
 const REFRESH_MS = 60_000;
 const STALE_MS   = 120_000;
 const SKILLS = ["HVAC Repair","Electrical","Plumbing","Network Support","General Maintenance"];
@@ -466,6 +466,7 @@ const styles = {
     overflowX: "auto",
     overflowY: "auto",
     flex: 1,
+    minHeight: 0,
   } as React.CSSProperties,
 
   tldTable: {
@@ -475,7 +476,7 @@ const styles = {
   } as React.CSSProperties,
 
   tldTableTh: {
-    padding: "8px 12px",
+    padding: "4px 12px",
     textAlign: "left",
     fontSize: "9px",
     fontWeight: 700,
@@ -488,7 +489,7 @@ const styles = {
   } as React.CSSProperties,
 
   tldTableTd: {
-    padding: "8px 12px",
+    padding: "4px 12px",
     fontSize: "11px",
     color: "#1F2933",
     verticalAlign: "middle",
@@ -584,7 +585,8 @@ const styles = {
 
   tldStateCell: {
     textAlign: "center",
-    padding: "48px 20px",
+    padding: "16px 20px",
+    verticalAlign: "middle",
   } as React.CSSProperties,
 
   tldRetryBtn: {
@@ -603,10 +605,10 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "14px 20px",
+    padding: "6px 12px",
     borderTop: "1px solid #E3ECE7",
     flexWrap: "wrap",
-    gap: "8px",
+    gap: "6px",
     background: "#FFFFFF",
     borderBottomLeftRadius: "12px",
     borderBottomRightRadius: "12px",
@@ -626,11 +628,11 @@ const styles = {
   } as React.CSSProperties,
 
   tldPageBtn: {
-    padding: "5px 12px",
+    padding: "3px 8px",
     background: "#FFFFFF",
     border: "1.5px solid #E3ECE7",
-    borderRadius: "7px",
-    fontSize: "11px",
+    borderRadius: "6px",
+    fontSize: "10px",
     fontWeight: 600,
     color: "#2F4F3E",
     cursor: "pointer",
@@ -643,15 +645,16 @@ const styles = {
   } as React.CSSProperties,
 
   tldPageNum: {
-    width: "26px",
-    height: "26px",
-    borderRadius: "7px",
+    width: "22px",
+    height: "22px",
+    borderRadius: "6px",
     border: "1.5px solid #E3ECE7",
     background: "#FFFFFF",
-    fontSize: "11px",
+    fontSize: "10px",
     fontWeight: 600,
     color: "#6B7280",
     cursor: "pointer",
+    padding: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -838,6 +841,59 @@ const styles = {
     boxShadow: "0 2px 6px rgba(122,174,138,.25)",
     boxSizing: "border-box",
   } as React.CSSProperties,
+
+  popupOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(31, 41, 51, 0.4)",
+    zIndex: 2000,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  } as React.CSSProperties,
+  successPopup: {
+    background: "#FFFFFF",
+    borderRadius: "16px",
+    padding: "32px",
+    maxWidth: "380px",
+    width: "90%",
+    textAlign: "center",
+    boxShadow: "0 20px 50px rgba(47, 79, 62, 0.15)",
+  } as React.CSSProperties,
+  successIcon: {
+    width: "52px",
+    height: "52px",
+    background: "#DDEEE5",
+    color: "#2F4F3E",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "24px",
+    fontWeight: 800,
+    margin: "0 auto 14px",
+  } as React.CSSProperties,
+  techNameBox: {
+    background: "#F6FAF8",
+    borderRadius: "6px",
+    padding: "6px 14px",
+    fontSize: "13px",
+    color: "#2F4F3E",
+    marginBottom: "10px",
+    display: "inline-block",
+    border: "1px solid #E3ECE7",
+  } as React.CSSProperties,
+  popupCloseBtn: {
+    background: "#7AAE8A",
+    color: "#fff",
+    border: "none",
+    padding: "10px 28px",
+    borderRadius: "8px",
+    fontWeight: 700,
+    fontSize: "13px",
+    cursor: "pointer",
+    transition: "background .2s",
+  } as React.CSSProperties,
 };
 
 const localCss = `
@@ -1018,6 +1074,14 @@ const localCss = `
       min-width: 100% !important;
     }
   }
+
+  @keyframes tldFadeInRow {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .tld-table-body tr {
+    animation: tldFadeInRow 0.25s ease-out forwards !important;
+  }
 `;
 
 const getStatusSelectStyle = (status: string): React.CSSProperties => {
@@ -1115,6 +1179,7 @@ export default function TechnicianListPage(){
   const [sortKey,       setSortKey]       = useState("name");
   const [sortDir,       setSortDir]       = useState("asc");
   const [page,          setPage]          = useState(1);
+  const [totalTechCount, setTotalTechCount] = useState(0);
   const [uniqueZones,   setUniqueZones]   = useState<string[]>([]);
 
   const [selected,  setSelected]  = useState<NormalizedTech | null>(null);
@@ -1186,10 +1251,20 @@ export default function TechnicianListPage(){
     try {
       if (isEditing && editingTechId !== null) {
         await updateTechnician(editingTechId, techFormData);
-        showToast("Technician updated successfully");
+        setPopup({
+          show: true,
+          title: "Technician Updated Successfully",
+          message: "The technician details have been updated successfully.",
+          name: techFormData.technician_name
+        });
       } else {
         await createTechnician(techFormData);
-        showToast("Technician added successfully");
+        setPopup({
+          show: true,
+          title: "Technician Created Successfully",
+          message: "Your new technician has been registered successfully.",
+          name: techFormData.technician_name
+        });
       }
       setIsFormOpen(false);
       fetchData(technicians.length > 0);
@@ -1200,6 +1275,15 @@ export default function TechnicianListPage(){
       setFormLoading(false);
     }
   };
+
+  const [popup, setPopup] = useState<{ show: boolean; title: string; message: string; name?: string }>({
+    show: false,
+    title: "",
+    message: "",
+    name: "",
+  });
+  const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
+  const closePopup = () => setPopup(prev => ({ ...prev, show: false }));
 
   const [toast,     setToast]     = useState({msg:"",type:""});
   const toastTimer                = useRef<any>(null);
@@ -1222,13 +1306,19 @@ export default function TechnicianListPage(){
     else { setLoading(true); setInitError(""); }
     const t0=Date.now();
     try{
-      const res=await getAllTechnicians({
+      const fetchPromise = getAllTechnicians({
         search: debSearch || undefined,
         status: statusFilter !== "ALL" ? statusFilter : undefined,
         zone: zoneFilter !== "ALL" ? zoneFilter : undefined,
         skill: skillFilter !== "ALL" ? skillFilter : undefined,
+        page: page,
+        limit: PAGE_SIZE,
       });
+      const delayPromise = silent ? Promise.resolve() : new Promise(resolve => setTimeout(resolve, 1000));
+      const [res] = await Promise.all([fetchPromise, delayPromise]);
       setTechnicians((res.data||[]).map(normTech));
+      const totalHeader = res.headers["x-total-count"] || res.headers["X-Total-Count"];
+      setTotalTechCount(totalHeader ? parseInt(totalHeader, 10) : (res.data || []).length);
       
       const zonesRes = await getUniqueZones();
       setUniqueZones(zonesRes.data || []);
@@ -1245,7 +1335,7 @@ export default function TechnicianListPage(){
       if(silent) setFetching(false);
       else setLoading(false);
     }
-  },[debSearch, statusFilter, zoneFilter, skillFilter]);
+  },[debSearch, statusFilter, zoneFilter, skillFilter, page]);
 
   useEffect(()=>{ fetchData(false); }, [fetchData]);
 
@@ -1280,15 +1370,15 @@ export default function TechnicianListPage(){
   },[technicians,sortKey,sortDir]);
 
   useEffect(() => {
-    const total = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const total = Math.max(1, Math.ceil(totalTechCount / PAGE_SIZE));
     if (page > total) {
       setPage(total);
     }
-  }, [filtered.length, page]);
+  }, [totalTechCount, page]);
 
-  const totalPages = Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
+  const totalPages = Math.max(1,Math.ceil(totalTechCount/PAGE_SIZE));
   const safePage   = Math.min(page,totalPages);
-  const pageSlice  = filtered.slice((safePage-1)*PAGE_SIZE, safePage*PAGE_SIZE);
+  const pageSlice  = filtered;
 
   function handleSort(key: string){ if(sortKey===key) setSortDir(d=>d==="asc"?"desc":"asc"); else{setSortKey(key);setSortDir("asc");} setPage(1); }
   function showToast(msg: string, type="success"){ clearTimeout(toastTimer.current); setToast({msg,type}); toastTimer.current=setTimeout(()=>setToast({msg:"",type:""}),3500); }
@@ -1360,6 +1450,27 @@ export default function TechnicianListPage(){
   return(
     <div style={styles.tldPage}>
       <style>{localCss}</style>
+
+      {/* Success Popup */}
+      {popup.show && (
+        <div style={styles.popupOverlay}>
+          <div style={styles.successPopup}>
+            <div style={styles.successIcon}>✓</div>
+            <h3 style={{ margin: "0 0 10px 0", color: "#2F4F3E", fontSize: "18px", fontWeight: 700 }}>{popup.title}</h3>
+            {popup.name && <div style={styles.techNameBox}>Technician: <strong>{popup.name}</strong></div>}
+            <p style={{ margin: "0 0 20px 0", color: "#6B7280", fontSize: "13px" }}>{popup.message}</p>
+            <button
+              type="button"
+              style={hoveredBtn === 'popupClose' ? { ...styles.popupCloseBtn, background: '#5C9470' } : styles.popupCloseBtn}
+              onMouseEnter={() => setHoveredBtn('popupClose')}
+              onMouseLeave={() => setHoveredBtn(null)}
+              onClick={closePopup}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast.msg && (
@@ -1534,7 +1645,7 @@ export default function TechnicianListPage(){
 
         <div style={styles.tldTableMeta}>
           <p style={styles.tldResultsCount}>
-            Showing <strong>{pageSlice.length}</strong> of <strong>{filtered.length}</strong> technician{filtered.length!==1?"s":""}
+            Showing <strong>{pageSlice.length}</strong> of <strong>{totalTechCount}</strong> technician{totalTechCount!==1?"s":""}
           </p>
         </div>
         <div className="tld-table-wrap-responsive" style={styles.tldTableWrap}>
@@ -1562,11 +1673,19 @@ export default function TechnicianListPage(){
                 <th style={styles.tldTableTh}>Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody key={safePage} className="tld-table-body">
               {loading && (
                 <tr>
                   <td colSpan={7} style={styles.tldStateCell}>
-                    <LoadingSpinner message="Loading technician dashboard..." />
+                    <div style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minHeight: "180px",
+                    }}>
+                      <LoadingSpinner message="Loading technician dashboard..." />
+                    </div>
                   </td>
                 </tr>
               )}
@@ -1712,7 +1831,7 @@ export default function TechnicianListPage(){
         {/* Pagination */}
         {!loading&&!initError&&(
           <div style={styles.tldPagination}>
-            <span style={styles.tldPageInfo}>Page <strong>{safePage}</strong> of <strong>{totalPages}</strong> · {filtered.length} results</span>
+            <span style={styles.tldPageInfo}>Page <strong>{safePage}</strong> of <strong>{totalPages}</strong> · {totalTechCount} results</span>
             <div style={styles.tldPageControls}>
               <button className="tld-page-btn" style={styles.tldPageBtn} onClick={()=>setPage(1)} disabled={safePage===1}>«</button>
               <button className="tld-page-btn" style={styles.tldPageBtn} onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={safePage===1}>‹ Prev</button>
