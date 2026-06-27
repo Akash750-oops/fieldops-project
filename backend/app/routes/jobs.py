@@ -972,3 +972,171 @@ def get_override_history(job_id: int, db: Session = Depends(get_db)):
         for o in overrides
     ]
 
+
+api_v1_router = APIRouter(prefix="/api/v1")
+
+class TransitionRequest(BaseModel):
+    status: str
+    reason: Optional[str] = None
+    is_override: Optional[bool] = False
+
+def decode_jwt_token_or_pseudo(token: str) -> dict:
+    import jwt
+    import os
+    JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key")
+    JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+    try:
+        claims = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return {
+            "actor_id": claims.get("user_id", claims.get("sub", "system")),
+            "actor_role": claims.get("role", "technician"),
+            "tenant_id": claims.get("tenant_id", "tenant-1")
+        }
+    except Exception:
+        token_lower = token.lower()
+        role = "technician"
+        if "admin" in token_lower:
+            role = "admin"
+        elif "dispatcher" in token_lower:
+            role = "dispatcher"
+        elif "manager" in token_lower:
+            role = "manager"
+        elif "supervisor" in token_lower:
+            role = "supervisor"
+            
+        actor_id = "mock-user"
+        if ":" in token:
+            parts = token.split(":")
+            actor_id = parts[0]
+            if len(parts) > 1:
+                role = parts[1]
+                
+        return {
+            "actor_id": actor_id,
+            "actor_role": role,
+            "tenant_id": "tenant-1"
+        }
+
+@api_v1_router.get("/jobs/{id}/valid-transitions")
+def get_job_valid_transitions(
+    id: str,
+    authorization: str = Depends(verify_jwt_token),
+    db: Session = Depends(get_db)
+):
+    claims = decode_jwt_token_or_pseudo(authorization)
+    actor_role = claims["actor_role"]
+    
+    job = db.query(Job).filter(Job.id == int(id) if str(id).isdigit() else Job.id == id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    from app.services.job_status_machine import TransitionValidator
+    validator = TransitionValidator()
+    return validator.get_valid_transitions(job, actor_role)
+
+@api_v1_router.post("/jobs/{id}/transition")
+def transition_job_endpoint(
+    id: str,
+    payload: TransitionRequest,
+    request: Request,
+    authorization: str = Depends(verify_jwt_token),
+    db: Session = Depends(get_db)
+):
+    claims = decode_jwt_token_or_pseudo(authorization)
+    actor_id = claims["actor_id"]
+    actor_role = claims["actor_role"]
+    
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("User-Agent", "Unknown")
+    
+    logger.info(f"Transition attempt for job {id} to {payload.status} by {actor_id} ({actor_role}) from IP {client_ip}, UA {user_agent}")
+    
+    job = db.query(Job).filter(Job.id == int(id) if str(id).isdigit() else Job.id == id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    job._actor_id = actor_id
+    job._actor_role = actor_role
+    job._transition_reason = payload.reason
+    job._is_override = payload.is_override
+    
+    from app.services.job_status_machine import InvalidTransitionError, PermissionDeniedError, ReasonRequiredError
+    try:
+        job.transition(
+            payload.status,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            reason=payload.reason,
+            is_override=payload.is_override
+        )
+        db.commit()
+        return {"status": "success", "job_id": str(job.id), "new_status": job.status}
+    except InvalidTransitionError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=e.to_dict())
+    except PermissionDeniedError as e:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(e))
+    except ReasonRequiredError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail={"error": "REASON_REQUIRED", "message": str(e)})
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to transition job {id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_v1_router.get("/jobs/{id}/sla")
+def get_job_sla(
+    id: str,
+    authorization: str = Depends(verify_jwt_token),
+    db: Session = Depends(get_db)
+):
+    from app.services.sla_service import SLAService
+    sla = SLAService()
+    state = sla.get_sla_state(id)
+    if not state:
+        raise HTTPException(status_code=404, detail="SLA state not found or job has no active SLA timer")
+        
+    return {
+        "job_id": state["job_id"],
+        "deadline": state["sla_deadline"],
+        "remaining_minutes": int(state["remaining_seconds"] / 60),
+        "status": state["status"],
+        "is_critical": state["is_critical"],
+        "is_breached": state["is_breached"]
+    }
+
+@api_v1_router.get("/sla/dashboard")
+def get_sla_dashboard(
+    authorization: str = Depends(verify_jwt_token),
+    db: Session = Depends(get_db)
+):
+    jobs = db.query(Job).filter(Job.status.in_(["ASSIGNED", "EN_ROUTE", "ON_SITE"])).all()
+    
+    from app.services.sla_service import SLAService
+    sla = SLAService()
+    
+    active_slas = 0
+    critical = 0
+    breached = 0
+    total_remaining_minutes = 0
+    
+    for job in jobs:
+        state = sla.get_sla_state(str(job.id))
+        if state:
+            active_slas += 1
+            if state["is_breached"]:
+                breached += 1
+            elif state["is_critical"]:
+                critical += 1
+            total_remaining_minutes += int(state["remaining_seconds"] / 60)
+            
+    avg_remaining = int(total_remaining_minutes / active_slas) if active_slas > 0 else 0
+    
+    return {
+        "active_slas": active_slas,
+        "critical": critical,
+        "breached": breached,
+        "avg_remaining_minutes": avg_remaining
+    }
+

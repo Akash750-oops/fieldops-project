@@ -528,3 +528,102 @@ class DispatchMetricsResponse(BaseModel):
     priority_breakdown: Optional[dict[str, int]] = None
     technician_utilization: Optional[float] = None
 
+
+class GPSPingRequest(BaseModel):
+    technician_id: str
+    job_id: str
+    latitude: float
+    longitude: float
+    timestamp: datetime
+    accuracy: Optional[float] = None
+    altitude: Optional[float] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_coordinates(cls, data):
+        import json
+        if not isinstance(data, dict):
+            return data
+            
+        errors = []
+        
+        # Check latitude presence/null
+        lat_missing = "latitude" not in data
+        lat_val = data.get("latitude")
+        
+        if lat_missing or lat_val is None:
+            errors.append(("latitude", "Coordinates are required"))
+        else:
+            # Check type (Pydantic naturally allows bool, lists, dicts; we reject them here)
+            if isinstance(lat_val, bool):
+                errors.append(("latitude", "Coordinates must be numeric"))
+            elif not isinstance(lat_val, (int, float)):
+                if isinstance(lat_val, str):
+                    try:
+                        lat_val = float(lat_val)
+                        data["latitude"] = lat_val
+                    except ValueError:
+                        errors.append(("latitude", "Coordinates must be numeric"))
+                else:
+                    errors.append(("latitude", "Coordinates must be numeric"))
+            else:
+                # Range check
+                if lat_val < -90.0 or lat_val > 90.0:
+                    errors.append(("latitude", "Latitude must be between -90 and 90"))
+
+        # Check longitude presence/null
+        lng_missing = "longitude" not in data
+        lng_val = data.get("longitude")
+        
+        if lng_missing or lng_val is None:
+            errors.append(("longitude", "Coordinates are required"))
+        else:
+            # Check type
+            if isinstance(lng_val, bool):
+                errors.append(("longitude", "Coordinates must be numeric"))
+            elif not isinstance(lng_val, (int, float)):
+                if isinstance(lng_val, str):
+                    try:
+                        lng_val = float(lng_val)
+                        data["longitude"] = lng_val
+                    except ValueError:
+                        errors.append(("longitude", "Coordinates must be numeric"))
+                else:
+                    errors.append(("longitude", "Coordinates must be numeric"))
+            else:
+                # Range check
+                if lng_val < -180.0 or lng_val > 180.0:
+                    errors.append(("longitude", "Longitude must be between -180 and 180"))
+
+        if errors:
+            raise ValueError(json.dumps(errors))
+
+        return data
+
+
+
+class GPSPingResponse(BaseModel):
+    status: str
+    ping_id: str
+    timestamp: datetime
+    technician_id: str
+    job_id: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GPSBatchRequest(BaseModel):
+    pings: list[dict]
+
+    @field_validator("pings")
+    @classmethod
+    def check_pings_limit(cls, v):
+        if not v:
+            raise ValueError("Pings array cannot be empty")
+        if len(v) > 100:
+            raise ValueError("Maximum 100 pings per batch")
+        return v
+
+
+
+

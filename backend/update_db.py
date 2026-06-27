@@ -58,10 +58,13 @@ def update_schema():
         "CREATE TABLE IF NOT EXISTS dispatcher_notifications (id SERIAL PRIMARY KEY, tech_id VARCHAR(36) NOT NULL, tenant_id VARCHAR(50) NOT NULL, message TEXT NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);",
         "CREATE TABLE IF NOT EXISTS redispatch_attempts (id SERIAL PRIMARY KEY, job_id INTEGER NOT NULL, attempt_number INTEGER NOT NULL, technician_id INTEGER, technician_name VARCHAR(100), event_type VARCHAR(30) NOT NULL, reason VARCHAR(255), queue_position INTEGER DEFAULT 1, next_dispatch_eta TIMESTAMP WITH TIME ZONE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);",
         "CREATE TABLE IF NOT EXISTS assignment_overrides (id SERIAL PRIMARY KEY, job_id INTEGER NOT NULL REFERENCES jobs(id), actor_name VARCHAR(100) NOT NULL, actor_role VARCHAR(30) NOT NULL, justification TEXT NOT NULL, previous_technician_id INTEGER REFERENCES technicians(technician_id), previous_technician_name VARCHAR(100), new_technician_id INTEGER NOT NULL REFERENCES technicians(technician_id), new_technician_name VARCHAR(100) NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);",
+        "CREATE TABLE IF NOT EXISTS gps_pings (id VARCHAR(36) PRIMARY KEY, technician_id VARCHAR(36) NOT NULL, job_id VARCHAR(36) NOT NULL, latitude DOUBLE PRECISION NOT NULL, longitude DOUBLE PRECISION NOT NULL, timestamp TIMESTAMP WITH TIME ZONE NOT NULL, accuracy DOUBLE PRECISION, altitude DOUBLE PRECISION, tenant_id VARCHAR(50) NOT NULL, ip_address VARCHAR(50), user_agent TEXT, correlation_id VARCHAR(36), created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);",
         "CREATE INDEX IF NOT EXISTS idx_audit_events_tech_id ON audit_events(tech_id);",
         "CREATE INDEX IF NOT EXISTS idx_dispatcher_notifications_tech_id ON dispatcher_notifications(tech_id);",
         "CREATE INDEX IF NOT EXISTS idx_redispatch_attempts_job_id ON redispatch_attempts(job_id);",
-        "CREATE INDEX IF NOT EXISTS idx_assignment_overrides_job_id ON assignment_overrides(job_id);"
+        "CREATE INDEX IF NOT EXISTS idx_assignment_overrides_job_id ON assignment_overrides(job_id);",
+        "CREATE INDEX IF NOT EXISTS idx_gps_pings_technician_id ON gps_pings(technician_id);",
+        "CREATE INDEX IF NOT EXISTS idx_gps_pings_tenant_id ON gps_pings(tenant_id);"
     ]
     
     with engine.connect() as connection:
