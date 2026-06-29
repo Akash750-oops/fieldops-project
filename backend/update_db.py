@@ -64,7 +64,38 @@ def update_schema():
         "CREATE INDEX IF NOT EXISTS idx_redispatch_attempts_job_id ON redispatch_attempts(job_id);",
         "CREATE INDEX IF NOT EXISTS idx_assignment_overrides_job_id ON assignment_overrides(job_id);",
         "CREATE INDEX IF NOT EXISTS idx_gps_pings_technician_id ON gps_pings(technician_id);",
-        "CREATE INDEX IF NOT EXISTS idx_gps_pings_tenant_id ON gps_pings(tenant_id);"
+        "CREATE INDEX IF NOT EXISTS idx_gps_pings_tenant_id ON gps_pings(tenant_id);",
+        
+        # New columns for SLA, geofencing, and lifecycle notifications
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS gps_active BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS work_report TEXT;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS customer_id VARCHAR(50);",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS customer_email VARCHAR(100);",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS geofence_radius DOUBLE PRECISION DEFAULT 100.0;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS site_latitude DOUBLE PRECISION;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS site_longitude DOUBLE PRECISION;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS site_address TEXT;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP WITH TIME ZONE;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS en_route_at TIMESTAMP WITH TIME ZONE;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS on_site_at TIMESTAMP WITH TIME ZONE;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP WITH TIME ZONE;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP WITH TIME ZONE;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS assigned_by VARCHAR(50);",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS en_route_by VARCHAR(50);",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS on_site_by VARCHAR(50);",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS completed_by VARCHAR(50);",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS cancelled_by VARCHAR(50);",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS closed_by VARCHAR(50);",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS closure_reason TEXT;",
+        
+        # New columns for transition audit events
+        "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS job_id VARCHAR(36);",
+        "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS actor_id VARCHAR(50);",
+        "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS details JSON;",
+        "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP WITH TIME ZONE;",
+        "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS correlation_id VARCHAR(36);"
     ]
     
     with engine.connect() as connection:
