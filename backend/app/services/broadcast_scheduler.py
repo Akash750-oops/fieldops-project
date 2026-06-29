@@ -208,11 +208,11 @@ class BroadcastScheduler:
                 ON j.assigned_technician_id = t.technician_id
                 AND UPPER(j.status) IN ('ASSIGNED', 'EN_ROUTE', 'ON_SITE')
             JOIN gps_pings p
-                ON p.technician_id = t.tech_id
+                ON CAST(p.technician_id AS VARCHAR) = CAST(t.tech_id AS VARCHAR)
                 AND p.timestamp >= :threshold
             WHERE t.tech_id IS NOT NULL
-                AND j.tenant_id = t.tenant_id
-                AND p.tenant_id = t.tenant_id
+                AND CAST(j.tenant_id AS VARCHAR) = CAST(t.tenant_id AS VARCHAR)
+                AND CAST(p.tenant_id AS VARCHAR) = CAST(t.tenant_id AS VARCHAR)
             GROUP BY
                 t.tech_id, t.tenant_id,
                 j.id, j.status,
