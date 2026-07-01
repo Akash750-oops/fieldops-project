@@ -108,6 +108,52 @@ def check_and_set_interval(redis_client, db: Session, tenant_id: str, technician
                 
         return True, 0, "fallback"
 
+from typing import Optional
+
+@router.get("/history/{technician_id}", response_model=list[schemas.GPSPingResponse])
+def get_gps_history(
+    technician_id: str,
+    job_id: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    db: Session = Depends(get_db),
+    authorization: str = Depends(verify_jwt_token)
+):
+    query = db.query(models.GPSPing).filter(models.GPSPing.technician_id == technician_id)
+    
+    if job_id:
+        query = query.filter(models.GPSPing.job_id == job_id)
+    if start_time:
+        try:
+            start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            query = query.filter(models.GPSPing.timestamp >= start_dt)
+        except Exception:
+            pass
+    if end_time:
+        try:
+            end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+            query = query.filter(models.GPSPing.timestamp <= end_dt)
+        except Exception:
+            pass
+            
+    pings = query.order_by(models.GPSPing.timestamp.asc()).all()
+    
+    return [
+        schemas.GPSPingResponse(
+            id=p.id,
+            technician_id=p.technician_id,
+            job_id=p.job_id,
+            latitude=p.latitude,
+            longitude=p.longitude,
+            timestamp=p.timestamp,
+            accuracy=p.accuracy,
+            altitude=p.altitude,
+            tenant_id=p.tenant_id,
+            created_at=p.created_at
+        )
+        for p in pings
+    ]
+
 @router.post("/ping", status_code=status.HTTP_201_CREATED, response_model=schemas.GPSPingResponse)
 async def gps_ping(
     request: Request,

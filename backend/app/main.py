@@ -19,25 +19,41 @@ from .routes.tracking import redis_gps_listener
 
 scheduler = None
 redis_async_client = None
+redis_pubsub_client = None
 listener_task = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global scheduler, redis_async_client, listener_task
+    global scheduler, redis_async_client, redis_pubsub_client, listener_task
     start_scheduler()
     
     redis_host = os.getenv("REDIS_HOST", "localhost")
     redis_port = int(os.getenv("REDIS_PORT", 6379))
-    redis_async_client = aioredis.Redis(host=redis_host, port=redis_port, decode_responses=True)
     
-    listener_task = asyncio.create_task(redis_gps_listener(redis_async_client))
-    
-    scheduler = BroadcastScheduler(
-        db_factory=SessionLocal,
-        redis_async=redis_async_client,
-        manager=connection_manager
-    )
-    await scheduler.start()
+    try:
+        redis_async_client = aioredis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+        # Test the connection before proceeding
+        await redis_async_client.ping()
+        
+        # Pubsub listener needs decode_responses=False since GPS payloads are MsgPack binary
+        redis_pubsub_client = aioredis.Redis(host=redis_host, port=redis_port, decode_responses=False)
+        await redis_pubsub_client.ping()
+        
+        listener_task = asyncio.create_task(redis_gps_listener(redis_pubsub_client))
+        
+        scheduler = BroadcastScheduler(
+            db_factory=SessionLocal,
+            redis_async=redis_async_client,
+            manager=connection_manager
+        )
+        await scheduler.start()
+        print("Redis connected successfully")
+    except Exception as e:
+        print(f"Redis not available ({e}). GPS broadcast & pub/sub features are disabled.")
+        redis_async_client = None
+        redis_pubsub_client = None
+        listener_task = None
+        scheduler = None
     
     yield
     
@@ -51,6 +67,8 @@ async def lifespan(app: FastAPI):
             pass
     if redis_async_client:
         await redis_async_client.aclose()
+    if redis_pubsub_client:
+        await redis_pubsub_client.aclose()
         
     stop_scheduler()
 

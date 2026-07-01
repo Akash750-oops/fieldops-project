@@ -972,8 +972,71 @@ def get_override_history(job_id: int, db: Session = Depends(get_db)):
         for o in overrides
     ]
 
-
 api_v1_router = APIRouter(prefix="/api/v1")
+
+@api_v1_router.get("/jobs/{job_id}/history")
+def get_job_status_history(job_id: int, db: Session = Depends(get_db)):
+    from app.models import AuditEvent, Technician
+    from datetime import datetime, timezone
+    
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    # Fetch transition audit events
+    events = db.query(AuditEvent).filter(
+        AuditEvent.job_id == str(job_id),
+        AuditEvent.event_type == "job_status_transition"
+    ).order_by(AuditEvent.created_at.asc()).all()
+    
+    history = []
+    
+    # If no events exist in database yet, construct a baseline CREATED transition
+    if not events:
+        history.append({
+            "id": 0,
+            "job_id": job.id,
+            "from_status": None,
+            "to_status": "CREATED",
+            "changed_at": job.created_at.isoformat() if job.created_at else datetime.now(timezone.utc).isoformat(),
+            "changed_by_name": "System",
+            "changed_by_role": "SYSTEM",
+            "transition_reason": "Job initialized",
+            "duration_seconds": None,
+            "sla_limit_seconds": 600
+        })
+    else:
+        for idx, event in enumerate(events):
+            # Calculate duration in seconds to next transition (or now if it's the last one)
+            next_time = events[idx + 1].created_at if idx + 1 < len(events) else datetime.now(timezone.utc)
+            duration_secs = int((next_time - event.created_at).total_seconds()) if event.created_at else None
+            
+            actor_name = "System"
+            actor_role = "SYSTEM"
+            
+            if event.tech_id and event.tech_id != "system":
+                tech = db.query(Technician).filter(Technician.technician_id == event.tech_id).first()
+                if tech:
+                    actor_name = tech.name
+                    actor_role = "Technician"
+            elif event.actor_id:
+                actor_name = event.actor_id.replace("_", " ").title()
+                actor_role = "Admin"
+                
+            history.append({
+                "id": event.id,
+                "job_id": job.id,
+                "from_status": event.old_status,
+                "to_status": event.new_status,
+                "changed_at": event.created_at.isoformat() if event.created_at else datetime.now(timezone.utc).isoformat(),
+                "changed_by_name": actor_name,
+                "changed_by_role": actor_role,
+                "transition_reason": event.reason,
+                "duration_seconds": duration_secs,
+                "sla_limit_seconds": 600  # Default 10 minutes limit
+            })
+            
+    return history
 
 class TransitionRequest(BaseModel):
     status: str
@@ -1139,4 +1202,126 @@ def get_sla_dashboard(
         "breached": breached,
         "avg_remaining_minutes": avg_remaining
     }
+
+
+class JobShareResponse(BaseModel):
+    token: str
+    expires_at: str
+    share_url: str
+
+@api_v1_router.post("/jobs/{id}/share", response_model=JobShareResponse)
+def share_job_tracking(
+    id: str,
+    authorization: str = Depends(verify_jwt_token),
+    db: Session = Depends(get_db)
+):
+    claims = decode_jwt_token_or_pseudo(authorization)
+    job = db.query(Job).filter(Job.id == int(id) if str(id).isdigit() else Job.id == id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    import uuid
+    from datetime import datetime, timedelta, timezone
+
+    token = str(uuid.uuid4())
+    expiry = datetime.now(timezone.utc) + timedelta(hours=24)
+
+    job.share_token = token
+    job.share_token_expires_at = expiry
+    db.commit()
+
+    import os
+    base_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    share_url = f"{base_url}/track/{token}"
+
+    return {
+        "token": token,
+        "expires_at": expiry.isoformat(),
+        "share_url": share_url
+    }
+
+
+@api_v1_router.get("/track/{token}")
+def get_public_tracking_info(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    from datetime import datetime, timezone
+    from app.models import Technician, GPSPing
+    from app.services.eta_service import ETAService
+    import asyncio
+
+    job = db.query(Job).filter(Job.share_token == token).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Tracking link not found")
+
+    # Expiry Check
+    now = datetime.now(timezone.utc)
+    expires_at = job.share_token_expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if not expires_at or expires_at < now:
+        return {
+            "expired": True,
+            "status": job.status,
+            "message": "This tracking link has expired"
+        }
+
+    tech_info = None
+    eta_minutes = None
+    latest_gps = None
+
+    if job.assigned_technician_id:
+        tech = db.query(Technician).filter(Technician.technician_id == job.assigned_technician_id).first()
+        if tech:
+            ping = db.query(GPSPing).filter(GPSPing.technician_id == tech.tech_id).order_by(GPSPing.timestamp.desc()).first()
+            if ping:
+                latest_gps = {
+                    "latitude": ping.latitude,
+                    "longitude": ping.longitude,
+                    "timestamp": ping.timestamp.isoformat() if ping.timestamp else None
+                }
+            
+            try:
+                eta_service = ETAService()
+                loop = asyncio.new_event_loop()
+                try:
+                    eta_result = loop.run_until_complete(
+                        eta_service.calculate_eta(technician_id=tech.tech_id, job_id=job.id)
+                    )
+                    if eta_result and "duration" in eta_result:
+                        eta_minutes = int(eta_result["duration"] / 60)
+                    elif eta_result and "last_known_location" in eta_result:
+                        # Haversine estimation or default fallback
+                        eta_minutes = 25
+                finally:
+                    loop.close()
+            except Exception:
+                eta_minutes = 30
+                
+            tech_info = {
+                "name": tech.technician_name.split()[0],
+                "rating": 4.8,
+                "avatar": "".join([n[0] for n in tech.technician_name.split()[:2]]) if tech.technician_name else "Tech"
+            }
+
+    return {
+        "expired": False,
+        "job": {
+            "id": str(job.id),
+            "customer_name": job.customer_name,
+            "issue_description": job.issue_description,
+            "service_type": job.service_type,
+            "status": job.status.upper(),
+            "site_latitude": job.site_latitude or 13.0827,
+            "site_longitude": job.site_longitude or 80.2707,
+            "site_address": job.site_address or job.location,
+            "scheduled_window": "2:00 PM - 4:00 PM"
+        },
+        "technician": tech_info,
+        "latest_gps": latest_gps,
+        "eta": eta_minutes
+    }
+
 

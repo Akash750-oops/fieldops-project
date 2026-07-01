@@ -31,10 +31,23 @@ class GeofenceMonitor:
         if not self.redis:
             return
             
-        # Find active EN_ROUTE jobs assigned to this technician
+        # Resolve tech UUID to integer ID
         tech_id = getattr(ping, "technician_id", None) or getattr(ping, "tech_id", None)
+        if not tech_id:
+            return
+
+        from ..models import Technician
+        tech = db.query(Technician).filter(Technician.tech_id == str(tech_id)).first()
+        if tech:
+            tech_int_id = tech.technician_id
+        elif str(tech_id).isdigit():
+            tech_int_id = int(tech_id)
+        else:
+            return
+
+        # Find active EN_ROUTE jobs assigned to this technician
         jobs = db.query(Job).filter(
-            Job.assigned_technician_id == int(tech_id) if str(tech_id).isdigit() else Job.assigned_technician_id == tech_id,
+            Job.assigned_technician_id == tech_int_id,
             Job.status == "EN_ROUTE"
         ).all()
         

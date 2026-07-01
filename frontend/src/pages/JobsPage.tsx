@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import api from "../services/api";
-import { Eye, Pencil, Trash2, ExternalLink, Copy, Check } from "lucide-react";
+import { Eye, Pencil, Trash2, ExternalLink, Copy, Check, Share2, Loader2 } from "lucide-react";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
 import EmptyState from "../components/ui/EmptyState";
+import JobStatusTimeline from "../components/customer-tracking/JobStatusTimeline";
 
 const JOBS_PAGE_SIZE = 8;
 
@@ -155,6 +156,8 @@ const CopyJobIdButton = ({ jobId }: { jobId: string | number }) => {
     </button>
   );
 };
+
+
 
 function JobCreationForm() {
   const [formData, setFormData] = useState<JobFormData>(initialFormData);
@@ -664,13 +667,13 @@ function JobCreationForm() {
                 <thead>
                   <tr>
                     <th style={{ ...styles.th, width: "8%" }}>Job ID</th>
-                    <th style={{ ...styles.th, width: "22%" }}>Customer</th>
-                    <th style={{ ...styles.th, width: "15%" }}>Location</th>
+                    <th style={{ ...styles.th, width: "20%" }}>Customer</th>
+                    <th style={{ ...styles.th, width: "13%" }}>Location</th>
                     <th style={{ ...styles.th, width: "8%" }}>Priority</th>
-                    <th style={{ ...styles.th, width: "16%" }}>Service Type</th>
+                    <th style={{ ...styles.th, width: "15%" }}>Service Type</th>
                     <th style={{ ...styles.th, width: "11%" }}>Preferred Date</th>
                     <th style={{ ...styles.th, width: "10%" }}>Status</th>
-                    <th style={{ ...styles.th, width: "10%" }}>Actions</th>
+                    <th style={{ ...styles.th, width: "15%" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody key={safeJobsPage} className="jobs-table-body">
@@ -687,7 +690,7 @@ function JobCreationForm() {
                         </span>
                         <CopyJobIdButton jobId={job.id} />
                       </td>
-                      <td style={{ ...styles.td, ...styles.customerCell, width: "22%", maxWidth: 0 }}>
+                      <td style={{ ...styles.td, ...styles.customerCell, width: "20%", maxWidth: 0 }}>
                         <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={job.customer_name}>
                           <strong>{job.customer_name}</strong>
                         </div>
@@ -695,7 +698,7 @@ function JobCreationForm() {
                           <div style={styles.issueSub} title={job.issue_description}>{job.issue_description}</div>
                         )}
                       </td>
-                      <td style={{ ...styles.td, width: "15%", maxWidth: 0 }}>
+                      <td style={{ ...styles.td, width: "13%", maxWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "6px", width: "100%", overflow: "hidden" }}>
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }} title={job.location}>
                             {job.location}
@@ -725,7 +728,7 @@ function JobCreationForm() {
                           {normalizeP(job.priority)}
                         </span>
                       </td>
-                      <td style={{ ...styles.td, width: "16%", maxWidth: 0 }}>
+                      <td style={{ ...styles.td, width: "15%", maxWidth: 0 }}>
                         <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={formatServiceType(job.service_type)}>
                           {formatServiceType(job.service_type)}
                         </div>
@@ -739,7 +742,7 @@ function JobCreationForm() {
                         <span style={getStatusStyle(job.status)}>{formatStatus(job.status)}</span>
                       </td>
                       <td style={styles.td}>
-                        <div style={{ display: "flex", gap: "6px" }}>
+                        <div style={{ display: "flex", gap: "12px" }}>
                           <button
                             style={{ ...styles.iconActionBtn, color: "#16a34a" }}
                             onClick={() => setViewJob(job)}
@@ -836,26 +839,34 @@ function JobCreationForm() {
       {/* View Job Modal */}
       {viewJob && (
         <div style={styles.popupOverlay} onClick={() => setViewJob(null)}>
-          <div style={styles.viewJobModal} onClick={e => e.stopPropagation()}>
+          <div style={{ ...styles.viewJobModal, maxWidth: "850px" }} onClick={e => e.stopPropagation()}>
             <div style={styles.viewModalHeader}>
-              <h3 style={styles.viewModalHeaderTitle}>Job Details</h3>
+              <h3 style={styles.viewModalHeaderTitle}>Job Details & Status History</h3>
               <button onClick={() => setViewJob(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#6b7280' }}>×</button>
             </div>
-            <div style={styles.viewModalBody}>
-              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Job ID</span><span style={styles.viewValue}>#{viewJob.id}</span></div>
-              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Customer</span><span style={styles.viewValue}>{viewJob.customer_name}</span></div>
-              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Location</span><span style={styles.viewValue}>{viewJob.location}</span></div>
-              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Priority</span><span style={getPriorityStyle(viewJob.priority)}>{normalizeP(viewJob.priority)}</span></div>
-              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Service Type</span><span style={styles.viewValue}>{viewJob.service_type?.replace(/_/g, ' ')}</span></div>
-              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Contact</span><span style={styles.viewValue}>{viewJob.contact_number}</span></div>
-              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Preferred Date</span><span style={styles.viewValue}>{viewJob.preferred_service_date}</span></div>
-              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Status</span><span style={getStatusStyle(viewJob.status)}>{formatStatus(viewJob.status)}</span></div>
-              {viewJob.issue_description && (
-                <div style={{ ...styles.viewDetailRow, flexDirection: "column", gap: "4px" }}>
-                  <span style={styles.viewLabel}>Issue</span>
-                  <span style={styles.viewValue}>{viewJob.issue_description}</span>
-                </div>
-              )}
+            <div style={{ display: "flex", flexDirection: "row", flexWrap: "wrap", width: "100%" }}>
+              {/* Left Column: Details */}
+              <div style={{ flex: 1, minWidth: "300px", padding: "18px 22px 22px", display: "flex", flexDirection: "column", gap: "10px", borderRight: "1px solid #E3ECE7" }}>
+                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Job ID</span><span style={styles.viewValue}>#{viewJob.id}</span></div>
+                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Customer</span><span style={styles.viewValue}>{viewJob.customer_name}</span></div>
+                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Location</span><span style={styles.viewValue}>{viewJob.location}</span></div>
+                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Priority</span><span style={getPriorityStyle(viewJob.priority)}>{normalizeP(viewJob.priority)}</span></div>
+                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Service Type</span><span style={styles.viewValue}>{viewJob.service_type?.replace(/_/g, ' ')}</span></div>
+                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Contact</span><span style={styles.viewValue}>{viewJob.contact_number}</span></div>
+                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Preferred Date</span><span style={styles.viewValue}>{viewJob.preferred_service_date}</span></div>
+                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Status</span><span style={getStatusStyle(viewJob.status)}>{formatStatus(viewJob.status)}</span></div>
+                {viewJob.issue_description && (
+                  <div style={{ ...styles.viewDetailRow, flexDirection: "column", gap: "4px" }}>
+                    <span style={styles.viewLabel}>Issue</span>
+                    <span style={styles.viewValue}>{viewJob.issue_description}</span>
+                  </div>
+                )}
+              </div>
+              
+              {/* Right Column: Interactive vertical Timeline */}
+              <div style={{ flex: 1, minWidth: "300px", padding: "18px 22px 22px" }} className="flex flex-col">
+                <JobStatusTimeline jobId={viewJob.id} currentStatus={viewJob.status} />
+              </div>
             </div>
           </div>
         </div>
