@@ -1,3 +1,5 @@
+from typing import Optional
+
 from sqlalchemy import Column, Integer, String, Text, Date, DateTime, ForeignKey, JSON, Float, CheckConstraint, Index, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -92,6 +94,10 @@ class Job(Base):
     # Reason fields
     cancellation_reason = Column(Text, nullable=True)
     closure_reason = Column(Text, nullable=True)
+
+    # Share tracking link fields
+    share_token = Column(String(36), unique=True, index=True, nullable=True)
+    share_token_expires_at = Column(DateTime(timezone=True), nullable=True)
 
     technician = relationship("Technician", back_populates="jobs")
 
@@ -469,6 +475,7 @@ def on_new_gps_ping(mapper, connection, target):
         monitor = GeofenceMonitor()
         monitor.process_ping(db, target)
     except Exception as e:
+        from .logger import logger
         logger.error(f"Failed to check geofence on new GPS ping: {e}")
     finally:
         db.close()

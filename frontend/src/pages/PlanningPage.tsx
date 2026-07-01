@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
-import { Eye, Trash2, History, Search, ChevronDown } from "lucide-react";
+import { Eye, Trash2, History, Search, ChevronDown, Share2, Loader2, Check } from "lucide-react";
 import EmptyState from "../components/ui/EmptyState";
 import OverrideModal from "../components/notifications/OverrideModal";
 import OverrideHistory from "../components/notifications/OverrideHistory";
@@ -915,6 +915,67 @@ const localCss = `
     animation: planningFadeInRow 0.25s ease-out forwards !important;
   }
 `;
+
+const ShareTrackingLinkButton = ({ jobId }: { jobId: string | number }) => {
+  const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleShare = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoading(true);
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/jobs/${jobId}/share`, {
+        method: "POST",
+        headers: {
+          "X-Tenant-ID": "tenant-1",
+          "Authorization": "Bearer dev-dispatcher-token"
+        }
+      });
+      if (!response.ok) throw new Error("Failed to generate share link");
+      const data = await response.json();
+      await navigator.clipboard.writeText(data.share_url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error(err);
+      alert("Could not generate tracking link");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleShare}
+      disabled={loading}
+      title={copied ? "Link Copied!" : "Share customer tracking link"}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "28px",
+        height: "28px",
+        border: "none",
+        borderRadius: 0,
+        background: "none",
+        padding: 0,
+        cursor: "pointer",
+        outline: "none",
+        color: copied ? "#10B981" : "#3b82f6"
+      }}
+      className="icon-action-btn-style"
+      aria-label={`Share tracking link for Job ${jobId}`}
+    >
+      {copied ? (
+        <Check size={15} />
+      ) : loading ? (
+        <Loader2 size={15} className="animate-spin" />
+      ) : (
+        <Share2 size={15} />
+      )}
+    </button>
+  );
+};
 
 function PlanningDashboard() {
   const [pendingJobs, setPendingJobs] = useState<PendingJob[]>([]);
@@ -2142,6 +2203,7 @@ function PlanningDashboard() {
                                 >
                                   <Eye size={15} />
                                 </button>
+                                <ShareTrackingLinkButton jobId={item.job_id} />
                                 <button
                                   className="icon-action-btn-style"
                                   style={{ ...styles.iconActionBtn, color: '#475569' }}

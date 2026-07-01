@@ -30,6 +30,7 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const JobsPage = lazy(() => import("./pages/JobsPage"));
 const TechDashboardPage = lazy(() => import("./pages/TechDashboardPage"));
 const PlanningPage = lazy(() => import("./pages/PlanningPage"));
+const TrackingDashboardPage = lazy(() => import("./pages/TrackingDashboardPage"));
 
 interface NotificationItem {
   id: string | number;
@@ -940,6 +941,15 @@ function AppInner() {
               <Calendar size={18} style={{ flexShrink: 0 }} />
               <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Planning</span>
             </button>
+
+            <button
+              className="nav-item-style"
+              style={getItemStyle("tracking")}
+              onClick={() => handleTabChange("tracking")}
+            >
+              <Activity size={18} style={{ flexShrink: 0 }} />
+              <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Live Tracking</span>
+            </button>
           </nav>
 
           {/* Active tech switcher and demo controls */}
@@ -1085,6 +1095,9 @@ function AppInner() {
               {activeTab === "techboard" && <TechDashboardPage />}
               {activeTab === "planning" && (
                 <PlanningPage />
+              )}
+              {activeTab === "tracking" && (
+                <TrackingDashboardPage />
               )}
             </Suspense>
           )}

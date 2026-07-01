@@ -1,6 +1,7 @@
 import os
 import uuid
 import datetime
+import random
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
@@ -21,7 +22,7 @@ def seed_data():
     from app.models import (
         Technician, Job, AuditEvent, InAppNotification,
         DispatcherNotification, SLAEscalation, DispatcherAlert,
-        OverrideAuditEvent, AssignmentOverride
+        OverrideAuditEvent, AssignmentOverride, GPSPing
     )
     db = SessionLocal()
     try:
@@ -33,6 +34,7 @@ def seed_data():
         db.query(DispatcherAlert).delete()
         db.query(OverrideAuditEvent).delete()
         db.query(AssignmentOverride).delete()
+        db.query(GPSPing).delete()
         # Set assigned technician to None first to avoid FK constraints
         db.query(Job).update({Job.assigned_technician_id: None})
         db.commit()
@@ -71,15 +73,19 @@ def seed_data():
 
         inserted_techs = []
         for i, t_info in enumerate(techs_data):
+            # Coordinates near Chennai center
+            lat_offset = (random.random() - 0.5) * 0.08
+            lng_offset = (random.random() - 0.5) * 0.08
             tech = Technician(
                 technician_name=t_info["name"],
                 technician_skill=t_info["skill"],
-                technician_location="13.0827,80.2707", # Chennai coordinates
+                technician_location=f"{13.0827 + lat_offset},{80.2707 + lng_offset}",
                 technician_status=t_info["status"],
                 current_jobs=t_info["current"],
                 max_jobs=5,
                 tech_id=str(uuid.uuid4()),
-                tenant_id="tenant-1"
+                tenant_id="tenant-1",
+                last_ping=datetime.datetime.now(datetime.timezone.utc)
             )
             db.add(tech)
             db.commit()
@@ -92,7 +98,7 @@ def seed_data():
         busy_techs = [t for t in inserted_techs if t.technician_status == "Busy"]
 
         print("Seeding jobs...")
-        # 10 Completed, 5 In Progress, 8 Active (assigned), 1 Pending (unassigned)
+        # 10 Completed, 5 En Route, 8 Assigned, 1 Pending
         # Split categories: 9 HVAC, 6 Electrical, 4 Plumbing, 3 Mechanical, 2 Other
         jobs_to_seed = [
             # HVAC (9 total)
@@ -101,48 +107,48 @@ def seed_data():
             {"skill": "HVAC", "type": "HVAC Maintenance", "status": "completed", "assigned": False},
             {"skill": "HVAC", "type": "AC Service", "status": "completed", "assigned": False},
             {"skill": "HVAC", "type": "Cooling System Fixing", "status": "completed", "assigned": False},
-            # 2 In Progress
-            {"skill": "HVAC", "type": "HVAC Filter Change", "status": "in progress", "assigned": True},
-            {"skill": "HVAC", "type": "Thermostat Installation", "status": "in progress", "assigned": True},
-            # 3 Active (assigned but not in progress)
-            {"skill": "HVAC", "type": "Compressor Replacement", "status": "active", "assigned": True},
-            {"skill": "HVAC", "type": "Condenser Fan Fixing", "status": "active", "assigned": True},
-            {"skill": "HVAC", "type": "AC Gas Charging", "status": "active", "assigned": True},
+            # 2 En Route (in progress replacement)
+            {"skill": "HVAC", "type": "HVAC Filter Change", "status": "en_route", "assigned": True},
+            {"skill": "HVAC", "type": "Thermostat Installation", "status": "en_route", "assigned": True},
+            # 3 Assigned (active replacement)
+            {"skill": "HVAC", "type": "Compressor Replacement", "status": "assigned", "assigned": True},
+            {"skill": "HVAC", "type": "Condenser Fan Fixing", "status": "assigned", "assigned": True},
+            {"skill": "HVAC", "type": "AC Gas Charging", "status": "assigned", "assigned": True},
 
             # Electrical (6 total)
             # 2 Completed
             {"skill": "Electrical", "type": "Wiring Repair", "status": "completed", "assigned": False},
             {"skill": "Electrical", "type": "Switchboard Fixing", "status": "completed", "assigned": False},
-            # 1 In Progress
-            {"skill": "Electrical", "type": "Lighting Installation", "status": "in progress", "assigned": True},
-            # 2 Active (assigned)
-            {"skill": "Electrical", "type": "Short Circuit Troubleshooting", "status": "active", "assigned": True},
-            {"skill": "Electrical", "type": "Generator Service", "status": "active", "assigned": True},
-            # 1 Pending (unassigned)
-            {"skill": "Electrical", "type": "CCTV Camera Electrical Line", "status": "active", "assigned": False},
+            # 1 En Route
+            {"skill": "Electrical", "type": "Lighting Installation", "status": "en_route", "assigned": True},
+            # 2 Assigned
+            {"skill": "Electrical", "type": "Short Circuit Troubleshooting", "status": "assigned", "assigned": True},
+            {"skill": "Electrical", "type": "Generator Service", "status": "assigned", "assigned": True},
+            # 1 Unassigned Pending
+            {"skill": "Electrical", "type": "CCTV Camera Electrical Line", "status": "assigned", "assigned": False},
 
             # Plumbing (4 total)
             # 2 Completed
             {"skill": "Plumbing", "type": "Pipe Leak Repair", "status": "completed", "assigned": False},
             {"skill": "Plumbing", "type": "Tap Installation", "status": "completed", "assigned": False},
-            # 1 In Progress
-            {"skill": "Plumbing", "type": "Drain Cleaning", "status": "in progress", "assigned": True},
-            # 1 Active (assigned)
-            {"skill": "Plumbing", "type": "Water Heater Setup", "status": "active", "assigned": True},
+            # 1 En Route
+            {"skill": "Plumbing", "type": "Drain Cleaning", "status": "en_route", "assigned": True},
+            # 1 Assigned
+            {"skill": "Plumbing", "type": "Water Heater Setup", "status": "assigned", "assigned": True},
 
             # Mechanical (3 total)
             # 1 Completed
             {"skill": "Mechanical", "type": "Pump Servicing", "status": "completed", "assigned": False},
-            # 1 In Progress
-            {"skill": "Mechanical", "type": "Valves Maintenance", "status": "in progress", "assigned": True},
-            # 1 Active (assigned)
-            {"skill": "Mechanical", "type": "Motor Alignment", "status": "active", "assigned": True},
+            # 1 En Route
+            {"skill": "Mechanical", "type": "Valves Maintenance", "status": "en_route", "assigned": True},
+            # 1 Assigned
+            {"skill": "Mechanical", "type": "Motor Alignment", "status": "assigned", "assigned": True},
 
             # Other (2 total)
             # 1 Completed
             {"skill": "Other", "type": "Network Cable Laying", "status": "completed", "assigned": False},
-            # 1 Active (assigned)
-            {"skill": "Other", "type": "Router Rack Mounting", "status": "active", "assigned": True},
+            # 1 Assigned
+            {"skill": "Other", "type": "Router Rack Mounting", "status": "assigned", "assigned": True},
         ]
 
         customer_names = [
@@ -157,7 +163,7 @@ def seed_data():
         busy_idx = 0
         for i, j_info in enumerate(jobs_to_seed):
             assigned_id = None
-            if j_info["assigned"] or j_info["status"] == "in progress":
+            if j_info["assigned"]:
                 # Assign to one of the Busy technicians
                 if busy_idx < len(busy_techs):
                     assigned_id = busy_techs[busy_idx].technician_id
@@ -180,9 +186,33 @@ def seed_data():
         db.commit()
 
         print(f"Seeded {len(jobs_to_seed)} jobs.")
-        print("Successfully seeded all data for the dashboard!")
+
+        # Seed initial GPSPing coordinates so they show up instantly in the UI
+        print("Seeding GPS pings...")
+        active_jobs = db.query(Job).filter(Job.assigned_technician_id.isnot(None)).all()
+        for job in active_jobs:
+            tech = db.query(Technician).filter(Technician.technician_id == job.assigned_technician_id).first()
+            if tech:
+                # Extract lat/lng from tech location string
+                lat_str, lng_str = tech.technician_location.split(",")
+                ping = GPSPing(
+                    id=str(uuid.uuid4()),
+                    technician_id=tech.tech_id,
+                    job_id=str(job.id),
+                    latitude=float(lat_str),
+                    longitude=float(lng_str),
+                    timestamp=datetime.datetime.now(datetime.timezone.utc),
+                    accuracy=10.0,
+                    altitude=0.0,
+                    tenant_id="tenant-1"
+                )
+                db.add(ping)
+        db.commit()
+
+        print("Successfully seeded all data for the dashboard with active GPS tracking!")
     except Exception as e:
-        print(f"Error seeding database: {e}")
+        import traceback
+        traceback.print_exc()
         db.rollback()
     finally:
         db.close()

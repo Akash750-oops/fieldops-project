@@ -95,7 +95,11 @@ def update_schema():
         "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS actor_id VARCHAR(50);",
         "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS details JSON;",
         "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP WITH TIME ZONE;",
-        "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS correlation_id VARCHAR(36);"
+        "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS correlation_id VARCHAR(36);",
+
+        # New columns for shareable customer tracking links
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS share_token VARCHAR(36) UNIQUE;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS share_token_expires_at TIMESTAMP WITH TIME ZONE;"
     ]
     
     with engine.connect() as connection:

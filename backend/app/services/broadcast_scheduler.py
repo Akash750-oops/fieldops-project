@@ -132,6 +132,7 @@ class BroadcastScheduler:
             update = {
                 "type": "position_update",
                 "technician_id": tech_id,
+                "technician_name": row.technician_name or f"Technician #{tech_id[:8]}",
                 "job_id": job_id,
                 "tenant_id": tenant_id,
                 "latitude": float(row.latitude),
@@ -195,9 +196,12 @@ class BroadcastScheduler:
         sql = text("""
             SELECT
                 t.tech_id,
+                t.technician_name,
                 t.tenant_id,
                 j.id            AS job_id,
                 j.status        AS job_status,
+                j.service_type  AS job_title,
+                j.location      AS job_location,
                 p.latitude,
                 p.longitude,
                 p.accuracy,
@@ -214,8 +218,8 @@ class BroadcastScheduler:
                 AND CAST(j.tenant_id AS VARCHAR) = CAST(t.tenant_id AS VARCHAR)
                 AND CAST(p.tenant_id AS VARCHAR) = CAST(t.tenant_id AS VARCHAR)
             GROUP BY
-                t.tech_id, t.tenant_id,
-                j.id, j.status,
+                t.tech_id, t.technician_name, t.tenant_id,
+                j.id, j.status, j.service_type, j.location,
                 p.latitude, p.longitude, p.accuracy, p.altitude
         """)
 
