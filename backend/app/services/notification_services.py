@@ -6,6 +6,14 @@ import uuid
 import logging
 import asyncio
 
+from html import escape
+from urllib.parse import quote
+
+from .ai.integrations.communication_integration import (
+    CommunicationIntegration,
+    CommunicationIntegrationError,
+)
+
 from sqlalchemy.orm import Session
 from ..database import SessionLocal
 from ..models import AuditEvent, Technician, InAppNotification, Job
@@ -39,36 +47,102 @@ class JobStatusEvent:
 
 
 class SendGridService:
-    def __init__(self, api_key: str = None):
+    """
+    Send customer email through SendGrid.
+
+    Recipient addresses and message bodies are deliberately not
+    written to application logs.
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+    ) -> None:
         import os
-        self.api_key = api_key or os.getenv("SENDGRID_API_KEY", "SG.mock_key")
-        
-    async def send_email(self, to_email: str, subject: str, html_content: str) -> bool:
+
+        self.api_key = (
+            api_key
+            or os.getenv(
+                "SENDGRID_API_KEY",
+                "SG.mock_key",
+            )
+        )
+
+    async def send_email(
+        self,
+        to_email: str,
+        subject: str,
+        html_content: str,
+    ) -> bool:
+        """
+        Send one email or simulate delivery in local mode.
+        """
+
         import os
-        # Check environment and key
-        if not self.api_key or "mock" in self.api_key or not os.getenv("SENDGRID_API_KEY"):
-            logger.info(f"[SendGrid Mock] Sending email to {to_email} with subject: {subject} body: {html_content}")
+
+        if (
+            not self.api_key
+            or "mock" in self.api_key
+            or not os.getenv(
+                "SENDGRID_API_KEY"
+            )
+        ):
+            logger.info(
+                "SendGrid email delivery simulated."
+            )
+
             return True
-            
+
         try:
-            from sendgrid import SendGridAPIClient
-            from sendgrid.helpers.mail import Mail
-            
+            from sendgrid import (
+                SendGridAPIClient,
+            )
+            from sendgrid.helpers.mail import (
+                Mail,
+            )
+
             message = Mail(
-                from_email=os.getenv("SENDGRID_FROM_EMAIL", "no-reply@fieldops.io"),
+                from_email=os.getenv(
+                    "SENDGRID_FROM_EMAIL",
+                    "no-reply@fieldops.io",
+                ),
                 to_emails=to_email,
                 subject=subject,
-                html_content=html_content
+                html_content=html_content,
             )
-            sg = SendGridAPIClient(self.api_key)
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, sg.send, message)
-            logger.info(f"SendGrid email sent to {to_email}, status_code={response.status_code}")
-            return response.status_code in (200, 201, 202)
-        except Exception as e:
-            logger.error(f"SendGrid failed to send email: {e}")
-            return False
 
+            sendgrid = SendGridAPIClient(
+                self.api_key
+            )
+
+            loop = asyncio.get_running_loop()
+
+            response = await loop.run_in_executor(
+                None,
+                sendgrid.send,
+                message,
+            )
+
+            logger.info(
+                "SendGrid accepted email delivery. "
+                "status_code=%s",
+                response.status_code,
+            )
+
+            return response.status_code in {
+                200,
+                201,
+                202,
+            }
+
+        except Exception:
+            # Do not log the recipient address, email body,
+            # API response, or exception text.
+            logger.error(
+                "SendGrid email delivery failed."
+            )
+
+            return False
 
 class EventPublisher:
     def __init__(self, redis_client=None):
@@ -141,278 +215,1285 @@ class EventPublisher:
 
 
 class NotificationRouter:
+    """
+    Route job-status notifications to the configured delivery
+    channels.
+
+    Customer SMS and email content must come from the
+    production-safe CommunicationService workflow.
+
+    Existing technician push/SMS and dispatcher in-app
+    delivery remain connected to their current services until
+    their delivery adapters are upgraded.
+    """
+
     STATUS_NOTIFICATIONS = {
         "ASSIGNED": {
             "technician": {
-                "channels": ["push", "sms"],
-                "template": "job_assigned",
+                "channels": [
+                    "push",
+                    "sms",
+                ],
+                "template": "technician_job_assigned",
                 "priority": "high",
             },
             "dispatcher": {
-                "channels": ["in_app"],
-                "template": "dispatcher_job_assigned",
+                "channels": [
+                    "in_app",
+                ],
+                "template": (
+                    "dispatcher_job_assigned"
+                ),
                 "priority": "normal",
                 "batch": True,
             },
         },
+
         "EN_ROUTE": {
             "technician": {
-                "channels": ["push"],
-                "template": "journey_started",
+                "channels": [
+                    "push",
+                ],
+                "template": "technician_journey_started",
                 "priority": "normal",
             },
             "customer": {
-                "channels": ["push", "sms"],
-                "template": "technician_en_route",
+                "channels": [
+                    "push",
+                    "sms",
+                ],
+                "template": (
+                    "technician_en_route"
+                ),
                 "priority": "high",
                 "include_eta": True,
             },
             "dispatcher": {
-                "channels": ["in_app"],
-                "template": "dispatcher_en_route",
+                "channels": [
+                    "in_app",
+                ],
+                "template": (
+                    "dispatcher_en_route"
+                ),
                 "priority": "normal",
                 "batch": True,
             },
         },
+
         "ON_SITE": {
             "technician": {
-                "channels": ["push"],
-                "template": "arrived_on_site",
+                "channels": [
+                    "push",
+                ],
+                "template": "technician_arrived_on_site",
                 "priority": "normal",
             },
             "customer": {
-                "channels": ["push", "sms"],
-                "template": "technician_arrived",
+                "channels": [
+                    "push",
+                    "sms",
+                ],
+                "template": (
+                    "technician_arrived"
+                ),
                 "priority": "high",
             },
             "dispatcher": {
-                "channels": ["in_app"],
-                "template": "dispatcher_on_site",
+                "channels": [
+                    "in_app",
+                ],
+                "template": (
+                    "dispatcher_on_site"
+                ),
                 "priority": "normal",
                 "batch": True,
             },
         },
+
         "COMPLETED": {
             "technician": {
-                "channels": ["push"],
-                "template": "job_completed",
+                "channels": [
+                    "push",
+                ],
+                "template": "technician_job_completed",
                 "priority": "normal",
             },
             "customer": {
-                "channels": ["push", "email"],
+                "channels": [
+                    "push",
+                    "email",
+                ],
                 "template": "job_done_survey",
                 "priority": "normal",
                 "include_survey_link": True,
             },
             "dispatcher": {
-                "channels": ["in_app"],
-                "template": "dispatcher_completed",
+                "channels": [
+                    "in_app",
+                ],
+                "template": (
+                    "dispatcher_completed"
+                ),
                 "priority": "normal",
                 "batch": True,
             },
         },
+
         "CANCELLED": {
             "technician": {
-                "channels": ["push", "sms"],
-                "template": "job_cancelled",
+                "channels": [
+                    "push",
+                    "sms",
+                ],
+                "template": "technician_job_cancelled",
                 "priority": "high",
             },
             "customer": {
-                "channels": ["push", "sms", "email"],
-                "template": "job_cancelled_customer",
+                "channels": [
+                    "push",
+                    "sms",
+                    "email",
+                ],
+                "template": (
+                    "job_cancelled_customer"
+                ),
                 "priority": "high",
             },
             "dispatcher": {
-                "channels": ["in_app", "email"],
-                "template": "dispatcher_cancelled",
+                "channels": [
+                    "in_app",
+                ],
+                "template": (
+                    "dispatcher_cancelled"
+                ),
                 "priority": "high",
                 "batch": False,
             },
         },
     }
-    
-    def __init__(self, fcm_service=None, sms_service=None, email_service=None, ws_manager=None, redis_client=None):
-        from .fcm import send_job_assignment_notification
-        from .twilio_sms import send_job_assignment_sms
-        from .socket_manager import ws_manager as default_ws_manager
-        
-        self.fcm = fcm_service or send_job_assignment_notification
-        self.sms = sms_service or send_job_assignment_sms
-        self.email = email_service or SendGridService()
-        self.ws = ws_manager or default_ws_manager
-        self.redis = redis_client or get_redis_client()
-    
-    async def route(self, event: JobStatusEvent) -> None:
-        routing = self.STATUS_NOTIFICATIONS.get(event.to_status, {})
-        
+
+    # Some old routing names do not have a corresponding
+    # approved built-in fallback template. Map them to the
+    # canonical communication event names.
+    NOTIFICATION_TYPE_ALIASES = {
+        "job_assigned": "job_assigned",
+        "dispatcher_job_assigned": (
+            "job_assigned"
+        ),
+
+        "journey_started": (
+            "technician_en_route"
+        ),
+        "technician_en_route": (
+            "technician_en_route"
+        ),
+        "dispatcher_en_route": (
+            "technician_en_route"
+        ),
+
+        "arrived_on_site": (
+            "technician_arrived"
+        ),
+        "technician_arrived": (
+            "technician_arrived"
+        ),
+        "dispatcher_on_site": (
+            "technician_arrived"
+        ),
+
+        "job_completed": "job_completed",
+        "job_done_survey": "job_completed",
+        "dispatcher_completed": (
+            "job_completed"
+        ),
+
+        "job_cancelled": "job_cancelled",
+        "job_cancelled_customer": (
+            "job_cancelled"
+        ),
+        "dispatcher_cancelled": (
+            "job_cancelled"
+        ),
+    }
+
+    def __init__(
+        self,
+        fcm_service=None,
+        sms_service=None,
+        email_service=None,
+        ws_manager=None,
+        redis_client=None,
+        communication_integration=None,
+    ) -> None:
+        """
+        Initialize notification delivery dependencies.
+
+        communication_integration may be replaced by a fake in
+        tests, preventing real AI-provider calls.
+        """
+
+        if fcm_service is None:
+            from .fcm import (
+                send_job_assignment_notification,
+            )
+
+            fcm_service = (
+                send_job_assignment_notification
+            )
+
+        if sms_service is None:
+            from .twilio_sms import (
+                send_job_assignment_sms,
+            )
+
+            sms_service = (
+                send_job_assignment_sms
+            )
+
+        if ws_manager is None:
+            from .socket_manager import (
+                ws_manager as default_ws_manager,
+            )
+
+            ws_manager = default_ws_manager
+
+        self.fcm = fcm_service
+        self.sms = sms_service
+
+        self.email = (
+            email_service
+            if email_service is not None
+            else SendGridService()
+        )
+
+        self.ws = ws_manager
+
+        self.redis = (
+            redis_client
+            if redis_client is not None
+            else get_redis_client()
+        )
+
+        self.communication = (
+            communication_integration
+            if communication_integration
+            is not None
+            else CommunicationIntegration(
+                redis_client=self.redis
+            )
+        )
+
+    # ======================================================
+    # Main Routing
+    # ======================================================
+
+    async def route(
+        self,
+        event: JobStatusEvent,
+    ) -> None:
+        """
+        Route one job-status event.
+        """
+
+        routing = self.STATUS_NOTIFICATIONS.get(
+            event.to_status,
+            {},
+        )
+
         for recipient_type, config in routing.items():
-            # Check user preferences
-            if not await self._check_preferences(event, recipient_type):
+            if not await self._check_preferences(
+                event,
+                recipient_type,
+            ):
                 continue
-            
-            # Build notification payload
-            payload = self._build_payload(event, recipient_type, config)
-            
-            # Send via each channel
+
+            payload = self._build_payload(
+                event,
+                recipient_type,
+                config,
+            )
+
+            notification_type = (
+                self._resolve_notification_type(
+                    config.get(
+                        "template",
+                        "",
+                    )
+                )
+            )
+
             for channel in config["channels"]:
-                event.notification_channels.append(channel)
+                self._record_attempted_channel(
+                    event,
+                    channel,
+                )
+
                 if channel == "push":
-                    await self._send_push(event, recipient_type, payload, config["priority"])
+                    await self._send_push(
+                        event,
+                        recipient_type,
+                        payload,
+                        config["priority"],
+                        notification_type,
+                    )
+
                 elif channel == "sms":
-                    await self._send_sms(event, recipient_type, payload)
+                    await self._send_sms(
+                        event,
+                        recipient_type,
+                        payload,
+                        notification_type,
+                    )
+
                 elif channel == "email":
-                    await self._send_email(event, recipient_type, payload)
+                    await self._send_email(
+                        event,
+                        recipient_type,
+                        payload,
+                        config,
+                        notification_type,
+                    )
+
                 elif channel == "in_app":
-                    await self._send_in_app(event, recipient_type, payload, config.get("batch", False))
-    
-    def _build_payload(self, event: JobStatusEvent, recipient_type: str, config: dict) -> dict:
+                    await self._send_in_app(
+                        event,
+                        recipient_type,
+                        payload,
+                        config.get(
+                            "batch",
+                            False,
+                        ),
+                        notification_type,
+                    )
+
+    # ======================================================
+    # Legacy Routing Name Normalization
+    # ======================================================
+
+    @classmethod
+    def _resolve_notification_type(
+        cls,
+        template_name: str,
+    ) -> str:
+        """
+        Convert a legacy template name into a canonical
+        CommunicationContext notification type.
+        """
+
+        normalized = str(
+            template_name
+        ).strip().lower()
+
+        return cls.NOTIFICATION_TYPE_ALIASES.get(
+            normalized,
+            normalized,
+        )
+
+    # ======================================================
+    # Safe AI Communication Generation
+    # ======================================================
+
+    async def _generate_safe_communication(
+        self,
+        *,
+        event: JobStatusEvent,
+        recipient_type: str,
+        channel: str,
+        notification_type: str,
+    ):
+        """
+        Generate one final guardrail-approved communication.
+
+        A generation failure prevents delivery. This method does
+        not fall back to a hardcoded recipient-facing message,
+        because CommunicationService already owns the approved
+        fallback process.
+        """
+
+        try:
+            result = await self.communication.generate(
+                event=event,
+                recipient_type=recipient_type,
+                channel=channel,
+                notification_type=(
+                    notification_type
+                ),
+                locale="en",
+            )
+
+        except CommunicationIntegrationError:
+            logger.error(
+                "Safe communication generation failed. "
+                "Notification delivery was skipped. "
+                "job_id=%s channel=%s recipient_type=%s",
+                event.job_id,
+                channel,
+                recipient_type,
+            )
+
+            return None
+
+        except Exception:
+            # Test doubles or unexpected adapter failures are
+            # also handled without leaking exception content.
+            logger.error(
+                "Unexpected safe communication failure. "
+                "Notification delivery was skipped. "
+                "job_id=%s channel=%s recipient_type=%s",
+                event.job_id,
+                channel,
+                recipient_type,
+            )
+
+            return None
+
+        expected_channel = (
+            channel
+            .strip()
+            .upper()
+            .replace(
+                "-",
+                "_",
+            )
+        )
+
+        if (
+            result.decision.channel
+            != expected_channel
+        ):
+            logger.error(
+                "Safe communication returned the wrong "
+                "channel. Notification delivery was skipped. "
+                "job_id=%s",
+                event.job_id,
+            )
+
+            return None
+
+        return result
+
+    # ======================================================
+    # Payload
+    # ======================================================
+
+    def _build_payload(
+        self,
+        event: JobStatusEvent,
+        recipient_type: str,
+        config: dict,
+    ) -> dict:
+        """
+        Build the existing structured event payload.
+
+        This payload continues to support dispatcher digests and
+        existing non-AI delivery adapters.
+        """
+
         base = {
             "job_id": event.job_id,
             "job_title": event.job_title,
             "job_location": event.job_location,
             "status": event.to_status,
-            "timestamp": event.timestamp.isoformat() if hasattr(event.timestamp, "isoformat") else str(event.timestamp),
-            "deep_link": f"https://fieldops.io/jobs/{event.job_id}",
+            "timestamp": (
+                event.timestamp.isoformat()
+                if hasattr(
+                    event.timestamp,
+                    "isoformat",
+                )
+                else str(
+                    event.timestamp
+                )
+            ),
+            "deep_link": (
+                "https://fieldops.io/jobs/"
+                f"{event.job_id}"
+            ),
         }
-        
+
         if recipient_type == "technician":
-            base["technician_name"] = event.technician_name
+            base["technician_name"] = (
+                event.technician_name
+            )
+
         elif recipient_type == "customer":
-            base["customer_name"] = event.customer_name
-            if config.get("include_eta"):
-                base["eta"] = event.eta or "calculating..."
-            if config.get("include_survey_link"):
-                base["survey_link"] = f"https://fieldops.io/survey/{event.job_id}"
+            base["customer_name"] = (
+                event.customer_name
+            )
+
+            if config.get(
+                "include_eta"
+            ):
+                base["eta"] = (
+                    event.eta
+                    or "calculating..."
+                )
+
+            if config.get(
+                "include_survey_link"
+            ):
+                base["survey_link"] = (
+                    "https://fieldops.io/survey/"
+                    f"{event.job_id}"
+                )
+
         elif recipient_type == "dispatcher":
-            base["actor_name"] = event.actor_id
-        
+            base["actor_name"] = (
+                event.actor_id
+            )
+
         return base
-    
-    async def _check_preferences(self, event: JobStatusEvent, recipient_type: str) -> bool:
-        if recipient_type == "technician" and event.technician_id:
+
+    # ======================================================
+    # Preferences
+    # ======================================================
+
+    async def _check_preferences(
+        self,
+        event: JobStatusEvent,
+        recipient_type: str,
+    ) -> bool:
+        """
+        Apply existing technician notification preferences.
+        """
+
+        if (
+            recipient_type
+            == "technician"
+            and event.technician_id
+        ):
             db = SessionLocal()
+
             try:
-                tech = db.query(Technician).filter(Technician.tech_id == event.technician_id).first()
+                tech = (
+                    db.query(
+                        Technician
+                    )
+                    .filter(
+                        Technician.tech_id
+                        == event.technician_id
+                    )
+                    .first()
+                )
+
                 if tech:
-                    # check opt out settings
-                    # If the status requires SMS, we check sms_opt_out
-                    routing = self.STATUS_NOTIFICATIONS.get(event.to_status, {}).get("technician", {})
-                    channels = routing.get("channels", [])
-                    
-                    if "sms" in channels and tech.sms_opt_out == 1:
-                        logger.info(f"Tech {tech.tech_id} has opted out of SMS notifications.")
-                        # SMS is disabled, but other channels might be allowed, let's keep routing but sms skipped inside sender
-                    
-                    # check preferences dictionary
-                    prefs = get_technician_preferences(db, tech.tech_id)
-                    # if they turned off all notification preferences, we honor it
-                    if not prefs.get("sms_enabled", True) and not prefs.get("push_enabled", True) and not prefs.get("inapp_enabled", True):
+                    routing = (
+                        self.STATUS_NOTIFICATIONS
+                        .get(
+                            event.to_status,
+                            {},
+                        )
+                        .get(
+                            "technician",
+                            {},
+                        )
+                    )
+
+                    channels = routing.get(
+                        "channels",
+                        [],
+                    )
+
+                    if (
+                        "sms" in channels
+                        and tech.sms_opt_out == 1
+                    ):
+                        logger.info(
+                            "Technician SMS delivery is "
+                            "disabled by opt-out preference. "
+                            "tech_id=%s",
+                            tech.tech_id,
+                        )
+
+                    preferences = (
+                        get_technician_preferences(
+                            db,
+                            tech.tech_id,
+                        )
+                    )
+
+                    if (
+                        not preferences.get(
+                            "sms_enabled",
+                            True,
+                        )
+                        and not preferences.get(
+                            "push_enabled",
+                            True,
+                        )
+                        and not preferences.get(
+                            "inapp_enabled",
+                            True,
+                        )
+                    ):
                         return False
+
             finally:
                 db.close()
+
         return True
-    
-    async def _send_push(self, event: JobStatusEvent, recipient_type: str, payload: dict, priority: str):
-        target_id = event.technician_id if recipient_type == "technician" else event.customer_id
-        if not target_id:
-            logger.warning(f"Push skipped: missing ID for recipient_type {recipient_type}")
-            # If FCM token is missing, functional requirements say: fallback to SMS!
-            if "sms" not in self.STATUS_NOTIFICATIONS.get(event.to_status, {}).get(recipient_type, {}).get("channels", []):
-                await self._send_sms(event, recipient_type, payload)
-            return
+
+    # ======================================================
+    # Push Delivery — Existing Adapter
+    # ======================================================
+
+    async def _send_push(
+        self,
+        event: JobStatusEvent,
+        recipient_type: str,
+        payload: dict,
+        priority: str,
+        notification_type: str,
+    ) -> bool:
+        """
+        Send guardrail-approved push communication.
+
+        Technician push is supported because technicians have an
+        FCM token in the current backend.
+
+        Customer push cannot yet be delivered because the backend
+        does not currently store a customer FCM/device token.
+        """
+
+        _ = payload
+
+        routing_channels = (
+            self.STATUS_NOTIFICATIONS
+            .get(
+                event.to_status,
+                {},
+            )
+            .get(
+                recipient_type,
+                {},
+            )
+            .get(
+                "channels",
+                [],
+            )
+        )
+
+        # ------------------------------------------------------
+        # Customer push is not currently configured
+        # ------------------------------------------------------
+
+        if recipient_type != "technician":
+            logger.info(
+                "Push delivery is unavailable for this recipient "
+                "type. job_id=%s recipient_type=%s",
+                event.job_id,
+                recipient_type,
+            )
+
+            # Use the already protected SMS path when the routing
+            # configuration does not contain SMS.
+            if (
+                recipient_type == "customer"
+                and "sms" not in routing_channels
+            ):
+                self._record_attempted_channel(
+                    event,
+                    "sms",
+                )
+
+                return await self._send_sms(
+                    event,
+                    recipient_type,
+                    payload,
+                    notification_type,
+                )
+
+            return False
+
+        # ------------------------------------------------------
+        # Technician push
+        # ------------------------------------------------------
+
+        if not event.technician_id:
+            logger.warning(
+                "Technician push skipped because the technician "
+                "ID is missing. job_id=%s",
+                event.job_id,
+            )
+
+            if "sms" not in routing_channels:
+                self._record_attempted_channel(
+                    event,
+                    "sms",
+                )
+
+                return await self._send_sms(
+                    event,
+                    "technician",
+                    payload,
+                    notification_type,
+                )
+
+            return False
 
         db = SessionLocal()
+
         try:
-            # Look up FCM token
-            token = None
-            if recipient_type == "technician":
-                tech = db.query(Technician).filter(Technician.tech_id == target_id).first()
-                if tech:
-                    token = tech.fcm_token
-            
-            if token:
-                # Call FCM service
-                # Since FCM service accepts list of tech_ids, we can call it or wrap it
-                # Note: fcm.py takes a list of tech_ids
-                # In tests, fcm_service is mocked/patched, so we can call send_job_assignment_notification directly
-                try:
-                    await self.fcm(db, event.job_id, event.job_title, event.job_location, [target_id], correlation_id_ctx.get())
-                except Exception as e:
-                    logger.error(f"FCM push send failed: {e}")
-            else:
-                logger.warning(f"Push skipped: missing FCM token for {recipient_type} {target_id}. Falling back to SMS.")
-                if "sms" not in self.STATUS_NOTIFICATIONS.get(event.to_status, {}).get(recipient_type, {}).get("channels", []):
-                    await self._send_sms(event, recipient_type, payload)
+            technician = (
+                db.query(
+                    Technician
+                )
+                .filter(
+                    Technician.tech_id
+                    == event.technician_id
+                )
+                .first()
+            )
+
+            if (
+                technician is None
+                or not technician.fcm_token
+            ):
+                logger.warning(
+                    "Technician push skipped because no FCM "
+                    "token is available. job_id=%s",
+                    event.job_id,
+                )
+
+                if "sms" not in routing_channels:
+                    self._record_attempted_channel(
+                        event,
+                        "sms",
+                    )
+
+                    return await self._send_sms(
+                        event,
+                        "technician",
+                        payload,
+                        notification_type,
+                    )
+
+                return False
+
+            communication = (
+                await self._generate_safe_communication(
+                    event=event,
+                    recipient_type="technician",
+                    channel="push",
+                    notification_type=(
+                        notification_type
+                    ),
+                )
+            )
+
+            if communication is None:
+                if "sms" not in routing_channels:
+                    self._record_attempted_channel(
+                        event,
+                        "sms",
+                    )
+
+                    return await self._send_sms(
+                        event,
+                        "technician",
+                        payload,
+                        notification_type,
+                    )
+
+                return False
+
+            title = communication.decision.title
+
+            if title is None:
+                logger.error(
+                    "Safe push communication did not contain "
+                    "a title. Delivery was skipped. job_id=%s",
+                    event.job_id,
+                )
+
+                return False
+
+            if len(title) > 50:
+                logger.error(
+                    "Final push title exceeds the transport "
+                    "limit. Delivery was skipped. job_id=%s",
+                    event.job_id,
+                )
+
+                return False
+
+            delivery_result = await self.fcm(
+                db,
+                event.job_id,
+                event.job_title,
+                event.job_location,
+                [
+                    event.technician_id,
+                ],
+                correlation_id_ctx.get(),
+                notification_title=title,
+                notification_body=(
+                    communication.decision.message
+                ),
+                notification_type=(
+                    notification_type
+                ),
+                priority=priority,
+            )
+
+            if isinstance(
+                delivery_result,
+                dict,
+            ):
+                return (
+                    int(
+                        delivery_result.get(
+                            "sent",
+                            0,
+                        )
+                    )
+                    > 0
+                )
+
+            return bool(
+                delivery_result
+            )
+
+        except Exception:
+            logger.error(
+                "Technician push delivery failed. "
+                "job_id=%s",
+                event.job_id,
+            )
+
+            return False
+
         finally:
             db.close()
+    # ======================================================
+    # SMS Delivery
+    # ======================================================
 
-    async def _send_sms(self, event: JobStatusEvent, recipient_type: str, payload: dict):
-        db = SessionLocal()
-        try:
-            if recipient_type == "technician" and event.technician_id:
-                await self.sms(db, event.job_id, event.job_title, event.job_location, "HIGH", [event.technician_id], correlation_id_ctx.get())
-            elif recipient_type == "customer" and event.customer_phone:
-                # For customer SMS, since we do not have customer model, we can invoke the Twilio client directly or simulate
-                from .twilio_sms import twilio_client, TWILIO_PHONE_NUMBER
-                message_body = f"FieldOps alert: Customer {event.customer_name}, your job status is now {event.to_status}."
-                if event.to_status == "EN_ROUTE":
-                    message_body += f" ETA is {event.eta}."
-                
-                if twilio_client:
-                    try:
-                        loop = asyncio.get_event_loop()
-                        await loop.run_in_executor(
-                            None,
-                            lambda: twilio_client.messages.create(
-                                body=message_body,
-                                from_=TWILIO_PHONE_NUMBER,
-                                to=event.customer_phone
+    async def _send_sms(
+        self,
+        event: JobStatusEvent,
+        recipient_type: str,
+        payload: dict,
+        notification_type: str,
+    ) -> bool:
+        """
+        Send guardrail-approved SMS communication.
+
+        Both customer and technician recipient-facing content now
+        comes from CommunicationService.
+        """
+
+        _ = payload
+
+        if recipient_type not in {
+            "customer",
+            "technician",
+        }:
+            return False
+
+        # ------------------------------------------------------
+        # Generate safe content first
+        # ------------------------------------------------------
+
+        communication = (
+            await self._generate_safe_communication(
+                event=event,
+                recipient_type=recipient_type,
+                channel="sms",
+                notification_type=(
+                    notification_type
+                ),
+            )
+        )
+
+        if communication is None:
+            return False
+
+        message_body = (
+            communication.decision.message
+        )
+
+        # Final length check after real names and other values have
+        # been restored.
+        if len(message_body) > 160:
+            logger.error(
+                "Final SMS content exceeds the transport limit. "
+                "Delivery was skipped. job_id=%s",
+                event.job_id,
+            )
+
+            return False
+
+        # ------------------------------------------------------
+        # Technician delivery through the existing tracked SMS
+        # service
+        # ------------------------------------------------------
+
+        if recipient_type == "technician":
+            if not event.technician_id:
+                logger.warning(
+                    "Technician SMS skipped because the "
+                    "technician ID is missing. job_id=%s",
+                    event.job_id,
+                )
+
+                return False
+
+            db = SessionLocal()
+
+            try:
+                delivery_result = await self.sms(
+                    db,
+                    event.job_id,
+                    event.job_title,
+                    event.job_location,
+                    "HIGH",
+                    [
+                        event.technician_id,
+                    ],
+                    correlation_id_ctx.get(),
+                    message_body=message_body,
+                )
+
+                if isinstance(
+                    delivery_result,
+                    dict,
+                ):
+                    return (
+                        int(
+                            delivery_result.get(
+                                "sent",
+                                0,
                             )
                         )
-                        logger.info(f"Customer SMS sent to {event.customer_phone}")
-                    except Exception as e:
-                        logger.error(f"Customer SMS delivery failed: {e}")
-                else:
-                    logger.info(f"[SMS Mock] Customer SMS to {event.customer_phone}: {message_body}")
-        finally:
-            db.close()
-
-    async def _send_email(self, event: JobStatusEvent, recipient_type: str, payload: dict):
-        email_to = None
-        if recipient_type == "customer":
-            email_to = event.customer_email
-        
-        if email_to:
-            subject = f"FieldOps Job Status Update: {event.to_status}"
-            body_html = f"<p>Dear {event.customer_name or 'Valued Customer'},</p>"
-            body_html += f"<p>Your job '{event.job_title}' at {event.job_location} is now <strong>{event.to_status}</strong>.</p>"
-            if event.to_status == "COMPLETED":
-                body_html += f"<p>Please complete our service survey: <a href='https://fieldops.io/survey/{event.job_id}'>Take Survey</a></p>"
-            
-            await self.email.send_email(email_to, subject, body_html)
-
-    async def _send_in_app(self, event: JobStatusEvent, recipient_type: str, payload: dict, batch: bool):
-        if recipient_type == "dispatcher":
-            if batch:
-                if self.redis:
-                    try:
-                        self.redis.lpush(
-                            f"dispatcher_digest:{event.tenant_id}",
-                            json.dumps(payload)
-                        )
-                        logger.info(f"Queued dispatcher notification to digest for tenant {event.tenant_id}")
-                    except Exception as e:
-                        logger.error(f"Failed to queue dispatcher digest: {e}")
-            else:
-                # Immediate broadcast
-                try:
-                    await self.ws.broadcast(
-                        f"tenant:{event.tenant_id}:dispatchers",
-                        {
-                            "type": "notification",
-                            "payload": payload,
-                        }
+                        > 0
                     )
-                    logger.info(f"Broadcasted immediate dispatcher notification for tenant {event.tenant_id}")
-                except Exception as e:
-                    logger.error(f"Failed to broadcast immediate dispatcher notification: {e}")
+
+                return bool(
+                    delivery_result
+                )
+
+            except Exception:
+                logger.error(
+                    "Technician SMS delivery failed. "
+                    "job_id=%s",
+                    event.job_id,
+                )
+
+                return False
+
+            finally:
+                db.close()
+
+        # ------------------------------------------------------
+        # Customer delivery
+        # ------------------------------------------------------
+
+        if not event.customer_phone:
+            logger.warning(
+                "Customer SMS skipped because the phone number "
+                "is missing. job_id=%s",
+                event.job_id,
+            )
+
+            return False
+
+        from .twilio_sms import (
+            TWILIO_ACCOUNT_SID,
+            TWILIO_PHONE_NUMBER,
+            twilio_client,
+        )
+
+        local_mock_mode = (
+            twilio_client is None
+            or "dummy"
+            in TWILIO_ACCOUNT_SID.lower()
+        )
+
+        if local_mock_mode:
+            logger.info(
+                "Customer SMS delivery simulated. "
+                "job_id=%s",
+                event.job_id,
+            )
+
+            return True
+
+        try:
+            loop = asyncio.get_running_loop()
+
+            await loop.run_in_executor(
+                None,
+                lambda: (
+                    twilio_client
+                    .messages
+                    .create(
+                        body=message_body,
+                        from_=TWILIO_PHONE_NUMBER,
+                        to=event.customer_phone,
+                    )
+                ),
+            )
+
+            logger.info(
+                "Customer SMS delivery completed. "
+                "job_id=%s",
+                event.job_id,
+            )
+
+            return True
+
+        except Exception:
+            logger.error(
+                "Customer SMS delivery failed. "
+                "job_id=%s",
+                event.job_id,
+            )
+
+            return False  
+        
+    # ======================================================
+    # Email Delivery
+    # ======================================================
+
+    async def _send_email(
+        self,
+        event: JobStatusEvent,
+        recipient_type: str,
+        payload: dict,
+        config: dict,
+        notification_type: str,
+    ) -> bool:
+        """
+        Send guardrail-approved customer email.
+
+        The survey link is generated locally by the backend. It
+        is not AI-generated and does not contain customer PII.
+        """
+
+        _ = payload
+
+        if recipient_type != "customer":
+            return False
+
+        if not event.customer_email:
+            logger.warning(
+                "Customer email delivery skipped because "
+                "the email address is missing. job_id=%s",
+                event.job_id,
+            )
+
+            return False
+
+        communication = (
+            await self._generate_safe_communication(
+                event=event,
+                recipient_type="customer",
+                channel="email",
+                notification_type=(
+                    notification_type
+                ),
+            )
+        )
+
+        if communication is None:
+            return False
+
+        subject = (
+            communication.decision.subject
+        )
+
+        body_html = (
+            communication.decision.message
+        )
+
+        if subject is None:
+            if len(subject) > 78:
+                logger.error(
+                    "Final email subject exceeds the transport limit. "
+                    "Delivery was skipped. job_id=%s",
+                    event.job_id,
+                )
+
+                return False
+
+        # This deterministic URL is backend-generated. It is not
+        # taken from AI output or free-form user input.
+        if config.get(
+            "include_survey_link"
+        ):
+            safe_job_id = quote(
+                str(
+                    event.job_id
+                ),
+                safe="",
+            )
+
+            survey_url = (
+                "https://fieldops.io/survey/"
+                f"{safe_job_id}"
+            )
+
+            body_html += (
+                "<p>"
+                "Please complete our service survey: "
+                f'<a href="'
+                f'{escape(survey_url, quote=True)}'
+                f'">Take Survey</a>'
+                "</p>"
+            )
+
+        delivered = await self.email.send_email(
+            event.customer_email,
+            subject,
+            body_html,
+        )
+
+        if delivered:
+            logger.info(
+                "Customer email delivery completed. "
+                "job_id=%s",
+                event.job_id,
+            )
+
+        return bool(
+            delivered
+        )
+
+    # ======================================================
+    # Existing Dispatcher In-App Delivery
+    # ======================================================
+
+    async def _send_in_app(
+        self,
+        event: JobStatusEvent,
+        recipient_type: str,
+        payload: dict,
+        batch: bool,
+        notification_type: str,
+    ) -> bool:
+        """
+        Send guardrail-approved dispatcher in-app communication.
+
+        Batch notifications store safe title/message content in
+        Redis for the dispatcher digest.
+
+        Immediate notifications send the same safe content through
+        WebSocket.
+        """
+
+        if recipient_type != "dispatcher":
+            return False
+
+        communication = (
+            await self._generate_safe_communication(
+                event=event,
+                recipient_type="dispatcher",
+                channel="in_app",
+                notification_type=(
+                    notification_type
+                ),
+            )
+        )
+
+        if communication is None:
+            return False
+
+        safe_payload = {
+            **payload,
+            "notification_type": (
+                notification_type
+            ),
+            "title": (
+                communication.decision.title
+                or "FieldOps Update"
+            ),
+            "message": (
+                communication.decision.message
+            ),
+            "channel": "IN_APP",
+        }
+
+        if batch:
+            if not self.redis:
+                logger.error(
+                    "Dispatcher digest queue is unavailable. "
+                    "tenant_id=%s",
+                    event.tenant_id,
+                )
+
+                return False
+
+            try:
+                self.redis.lpush(
+                    (
+                        "dispatcher_digest:"
+                        f"{event.tenant_id}"
+                    ),
+                    json.dumps(
+                        safe_payload
+                    ),
+                )
+
+                logger.info(
+                    "Safe dispatcher notification queued for "
+                    "digest. tenant_id=%s",
+                    event.tenant_id,
+                )
+
+                return True
+
+            except Exception:
+                logger.error(
+                    "Dispatcher digest queueing failed. "
+                    "tenant_id=%s",
+                    event.tenant_id,
+                )
+
+                return False
+
+        try:
+            await self.ws.broadcast(
+                (
+                    "tenant:"
+                    f"{event.tenant_id}:"
+                    "dispatchers"
+                ),
+                {
+                    "type": "notification",
+                    "payload": safe_payload,
+                },
+            )
+
+            logger.info(
+                "Safe dispatcher notification broadcast. "
+                "tenant_id=%s",
+                event.tenant_id,
+            )
+
+            return True
+
+        except Exception:
+            logger.error(
+                "Dispatcher notification broadcast failed. "
+                "tenant_id=%s",
+                event.tenant_id,
+            )
+
+            return False
+    # ======================================================
+    # Audit Helper
+    # ======================================================
+
+    @staticmethod
+    def _record_attempted_channel(
+        event: JobStatusEvent,
+        channel: str,
+    ) -> None:
+        """
+        Add an attempted channel without duplicates.
+        """
+
+        if channel not in event.notification_channels:
+            event.notification_channels.append(
+                channel
+            )

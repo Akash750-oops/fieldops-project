@@ -4,7 +4,7 @@ from sqlalchemy import desc
 
 from .dispatch import verify_jwt_token
 from ..database import get_db
-from ..models import NotificationTemplate
+from ..models import NotificationTemplate,TemplateVersion
 from ..schemas import TemplateCreate, TemplateResponse, TemplatePreviewRequest, TemplatePreviewResponse
 from ..services.template_engine import render_preview
 
@@ -19,20 +19,22 @@ async def create_template(
     authorization: str = Depends(verify_jwt_token),
     db: Session = Depends(get_db)
 ):
-    # Find existing active template of same type, channel, locale
+    # Find existing active template of same type/channel/locale
     existing = db.query(NotificationTemplate).filter(
         NotificationTemplate.type == payload.type,
         NotificationTemplate.channel == payload.channel,
         NotificationTemplate.locale == payload.locale,
-        NotificationTemplate.is_active == 1
+        NotificationTemplate.is_active == True
     ).first()
 
     new_version = 1
+
     if existing:
         new_version = existing.version + 1
-        existing.is_active = 0
+        existing.is_active = False
         db.commit()
 
+    # Create the active template
     new_template = NotificationTemplate(
         name=payload.name,
         type=payload.type,
@@ -42,13 +44,30 @@ async def create_template(
         title_template=payload.title_template,
         body_template=payload.body_template,
         version=new_version,
-        is_active=1
+        is_active=True,
     )
-    
+
     db.add(new_template)
     db.commit()
     db.refresh(new_template)
-    
+
+    # -------------------------------------------------
+    # Automatically create a version history record
+    # -------------------------------------------------
+
+    version = TemplateVersion(
+        template_id=new_template.id,
+        version_number=new_version,
+        title_template=new_template.title_template,
+        body_template=new_template.body_template,
+        created_by="system",
+        change_summary="Initial version" if new_version == 1 else f"Version {new_version}",
+        is_active=True,
+    )
+
+    db.add(version)
+    db.commit()
+
     return new_template
 
 @router.get("", response_model=list[TemplateResponse])

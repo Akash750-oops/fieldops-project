@@ -8,14 +8,15 @@ import os
 import asyncio
 import redis.asyncio as aioredis
 
-from .database import Base, engine, SessionLocal
-from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking
+from .database import SessionLocal
+from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking,template_version_routes,brand_safety_admin
 from . import models
 from .services.justification_validator import JustificationValidationError
 from .worker import start_scheduler, stop_scheduler
 from .services.tracking_manager import connection_manager
 from .services.broadcast_scheduler import BroadcastScheduler
 from .routes.tracking import redis_gps_listener
+from .services.default_template import seed_default_templates
 
 scheduler = None
 redis_async_client = None
@@ -54,6 +55,16 @@ async def lifespan(app: FastAPI):
         redis_pubsub_client = None
         listener_task = None
         scheduler = None
+        
+    # Seed default notification templates
+    db = SessionLocal()
+    try:
+        seed_default_templates(db)
+        print("Default notification templates seeded successfully.")
+    except Exception as e:
+        print(f"Failed to seed default templates: {e}")
+    finally:
+        db.close()
     
     yield
     
@@ -166,10 +177,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-try:
-    Base.metadata.create_all(bind=engine)
-except Exception as e:
-    print(f"Warning: Could not create tables on startup: {e}")
 
 app.include_router(jobs.router)
 app.include_router(jobs.api_v1_router)
@@ -189,6 +196,9 @@ app.include_router(gps.router)
 app.include_router(admin_gps.router)
 app.include_router(eta.router)
 app.include_router(tracking.router)
+app.include_router(templates.router)
+app.include_router(template_version_routes.router)
+app.include_router(brand_safety_admin.router)
 
 from .services.socket_manager import sio_app
 app.mount("/socket.io", sio_app)

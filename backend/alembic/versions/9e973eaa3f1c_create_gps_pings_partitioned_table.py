@@ -22,7 +22,7 @@ def upgrade() -> None:
     # 1. Create tenants table if it does not exist
     op.execute("""
     CREATE TABLE IF NOT EXISTS tenants (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        id VARCHAR(50) PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
         created_at TIMESTAMPTZ DEFAULT NOW()
     );
@@ -50,7 +50,7 @@ def upgrade() -> None:
         accuracy DECIMAL(6, 2),
         altitude DECIMAL(8, 2),
         created_at TIMESTAMPTZ DEFAULT NOW(),
-        tenant_id UUID NOT NULL REFERENCES tenants(id),
+        tenant_id VARCHAR(50) NOT NULL REFERENCES tenants(id),
         PRIMARY KEY (id, timestamp)
     ) PARTITION BY RANGE (timestamp);
     """)

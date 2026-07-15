@@ -280,6 +280,55 @@ class TemplatePreviewResponse(BaseModel):
     rendered_title: Optional[str] = None
     rendered_body: str
 
+class TemplateVersionResponse(BaseModel):
+    id: int
+    template_id: int
+    version_number: int
+    title_template: Optional[str] = None
+    body_template: str
+    created_by: str
+    created_at: datetime
+    change_summary: Optional[str] = None
+    is_active: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+class TemplateVersionCreate(BaseModel):
+    title_template: Optional[str] = None
+    body_template: str
+    created_by: str
+    change_summary: Optional[str] = None
+
+class TemplateRestoreRequest(BaseModel):
+    version_number: int
+    restored_by: str
+
+class TemplateRestoreResponse(BaseModel):
+    template_id: int
+    previous_version: int
+    restored_version: int
+    new_active_version: int
+    restored_by: str
+    restored_at: datetime
+
+class TemplateVersionHistoryResponse(BaseModel):
+    template_id: int
+    current_version: int
+    versions: list[TemplateVersionResponse] 
+
+class TemplateCompareRequest(BaseModel):
+    old_version: int
+    new_version: int
+
+class TemplateCompareResponse(BaseModel):
+    template_id: int
+    old_version: int
+    new_version: int
+    old_title: Optional[str] = None
+    new_title: Optional[str] = None
+    old_body: str
+    new_body: str
+
 class NotificationPreferences(BaseModel):
     sms_enabled: bool = True
     push_enabled: bool = True

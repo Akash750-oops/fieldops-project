@@ -74,7 +74,7 @@ def update_schema():
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS geofence_radius DOUBLE PRECISION DEFAULT 100.0;",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS site_latitude DOUBLE PRECISION;",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS site_longitude DOUBLE PRECISION;",
-        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS site_address TEXT;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS site_address VARCHAR(255);",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP WITH TIME ZONE;",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS en_route_at TIMESTAMP WITH TIME ZONE;",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS on_site_at TIMESTAMP WITH TIME ZONE;",
@@ -100,6 +100,8 @@ def update_schema():
         # New columns for shareable customer tracking links
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS share_token VARCHAR(36) UNIQUE;",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS share_token_expires_at TIMESTAMP WITH TIME ZONE;"
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS gps_active BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS work_report TEXT;",
     ]
     
     with engine.connect() as connection:
@@ -112,6 +114,7 @@ def update_schema():
                 print(f"Error executing query: {e}")
                 connection.rollback()
     print("Database schema updated successfully.")
+
 
 if __name__ == "__main__":
     update_schema()

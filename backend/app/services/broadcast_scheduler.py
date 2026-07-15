@@ -188,7 +188,7 @@ class BroadcastScheduler:
         from sqlalchemy import text
 
         # Use UTC-naive threshold for compatibility with both SQLite and PG
-        threshold = datetime.utcnow() - timedelta(seconds=GPS_STALENESS_S)
+        threshold = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=GPS_STALENESS_S)
         threshold_str = threshold.strftime("%Y-%m-%d %H:%M:%S")
 
         # We join on technician_id (FK) rather than tech_id because the

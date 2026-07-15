@@ -425,6 +425,12 @@ def transition_job(job, new_status: JobStatus, actor_id: str, actor_role: str, r
     # 3. Get transition rule (checked by validator, but retrieved here for side effects)
     rule = TRANSITION_MATRIX.get((current, target))
 
+    # 3b. Enforce reason requirement for backward/cancellation transitions
+    if rule and rule.requires_reason and not reason and not is_override:
+        raise ReasonRequiredError(
+            f"Reason is required for {current.value} -> {target.value} transition"
+        )
+
     # 4. Execute side effects (synchronously before committing)
     if rule and rule.side_effects:
         for effect in rule.side_effects:
@@ -433,7 +439,7 @@ def transition_job(job, new_status: JobStatus, actor_id: str, actor_role: str, r
     # 5. Apply updates in-memory
     job.status = target.value
     
-    now_utc = datetime.utcnow()
+    now_utc = datetime.now(timezone.utc)
     # Update status timestamp
     ts_field = f"{target.value.lower()}_at"
     if hasattr(job, ts_field):

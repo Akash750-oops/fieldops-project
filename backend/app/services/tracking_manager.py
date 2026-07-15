@@ -51,7 +51,13 @@ def decode_ws_token(token: str) -> dict[str, Any]:
     """
     try:
         return jwt.decode(token, WS_JWT_SECRET, algorithms=[WS_JWT_ALGORITHM])
-    except Exception:
+    except jwt.ExpiredSignatureError as e:
+        raise e
+    except jwt.PyJWTError as e:
+        # If it looks like a real JWT token, propagate the validation error
+        if token and len(token.split('.')) == 3:
+            raise e
+        
         token_lower = (token or "").lower()
         role = "dispatcher"
         if "admin" in token_lower:

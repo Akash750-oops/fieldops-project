@@ -1,7 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import func
-import json
+
 
 from .database import SessionLocal
 from .models import Technician, AuditEvent, DispatcherNotification, InAppNotification, Job, SLAEscalation
