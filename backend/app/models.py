@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Text, Date, DateTime, ForeignKey, JSON, Float, CheckConstraint, Index, Boolean
+from sqlalchemy import Boolean,CheckConstraint,Column,Date,DateTime,Float,ForeignKey,Index,Integer,JSON,String, Text,UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -205,12 +205,60 @@ class NotificationTemplate(Base):
     title_template = Column(Text, nullable=True)
     body_template = Column(Text, nullable=False)
     version = Column(Integer, default=1)
-    is_active = Column(Integer, default=1) # 1 for True, 0 for False
+    is_active = Column(Boolean, nullable=False, default=True) 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    versions = relationship(
+        "TemplateVersion",
+        back_populates="template",
+        cascade="all, delete-orphan",
+        order_by="TemplateVersion.version_number.desc()",
+    )
     
     __table_args__ = (
         Index("idx_template_lookup", "type", "channel", "locale", "is_active"),
     )
+class TemplateVersion(Base):
+    __tablename__ = "template_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    template_id = Column(
+        Integer,
+        ForeignKey("notification_templates.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    version_number = Column(Integer, nullable=False)
+
+    title_template = Column(Text, nullable=True)
+
+    body_template = Column(Text, nullable=False)
+
+    created_by = Column(String(100), nullable=False)
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    change_summary = Column(Text, nullable=True)
+
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    template = relationship(
+        "NotificationTemplate",
+        back_populates="versions",
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_template_version",
+            "template_id",
+            "version_number",
+        ),
+    )
+    
 
 class PreferenceAuditLog(Base):
     __tablename__ = "preference_audit_logs"
@@ -249,6 +297,70 @@ def prevent_audit_event_update(mapper, connection, target):
 @event.listens_for(AuditEvent, "before_delete")
 def prevent_audit_event_delete(mapper, connection, target):
     raise ValueError("AuditEvent is immutable")
+
+class AIBrandSafetyRule(Base):
+    """
+    Tenant-specific brand-safety rule configured by an
+    administrator.
+
+    These rules are loaded by the database/Redis brand-safety
+    provider and used by BrandSafetyValidator.
+    """
+
+    __tablename__ = "ai_brand_safety_rules"
+
+    id = Column(String(36),primary_key=True,default=lambda: str(uuid.uuid4()),)
+    tenant_id = Column(String(50),nullable=False,index=True,)
+    rule_id = Column(String(100),nullable=False,)
+    category = Column(String(30),nullable=False,)
+    match_type = Column(String(20),nullable=False,)
+    pattern = Column(String(200),nullable=False,)
+    severity = Column(String(20),nullable=False,default="ERROR",)
+    active = Column(Boolean,nullable=False,default=True,)
+    case_sensitive = Column(Boolean,nullable=False,default=False,)
+    created_by = Column(String(100),nullable=False,)
+    updated_by = Column(String(100),nullable=True,)
+    created_at = Column(DateTime(timezone=True),server_default=func.now(),nullable=False,)
+    updated_at = Column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now(),nullable=False,)
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "rule_id",
+            name="uq_ai_brand_safety_tenant_rule",
+        ),
+        CheckConstraint(
+            "category IN ("
+            "'COMPETITOR', "
+            "'POLITICAL', "
+            "'OFF_BRAND', "
+            "'BLOCKED_PHRASE'"
+            ")",
+            name="ck_ai_brand_safety_category",
+        ),
+        CheckConstraint(
+            "match_type IN ('WORD', 'PHRASE')",
+            name="ck_ai_brand_safety_match_type",
+        ),
+        CheckConstraint(
+            "severity IN ("
+            "'INFO', "
+            "'WARNING', "
+            "'ERROR', "
+            "'CRITICAL'"
+            ")",
+            name="ck_ai_brand_safety_severity",
+        ),
+        Index(
+            "idx_ai_brand_safety_tenant_active",
+            "tenant_id",
+            "active",
+        ),
+        Index(
+            "idx_ai_brand_safety_tenant_category",
+            "tenant_id",
+            "category",
+        ),
+    )
 
 class SLAEscalation(Base):
     __tablename__ = "sla_escalations"
@@ -307,6 +419,102 @@ def prevent_override_audit_event_update(mapper, connection, target):
 @event.listens_for(OverrideAuditEvent, "before_delete")
 def prevent_override_audit_event_delete(mapper, connection, target):
     raise ValueError("OverrideAuditEvent is immutable (BR-009)")
+
+class AIGuardrailViolation(Base):
+    """
+    Immutable audit record for one AI guardrail violation.
+
+    The table stores audit-safe metadata only.
+
+    Raw prompts, generated communication, customer PII, and
+    matched prohibited text must never be stored here.
+    """
+
+    __tablename__ = "ai_guardrail_violations"
+
+    id = Column(String(36),primary_key=True,default=lambda: str(uuid.uuid4()),)
+
+    tenant_id = Column(String(50),nullable=False,index=True,)
+
+    correlation_id = Column(String(100),nullable=True,index=True,)
+
+    job_id = Column(String(100),nullable=True,index=True,)
+
+    agent_name = Column(String(100),nullable=False,index=True,)
+
+    notification_type = Column(String(100),nullable=True,index=True,)
+
+    channel = Column(String(20),nullable=False,index=True,)
+
+    checker_name = Column(String(100),nullable=False,index=True,)
+
+    violation_code = Column(String(100),nullable=False,index=True,)
+
+    category = Column(String(50),nullable=False,index=True,)
+
+    severity = Column(String(20),nullable=False,index=True,)
+
+    affected_field = Column(String(50),nullable=True,)
+
+    safe_message = Column(Text,nullable=False,)
+
+    safe_metadata = Column(JSON,nullable=False,default=dict,)
+
+    pipeline_decision = Column(String(20),nullable=False,index=True,)
+
+    fallback_triggered = Column(Boolean,nullable=False,default=False,index=True,)
+
+    prompt_hash = Column(String(64),nullable=False,index=True,)
+
+    output_hash = Column(String(64),nullable=False,index=True,)
+
+    checker_latency_ms = Column(Float,nullable=False,default=0.0,)
+
+    total_latency_ms = Column(Float,nullable=False,default=0.0,)
+
+    created_at = Column(DateTime(timezone=True),server_default=func.now(),nullable=False,index=True,)
+
+    __table_args__ = (
+        Index("idx_ai_guardrail_tenant_created","tenant_id","created_at",),
+        Index("idx_ai_guardrail_job_created","job_id","created_at",),
+        Index("idx_ai_guardrail_code_created","violation_code","created_at",),
+    )
+
+
+@event.listens_for(
+    AIGuardrailViolation,
+    "before_update",
+)
+def prevent_ai_guardrail_violation_update(
+    mapper,
+    connection,
+    target,
+):
+    """
+    Prevent modification of an existing guardrail audit record.
+    """
+
+    raise ValueError(
+        "AIGuardrailViolation is immutable."
+    )
+
+
+@event.listens_for(
+    AIGuardrailViolation,
+    "before_delete",
+)
+def prevent_ai_guardrail_violation_delete(
+    mapper,
+    connection,
+    target,
+):
+    """
+    Prevent deletion of an existing guardrail audit record.
+    """
+
+    raise ValueError(
+        "AIGuardrailViolation is immutable."
+    )
 
 
 class AssignmentOverride(Base):
@@ -381,16 +589,16 @@ class GPSRejectedPingLog(Base):
 @event.listens_for(Job, 'after_update')
 def on_job_status_changed(mapper, connection, target):
     from sqlalchemy import inspect
+    from sqlalchemy.orm import object_session
+    from sqlalchemy import event as sa_event
     state = inspect(target)
     history = state.get_history('status', True)
     if history.has_changes():
         new_status = history.added[0] if history.added else None
         old_status = history.deleted[0] if history.deleted else None
         
-        from .database import SessionLocal
         from .redis_client import get_redis_client
         from .context import correlation_id_ctx
-        import threading
         import time
 
         job_id = target.id
@@ -405,39 +613,52 @@ def on_job_status_changed(mapper, connection, target):
         except Exception:
             pass
 
-        # Trigger GPS Purge if terminal
-        if new_status and str(new_status).upper().strip() in ["CLOSED", "CANCELLED", "CANCELED"]:
-            from .tasks import purge_job_gps_data_task, execute_job_gps_purge_sync
+        def dispatch_tasks():
+            # Trigger GPS Purge if terminal
+            if new_status and str(new_status).upper().strip() in ["CLOSED", "CANCELLED", "CANCELED"]:
+                from .tasks import purge_job_gps_data_task, execute_job_gps_purge_sync
+                from .database import SessionLocal
+                import threading
+                try:
+                    purge_job_gps_data_task.delay(job_id, tenant_id, "event_based", correlation_id)
+                except Exception:
+                    def run_purge_in_thread():
+                        db = SessionLocal()
+                        try:
+                            execute_job_gps_purge_sync(db, job_id, tenant_id, "event_based", correlation_id)
+                        finally:
+                            db.close()
+                    threading.Thread(target=run_purge_in_thread).start()
+
+            # Trigger transition processing (notifications, SLA, events)
+            from .tasks import process_job_status_transition_task
+            from .database import SessionLocal
+            import threading
+            actor_id = getattr(target, "_actor_id", "system")
+            actor_role = getattr(target, "_actor_role", "system")
+            reason = getattr(target, "_transition_reason", None)
             try:
-                purge_job_gps_data_task.delay(job_id, tenant_id, "event_based", correlation_id)
+                process_job_status_transition_task.delay(
+                    job_id, old_status, new_status, actor_id, actor_role, reason, correlation_id
+                )
             except Exception:
-                def run_purge_in_thread():
+                def run_transition_in_thread():
                     db = SessionLocal()
                     try:
-                        execute_job_gps_purge_sync(db, job_id, tenant_id, "event_based", correlation_id)
+                        process_job_status_transition_task(
+                            job_id, old_status, new_status, actor_id, actor_role, reason, correlation_id
+                        )
                     finally:
                         db.close()
-                threading.Thread(target=run_purge_in_thread).start()
+                threading.Thread(target=run_transition_in_thread).start()
 
-        # Trigger transition processing (notifications, SLA, events)
-        from .tasks import process_job_status_transition_task
-        actor_id = getattr(target, "_actor_id", "system")
-        actor_role = getattr(target, "_actor_role", "system")
-        reason = getattr(target, "_transition_reason", None)
-        try:
-            process_job_status_transition_task.delay(
-                job_id, old_status, new_status, actor_id, actor_role, reason, correlation_id
-            )
-        except Exception:
-            def run_transition_in_thread():
-                db = SessionLocal()
-                try:
-                    process_job_status_transition_task(
-                        job_id, old_status, new_status, actor_id, actor_role, reason, correlation_id
-                    )
-                finally:
-                    db.close()
-            threading.Thread(target=run_transition_in_thread).start()
+        session = object_session(target)
+        if session:
+            @sa_event.listens_for(session, "after_commit", once=True)
+            def do_after_commit(session_arg):
+                dispatch_tasks()
+        else:
+            dispatch_tasks()
 
 
 class ETAHistory(Base):
@@ -461,27 +682,13 @@ def on_new_gps_ping(mapper, connection, target):
         return
 
     from sqlalchemy import select
-    from .database import SessionLocal
+    from sqlalchemy.orm import object_session
+    from sqlalchemy import event as sa_event
 
-    # Check job status
+    # Check job status using the event connection (safe, no new session needed)
     job = connection.execute(
         select(Job).where(Job.id == job_id_int)
     ).fetchone()
-
-    # Run geofence check
-    from .services.geofence_monitor import GeofenceMonitor
-    db = SessionLocal()
-    try:
-        monitor = GeofenceMonitor()
-        monitor.process_ping(db, target)
-    except Exception as e:
-        from .logger import logger
-        logger.error(f"Failed to check geofence on new GPS ping: {e}")
-    finally:
-        db.close()
-
-    if not job or str(job.status).upper().strip() not in ["ASSIGNED", "EN_ROUTE", "ON_SITE"]:
-        return
 
     # Check throttle
     throttle_key = f"eta:throttle:{job_id_int}"
@@ -500,27 +707,49 @@ def on_new_gps_ping(mapper, connection, target):
         except Exception:
             pass
 
-    # Queue async recalculation
-    from .tasks import update_eta_task
-    from .context import correlation_id_ctx
-    correlation_id = correlation_id_ctx.get() or None
-    try:
-        update_eta_task.delay(
-            technician_id=target.technician_id,
-            job_id=job_id_int,
-            ping_id=target.id,
-            correlation_id=correlation_id
-        )
-    except Exception:
-        import threading
+    def dispatch_gps_tasks():
+        # Run geofence check
+        from .services.geofence_monitor import GeofenceMonitor
         from .database import SessionLocal
-        def run_in_thread():
-            db = SessionLocal()
+        db = SessionLocal()
+        try:
+            monitor = GeofenceMonitor()
+            monitor.process_ping(db, target)
+        except Exception as e:
+            from .logger import logger
+            logger.error(f"Failed to check geofence on new GPS ping: {e}")
+        finally:
+            db.close()
+
+        if job and str(job.status).upper().strip() in ["ASSIGNED", "EN_ROUTE", "ON_SITE"]:
+            from .tasks import update_eta_task
+            from .context import correlation_id_ctx
+            correlation_id = correlation_id_ctx.get() or None
             try:
-                update_eta_task(target.technician_id, job_id_int, target.id, correlation_id)
-            finally:
-                db.close()
-        threading.Thread(target=run_in_thread).start()
+                update_eta_task.delay(
+                    technician_id=target.technician_id,
+                    job_id=job_id_int,
+                    ping_id=target.id,
+                    correlation_id=correlation_id
+                )
+            except Exception:
+                import threading
+                from .database import SessionLocal
+                def run_in_thread():
+                    db = SessionLocal()
+                    try:
+                        update_eta_task(target.technician_id, job_id_int, target.id, correlation_id)
+                    finally:
+                        db.close()
+                threading.Thread(target=run_in_thread).start()
+
+    session = object_session(target)
+    if session:
+        @sa_event.listens_for(session, "after_commit", once=True)
+        def do_after_commit_gps(session_arg):
+            dispatch_gps_tasks()
+    else:
+        dispatch_gps_tasks()
 
 
 class SecurityAuditLog(Base):
@@ -540,3 +769,20 @@ class SecurityAuditLog(Base):
     technician_id = Column(String(50), nullable=True)
     job_id = Column(String(50), nullable=True)
     tenant_id = Column(String(50), nullable=True, index=True)
+
+class JobAssignment(Base):
+    """
+    Stores the AI-ranked technician recommendations for a job.
+
+    One row represents one recommended technician.
+    """
+    __tablename__ = "job_assignments"
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer,ForeignKey("jobs.id"),nullable=False,index=True,)
+    technician_id = Column(Integer,ForeignKey("technicians.technician_id"),nullable=False,index=True,)
+    rank = Column(Integer,nullable=False,)  
+    status = Column(String(30),nullable=False,default="PENDING",)
+    assigned_at = Column(DateTime(timezone=True),nullable=True,)
+    responded_at = Column(DateTime(timezone=True),nullable=True,)
+    is_current = Column(Boolean,nullable=False,default=False,)
+    created_at = Column(DateTime(timezone=True),server_default=func.now(),)

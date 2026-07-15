@@ -88,7 +88,8 @@ async def send_job_assignment_sms(
     priority: str,
     tech_ids: list[str],
     correlation_id: str = None,
-    max_retries: int = 3
+    max_retries: int = 3,
+    effective_message: str | None = None,
 ) -> dict:
     correlation_id = correlation_id or str(uuid.uuid4())
     log_extra = {"correlation_id": correlation_id, "job_id": job_id}
@@ -101,7 +102,38 @@ async def send_job_assignment_sms(
     failed_count = 0
     delivery_ids = []
     
-    message_body = generate_sms_template(job_title, location, priority, job_id)
+    if effective_message is None:
+        effective_message = generate_sms_template(
+            job_title,
+            location,
+            priority,
+            job_id,
+        )
+
+    else:
+        if not isinstance(
+            effective_message,
+            str,
+        ):
+            raise TypeError(
+                "effective_message must be text."
+            )
+
+        effective_message = (
+            effective_message.strip()
+        )
+
+    if not effective_message:
+        raise ValueError(
+            "SMS message must not be empty."
+        )
+
+    # Final transport-level validation after real placeholder
+    # values have been restored.
+    if len(effective_message) > 160:
+        raise ValueError(
+            "SMS message exceeds 160 characters."
+        )
     
     for tech in techs:
         # Check Opt-out
@@ -119,7 +151,12 @@ async def send_job_assignment_sms(
             
         # Check Valid Phone Number
         if not validate_phone_number(tech.phone_number):
-            logger.warning(f"Skipping tech {tech.tech_id} (invalid/missing phone number: {tech.phone_number})", extra=log_extra)
+            logger.warning(
+                    "Technician SMS skipped because the phone "
+                    "number is invalid or missing. tech_id=%s",
+                    tech.tech_id,
+                    extra=log_extra,
+                )
             failed_count += 1
             continue
             
@@ -146,14 +183,17 @@ async def send_job_assignment_sms(
             try:
                 if not twilio_client:
                     # Mock for local dev
-                    logger.info(f"Mock sending SMS to {tech.phone_number}: {message_body}", extra=log_extra)
+                    logger.info(
+                            "Technician SMS delivery simulated.",
+                            extra=log_extra,
+                        )
                     delivery.status = "sent"
                     delivery.sms_sid = f"SMmock_{uuid.uuid4().hex[:12]}"
                     success = True
                     break
 
                 response = twilio_client.messages.create(
-                    body=message_body,
+                    body=effective_message,
                     from_=TWILIO_PHONE_NUMBER,
                     to=tech.phone_number,
                     status_callback="https://api.fieldops.io/v1/webhooks/twilio-status"

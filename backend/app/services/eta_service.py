@@ -57,31 +57,53 @@ class ETAService:
             )
 
         # 4. Fetch latest GPS ping
-        latest_gps = self.db.query(models.GPSPing).filter(
-            models.GPSPing.technician_id == technician_id
-        ).order_by(models.GPSPing.timestamp.desc()).first()
+        
+        latest_gps = (
+            self.db.query(models.GPSPing)
+            .filter(models.GPSPing.technician_id == technician_id)
+            .order_by(models.GPSPing.timestamp.desc())
+            .first()
+        )
 
         now = datetime.now(timezone.utc)
-        is_stale = False
-        if latest_gps:
-            ping_time = latest_gps.timestamp
-            if ping_time.tzinfo is None:
-                ping_time = ping_time.replace(tzinfo=timezone.utc)
-            is_stale = (now - ping_time).total_seconds() > 300
 
-        if not latest_gps or is_stale:
-            # Fallback for missing/stale GPS data
+        # Missing GPS
+        if latest_gps is None:
             return {
                 "status": "unknown",
+                "technician_id": str(technician_id),
+                "job_id": str(job_id),
                 "last_known_location": {
-                    "latitude": latest_gps.latitude if latest_gps else None,
-                    "longitude": latest_gps.longitude if latest_gps else None,
-                    "timestamp": latest_gps.timestamp.isoformat() if latest_gps else None
+                    "latitude": None,
+                    "longitude": None,
                 },
-                "message": "No recent GPS data available"
+                "message": "No recent GPS data available",
+                "calculated_at": now.isoformat().replace("+00:00", "Z"),
+            }
+
+        ping_time = latest_gps.timestamp
+        if ping_time.tzinfo is None:
+            ping_time = ping_time.replace(tzinfo=timezone.utc)
+
+        is_stale = (now - ping_time).total_seconds() > 300
+
+        if is_stale:
+            return {
+                "status": "unknown",
+                "technician_id": str(technician_id),
+                "job_id": str(job_id),
+                "last_known_location": {
+                    "latitude": latest_gps.latitude,
+                    "longitude": latest_gps.longitude,
+                },
+                "message": "No recent GPS data available - last ping is stale",
+                "calculated_at": now.isoformat().replace("+00:00", "Z"),
             }
 
         # 5. Fetch route duration
+              
+    
+        
         try:
             route = await self.maps.get_route_duration(
                 latest_gps.latitude,
@@ -118,6 +140,8 @@ class ETAService:
                 site_lng=job.site_longitude,
                 reason=reason
             )
+            fallback_res["fallback_reason"] = reason
+            fallback_res["status"] = "estimated"
             fallback_res["technician_id"] = str(technician_id)
             fallback_res["job_id"] = str(job_id)
             fallback_res["calculated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -139,6 +163,7 @@ class ETAService:
             if self.redis:
                 try:
                     self.redis.setex(fallback_key, 60, json.dumps(fallback_res))
+                    print(self.redis.get(fallback_key))
                 except Exception:
                     pass
 
@@ -146,6 +171,7 @@ class ETAService:
             if self.redis:
                 try:
                     self.redis.incr(f"metrics:fallback_eta_total:{metric_reason}")
+                    print(metric_reason)
                 except Exception:
                     pass
 
@@ -255,17 +281,33 @@ class ETAService:
                     ping_time = ping_time.replace(tzinfo=timezone.utc)
                 is_stale = (now - ping_time).total_seconds() > 300
 
-            if not latest_gps or is_stale:
-                # Stale/missing GPS location
-                res = {
-                    "status": "unknown",
-                    "last_known_location": {
-                        "latitude": latest_gps.latitude if latest_gps else None,
-                        "longitude": latest_gps.longitude if latest_gps else None,
-                        "timestamp": latest_gps.timestamp.isoformat() if latest_gps else None
-                    },
-                    "message": "No recent GPS data available"
-                }
+            fallback_service = FallbackETAService()
+
+            res = fallback_service.calculate_fallback_eta(
+            tech_lat=latest_gps.latitude if latest_gps else job.site_latitude,
+            tech_lng=latest_gps.longitude if latest_gps else job.site_longitude,
+            site_lat=job.site_latitude,
+            site_lng=job.site_longitude,
+            reason="gps_unavailable"
+            )
+
+            res["fallback_reason"] = "gps_unavailable"
+            res["status"] = "estimated"
+            res["technician_id"] = str(tech_id)
+            res["job_id"] = str(job_id)
+            res["calculated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+            if latest_gps is None or is_stale:
+                if self.redis:
+                    try:
+                        self.redis.setex(
+                            f"eta:fallback:{tech_id}:{job_id}",
+                            60,
+                            json.dumps(res)
+                        )
+                    except Exception:
+                        pass
+
                 results[idx] = res
                 continue
 
@@ -330,7 +372,7 @@ class ETAService:
                 reason = "maps_error"
                 metric_reason = "error"
                 if isinstance(exc, MapsAPIException):
-                    status_code = exc.status_code
+                    status_code = getattr(exc, "status_code", "")
                     if status_code == "maps_timeout":
                         reason = "maps_timeout"
                         metric_reason = "timeout"
@@ -359,7 +401,9 @@ class ETAService:
                         site_lng=job.site_longitude,
                         reason=reason
                     )
+                    fallback_res["fallback_reason"] = reason
                     fallback_res["technician_id"] = str(tech_id)
+                    fallback_res["status"] = "estimated"
                     fallback_res["job_id"] = str(job_id)
                     fallback_res["calculated_at"] = now_utc.isoformat().replace("+00:00", "Z")
 

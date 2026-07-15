@@ -1,179 +1,846 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Request, Form
-from sqlalchemy.orm import Session
-from typing import Optional
+"""
+Notification API routes.
+
+Manual technician push and SMS endpoints generate their
+recipient-facing content through the production-safe
+CommunicationService workflow before calling transport adapters.
+"""
+
+from __future__ import annotations
+
 import uuid
 
+from dataclasses import dataclass
+from typing import Optional, Sequence
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+)
+from sqlalchemy.orm import Session
+
 from .dispatch import verify_jwt_token
+
+from ..context import correlation_id_ctx
 from ..database import get_db
-from ..models import Technician, Job, SMSDelivery
-from ..schemas import FCMTokenRegistration, NotificationSendRequest, NotificationSendResponse, SMSSendRequest
 from ..logger import logger
-from ..services.fcm import send_job_assignment_notification
-from ..services.twilio_sms import send_job_assignment_sms
+from ..models import (
+    Job,
+    SMSDelivery,
+    Technician,
+)
+from ..schemas import (
+    FCMTokenRegistration,
+    NotificationSendRequest,
+    NotificationSendResponse,
+    SMSSendRequest,
+)
+from ..services.ai.integrations.communication_integration import (
+    CommunicationIntegration,
+    CommunicationIntegrationError,
+)
+from ..services.fcm import (
+    send_job_assignment_notification,
+)
+from ..services.twilio_sms import (
+    send_job_assignment_sms,
+)
+
 
 router = APIRouter(
     tags=["Notifications"]
 )
 
-@router.post("/technicians/{id}/fcm-token")
+
+# ==========================================================
+# Safe Communication Event
+# ==========================================================
+
+
+@dataclass(frozen=True)
+class ManualTechnicianNotificationEvent:
+    """
+    Minimal event required by CommunicationIntegration.
+
+    Technician and customer names are deliberately omitted
+    because one manual request may target multiple technicians.
+    The generated message must therefore remain generic.
+    """
+
+    job_id: str
+    tenant_id: str
+    to_status: str
+    job_title: str
+
+    technician_name: str | None = None
+    customer_name: str | None = None
+    eta: str | None = None
+
+
+# ==========================================================
+# Dependencies
+# ==========================================================
+
+
+def get_communication_integration(
+) -> CommunicationIntegration:
+    """
+    Create the production communication adapter.
+
+    A FastAPI dependency makes this replaceable in route tests.
+    """
+
+    return CommunicationIntegration()
+
+
+# ==========================================================
+# Validation Helpers
+# ==========================================================
+
+
+def _load_tenant_job(
+    *,
+    db: Session,
+    job_id: object,
+    tenant_id: str,
+) -> Job:
+    """
+    Load a job using both job ID and tenant ID.
+
+    This prevents a tenant from sending notifications for
+    another tenant's job.
+    """
+
+    normalized_job_id = str(
+        job_id
+    ).strip()
+
+    if not normalized_job_id.isdigit():
+        raise HTTPException(
+            status_code=400,
+            detail="job_id must be a numeric job identifier.",
+        )
+
+    job = (
+        db.query(Job)
+        .filter(
+            Job.id == int(
+                normalized_job_id
+            ),
+            Job.tenant_id == tenant_id,
+        )
+        .first()
+    )
+
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Job was not found for this tenant.",
+        )
+
+    return job
+
+
+def _validate_tenant_technicians(
+    *,
+    db: Session,
+    tech_ids: Sequence[object],
+    tenant_id: str,
+) -> list[str]:
+    """
+    Validate and normalize all requested technician IDs.
+
+    Every technician must belong to the requesting tenant.
+    """
+
+    normalized_ids = list(
+        dict.fromkeys(
+            str(
+                tech_id
+            ).strip()
+            for tech_id in tech_ids
+            if str(
+                tech_id
+            ).strip()
+        )
+    )
+
+    if not normalized_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="tech_ids list cannot be empty.",
+        )
+
+    if len(normalized_ids) > 50:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot send to more than "
+                "50 technicians at once."
+            ),
+        )
+
+    technicians = (
+        db.query(Technician)
+        .filter(
+            Technician.tech_id.in_(
+                normalized_ids
+            ),
+            Technician.tenant_id
+            == tenant_id,
+        )
+        .all()
+    )
+
+    found_ids = {
+        str(
+            technician.tech_id
+        )
+        for technician in technicians
+    }
+
+    missing_ids = (
+        set(
+            normalized_ids
+        )
+        - found_ids
+    )
+
+    if missing_ids:
+        # Do not reveal whether the missing technicians exist
+        # in another tenant.
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "One or more technicians were not "
+                "found for this tenant."
+            ),
+        )
+
+    return normalized_ids
+
+
+def _job_title(
+    job: Job,
+) -> str:
+    """
+    Return a trusted non-empty job title.
+    """
+
+    value = (
+        getattr(
+            job,
+            "service_type",
+            None,
+        )
+        or getattr(
+            job,
+            "required_skill",
+            None,
+        )
+    )
+
+    normalized = (
+        str(
+            value
+        ).strip()
+        if value is not None
+        else ""
+    )
+
+    if not normalized:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "The job does not contain a valid "
+                "service type or required skill."
+            ),
+        )
+
+    return normalized
+
+
+def _job_location(
+    job: Job,
+) -> str:
+    """
+    Return the trusted job location used by transport metadata.
+    """
+
+    value = getattr(
+        job,
+        "location",
+        None,
+    )
+
+    normalized = (
+        str(
+            value
+        ).strip()
+        if value is not None
+        else ""
+    )
+
+    if not normalized:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "The job does not contain a valid location."
+            ),
+        )
+
+    return normalized
+
+
+def _push_priority(
+    job: Job,
+) -> str:
+    """
+    Convert FieldOps priority values into transport priority.
+    """
+
+    priority = str(
+        getattr(
+            job,
+            "priority",
+            "",
+        )
+        or ""
+    ).strip().upper()
+
+    if priority in {
+        "HIGH",
+        "URGENT",
+        "P1",
+        "P2",
+    }:
+        return "HIGH"
+
+    return "NORMAL"
+
+
+async def _generate_safe_technician_content(
+    *,
+    communication: CommunicationIntegration,
+    job: Job,
+    tenant_id: str,
+    channel: str,
+    correlation_id: str,
+):
+    """
+    Generate guardrail-approved technician content.
+
+    No hardcoded recipient-facing fallback is used here.
+    CommunicationService owns fallback selection.
+    """
+
+    event = ManualTechnicianNotificationEvent(
+        job_id=str(
+            job.id
+        ),
+        tenant_id=tenant_id,
+        to_status="ASSIGNED",
+        job_title=_job_title(
+            job
+        ),
+    )
+
+    context_token = (
+        correlation_id_ctx.set(
+            correlation_id
+        )
+    )
+
+    try:
+        return await communication.generate(
+            event=event,
+            recipient_type="technician",
+            channel=channel,
+            notification_type=(
+                "technician_job_assigned"
+            ),
+            locale="en",
+        )
+
+    except CommunicationIntegrationError as exc:
+        logger.error(
+            "Safe manual technician notification "
+            "generation failed. job_id=%s channel=%s",
+            job.id,
+            channel,
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Safe notification content could not "
+                "be generated."
+            ),
+        ) from exc
+
+    finally:
+        correlation_id_ctx.reset(
+            context_token
+        )
+
+
+# ==========================================================
+# FCM Token Registration
+# ==========================================================
+
+
+@router.post(
+    "/technicians/{id}/fcm-token"
+)
 def register_fcm_token(
     id: str,
     payload: FCMTokenRegistration,
     request: Request,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    authorization: str = Depends(verify_jwt_token),
-    db: Session = Depends(get_db)
+    x_tenant_id: str = Header(
+        ...,
+        alias="X-Tenant-ID",
+    ),
+    authorization: str = Depends(
+        verify_jwt_token
+    ),
+    db: Session = Depends(
+        get_db
+    ),
 ):
-    correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
-    log_extra = {"correlation_id": correlation_id, "tenant_id": x_tenant_id, "tech_id": id}
+    _ = authorization
+
+    correlation_id = request.headers.get(
+        "X-Correlation-ID",
+        str(
+            uuid.uuid4()
+        ),
+    )
+
+    log_extra = {
+        "correlation_id": correlation_id,
+        "tenant_id": x_tenant_id,
+        "tech_id": id,
+    }
 
     try:
-        uuid_obj = uuid.UUID(id, version=4)
-    except ValueError:
-        logger.warning("Invalid technician ID format", extra=log_extra)
-        raise HTTPException(status_code=400, detail="Invalid technician ID format (must be UUID)")
+        uuid.UUID(
+            id,
+            version=4,
+        )
 
-    tech = db.query(Technician).filter(Technician.tech_id == id).first()
-    if not tech:
-        logger.error("Technician not found", extra=log_extra)
-        raise HTTPException(status_code=404, detail="Technician not found")
-        
-    if tech.tenant_id and tech.tenant_id != x_tenant_id:
-        logger.error("Access denied for tenant", extra=log_extra)
-        raise HTTPException(status_code=403, detail="Access denied")
+    except ValueError as exc:
+        logger.warning(
+            "Invalid technician ID format.",
+            extra=log_extra,
+        )
 
-    tech.fcm_token = payload.token
-    tech.device_type = payload.device_type
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid technician ID format "
+                "(must be UUID)."
+            ),
+        ) from exc
+
+    technician = (
+        db.query(Technician)
+        .filter(
+            Technician.tech_id == id
+        )
+        .first()
+    )
+
+    if technician is None:
+        logger.error(
+            "Technician not found.",
+            extra=log_extra,
+        )
+
+        raise HTTPException(
+            status_code=404,
+            detail="Technician not found.",
+        )
+
+    if (
+        technician.tenant_id
+        and technician.tenant_id
+        != x_tenant_id
+    ):
+        logger.error(
+            "Access denied for tenant.",
+            extra=log_extra,
+        )
+
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied.",
+        )
+
+    technician.fcm_token = (
+        payload.token
+    )
+
+    technician.device_type = (
+        payload.device_type
+    )
+
     db.commit()
-    
-    logger.info(f"Registered FCM token for technician {id}", extra=log_extra)
-    return {"status": "registered", "tech_id": id}
+
+    logger.info(
+        "Registered technician FCM token.",
+        extra=log_extra,
+    )
+
+    return {
+        "status": "registered",
+        "tech_id": id,
+    }
 
 
-@router.post("/notifications/send-push", response_model=NotificationSendResponse)
+# ==========================================================
+# Safe Manual Push
+# ==========================================================
+
+
+@router.post(
+    "/notifications/send-push",
+    response_model=NotificationSendResponse,
+)
 async def send_push_notification(
     payload: NotificationSendRequest,
     request: Request,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    authorization: str = Depends(verify_jwt_token),
-    db: Session = Depends(get_db)
+    x_tenant_id: str = Header(
+        ...,
+        alias="X-Tenant-ID",
+    ),
+    authorization: str = Depends(
+        verify_jwt_token
+    ),
+    db: Session = Depends(
+        get_db
+    ),
+    communication: CommunicationIntegration = Depends(
+        get_communication_integration
+    ),
 ):
-    correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
-    log_extra = {"correlation_id": correlation_id, "tenant_id": x_tenant_id, "job_id": payload.job_id}
+    _ = authorization
 
-    if not payload.tech_ids:
-        raise HTTPException(status_code=400, detail="tech_ids list cannot be empty")
-
-    if len(payload.tech_ids) > 50:
-        raise HTTPException(status_code=400, detail="Cannot send to more than 50 technicians at once")
-
-    # Fetch job details for notification title and body
-    job = None
-    if str(payload.job_id).isdigit():
-        job = db.query(Job).filter(Job.id == int(payload.job_id)).first()
-
-    if job:
-        job_title = job.service_type
-        location = job.location
-    else:
-        # Fallback if job is not in DB (e.g. testing with mock UUIDs)
-        job_title = "New Assignment"
-        location = "Customer Location"
-
-    logger.info(f"Dispatching push notifications to {len(payload.tech_ids)} technicians", extra=log_extra)
-    
-    result = await send_job_assignment_notification(
-        db=db,
-        job_id=payload.job_id,
-        job_title=job_title,
-        location=location,
-        tech_ids=payload.tech_ids,
-        correlation_id=correlation_id
+    correlation_id = request.headers.get(
+        "X-Correlation-ID",
+        str(
+            uuid.uuid4()
+        ),
     )
 
-    return result
+    job = _load_tenant_job(
+        db=db,
+        job_id=payload.job_id,
+        tenant_id=x_tenant_id,
+    )
 
-@router.post("/notifications/send-sms", response_model=NotificationSendResponse)
+    technician_ids = (
+        _validate_tenant_technicians(
+            db=db,
+            tech_ids=payload.tech_ids,
+            tenant_id=x_tenant_id,
+        )
+    )
+
+    safe_result = (
+        await _generate_safe_technician_content(
+            communication=communication,
+            job=job,
+            tenant_id=x_tenant_id,
+            channel="push",
+            correlation_id=(
+                correlation_id
+            ),
+        )
+    )
+
+    title = (
+        safe_result.decision.title
+    )
+
+    if not title:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Safe push content did not contain "
+                "a notification title."
+            ),
+        )
+
+    logger.info(
+        "Dispatching safe technician push notifications. "
+        "job_id=%s recipient_count=%s",
+        job.id,
+        len(
+            technician_ids
+        ),
+    )
+
+    return await send_job_assignment_notification(
+        db=db,
+        job_id=str(
+            job.id
+        ),
+        job_title=_job_title(
+            job
+        ),
+        location=_job_location(
+            job
+        ),
+        tech_ids=technician_ids,
+        correlation_id=correlation_id,
+        notification_title=title,
+        notification_body=(
+            safe_result.decision.message
+        ),
+        notification_type=(
+            "technician_job_assigned"
+        ),
+        priority=_push_priority(
+            job
+        ),
+    )
+
+
+# ==========================================================
+# Safe Manual SMS
+# ==========================================================
+
+
+@router.post(
+    "/notifications/send-sms",
+    response_model=NotificationSendResponse,
+)
 async def send_sms_notification(
     payload: SMSSendRequest,
     request: Request,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    authorization: str = Depends(verify_jwt_token),
-    db: Session = Depends(get_db)
+    x_tenant_id: str = Header(
+        ...,
+        alias="X-Tenant-ID",
+    ),
+    authorization: str = Depends(
+        verify_jwt_token
+    ),
+    db: Session = Depends(
+        get_db
+    ),
+    communication: CommunicationIntegration = Depends(
+        get_communication_integration
+    ),
 ):
-    correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
-    log_extra = {"correlation_id": correlation_id, "tenant_id": x_tenant_id, "job_id": payload.job_id}
+    _ = authorization
 
-    if not payload.tech_ids:
-        raise HTTPException(status_code=400, detail="tech_ids list cannot be empty")
-
-    job = None
-    if str(payload.job_id).isdigit():
-        job = db.query(Job).filter(Job.id == int(payload.job_id)).first()
-
-    if job:
-        job_title = job.service_type
-        location = job.location
-        priority = job.priority
-    else:
-        job_title = "New Assignment"
-        location = "Customer Location"
-        priority = "HIGH"
-
-    logger.info(f"Dispatching SMS notifications to {len(payload.tech_ids)} technicians", extra=log_extra)
-    
-    result = await send_job_assignment_sms(
-        db=db,
-        job_id=payload.job_id,
-        job_title=job_title,
-        location=location,
-        priority=priority,
-        tech_ids=payload.tech_ids,
-        correlation_id=correlation_id
+    correlation_id = request.headers.get(
+        "X-Correlation-ID",
+        str(
+            uuid.uuid4()
+        ),
     )
 
-    return result
+    job = _load_tenant_job(
+        db=db,
+        job_id=payload.job_id,
+        tenant_id=x_tenant_id,
+    )
 
-@router.post("/webhooks/twilio-status")
+    technician_ids = (
+        _validate_tenant_technicians(
+            db=db,
+            tech_ids=payload.tech_ids,
+            tenant_id=x_tenant_id,
+        )
+    )
+
+    safe_result = (
+        await _generate_safe_technician_content(
+            communication=communication,
+            job=job,
+            tenant_id=x_tenant_id,
+            channel="sms",
+            correlation_id=(
+                correlation_id
+            ),
+        )
+    )
+
+    logger.info(
+        "Dispatching safe technician SMS notifications. "
+        "job_id=%s recipient_count=%s",
+        job.id,
+        len(
+            technician_ids
+        ),
+    )
+
+    return await send_job_assignment_sms(
+        db=db,
+        job_id=str(
+            job.id
+        ),
+        job_title=_job_title(
+            job
+        ),
+        location=_job_location(
+            job
+        ),
+        priority=str(
+            getattr(
+                job,
+                "priority",
+                None,
+            )
+            or "NORMAL"
+        ),
+        tech_ids=technician_ids,
+        correlation_id=correlation_id,
+        message_body=(
+            safe_result.decision.message
+        ),
+    )
+
+
+# ==========================================================
+# Twilio Webhooks
+# ==========================================================
+
+
+@router.post(
+    "/webhooks/twilio-status"
+)
 async def twilio_status_webhook(
-    MessageSid: str = Form(...),
-    MessageStatus: str = Form(...),
-    ErrorCode: Optional[str] = Form(None),
-    To: Optional[str] = Form(None),
-    Price: Optional[float] = Form(None),
-    db: Session = Depends(get_db)
+    MessageSid: str = Form(
+        ...
+    ),
+    MessageStatus: str = Form(
+        ...
+    ),
+    ErrorCode: Optional[str] = Form(
+        None
+    ),
+    To: Optional[str] = Form(
+        None
+    ),
+    Price: Optional[float] = Form(
+        None
+    ),
+    db: Session = Depends(
+        get_db
+    ),
 ):
-    logger.info(f"Received Twilio Status Webhook: {MessageSid} - {MessageStatus}")
-    delivery = db.query(SMSDelivery).filter(SMSDelivery.sms_sid == MessageSid).first()
-    
-    if delivery:
-        delivery.status = MessageStatus
-        if ErrorCode:
-            delivery.error_message = f"ErrorCode: {ErrorCode}"
-        if Price is not None:
-            # Twilio's price is often negative, take absolute value for cost
-            delivery.cost = abs(Price)
-        db.commit()
-    
-    return {"status": "ok"}
+    _ = To
 
-@router.post("/webhooks/twilio-inbound")
+    logger.info(
+        "Received Twilio status webhook. "
+        "status=%s",
+        MessageStatus,
+    )
+
+    delivery = (
+        db.query(SMSDelivery)
+        .filter(
+            SMSDelivery.sms_sid
+            == MessageSid
+        )
+        .first()
+    )
+
+    if delivery:
+        delivery.status = (
+            MessageStatus
+        )
+
+        if ErrorCode:
+            delivery.error_message = (
+                f"ErrorCode: {ErrorCode}"
+            )
+
+        if Price is not None:
+            delivery.cost = abs(
+                Price
+            )
+
+        db.commit()
+
+    return {
+        "status": "ok"
+    }
+
+
+@router.post(
+    "/webhooks/twilio-inbound"
+)
 async def twilio_inbound_webhook(
-    MessageSid: str = Form(...),
-    From: str = Form(...),
-    Body: str = Form(...),
-    db: Session = Depends(get_db)
+    MessageSid: str = Form(
+        ...
+    ),
+    From: str = Form(
+        ...
+    ),
+    Body: str = Form(
+        ...
+    ),
+    db: Session = Depends(
+        get_db
+    ),
 ):
-    # Ensure no PII in logs
-    masked_from = f"+{'*'*(len(From)-5)}{From[-4:]}" if len(From) > 8 else "***"
-    logger.info(f"Received Twilio Inbound Message from {masked_from}")
-    
-    # Check for STOP keyword
-    if Body and Body.strip().upper() in ["STOP", "UNSUBSCRIBE", "CANCEL", "QUIT", "END"]:
-        tech = db.query(Technician).filter(Technician.phone_number == From).first()
-        if tech:
-            tech.sms_opt_out = 1
+    _ = MessageSid
+
+    masked_from = (
+        f"+{'*' * (len(From) - 5)}"
+        f"{From[-4:]}"
+        if len(
+            From
+        )
+        > 8
+        else "***"
+    )
+
+    logger.info(
+        "Received Twilio inbound message "
+        "from %s.",
+        masked_from,
+    )
+
+    stop_keywords = {
+        "STOP",
+        "UNSUBSCRIBE",
+        "CANCEL",
+        "QUIT",
+        "END",
+    }
+
+    if (
+        Body
+        and Body.strip().upper()
+        in stop_keywords
+    ):
+        technician = (
+            db.query(Technician)
+            .filter(
+                Technician.phone_number
+                == From
+            )
+            .first()
+        )
+
+        if technician:
+            technician.sms_opt_out = 1
             db.commit()
-            logger.info(f"Technician {tech.tech_id} opted out of SMS notifications.")
-            
-    return {"status": "ok"}
+
+            logger.info(
+                "Technician opted out of SMS. "
+                "tech_id=%s",
+                technician.tech_id,
+            )
+
+    return {
+        "status": "ok"
+    }

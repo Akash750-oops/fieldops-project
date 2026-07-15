@@ -17,14 +17,14 @@ class CommsAgent:
         """
         try:
             logger.info(
-                f"CommsAgent: Sending 'EN_ROUTE' notification to customer '{job.customer_name}' "
+                f"FieldOpsAI: Sending 'EN_ROUTE' notification to customer '{job.customer_name}' "
                 f"for job {job.id}. Technician: {tech.technician_name}."
             )
             # Placeholder for actual SMS/Email sending logic
             # e.g., twilio_sms.send_sms(job.contact_number, message)
             return True
         except Exception as e:
-            logger.error(f"CommsAgent: Failed to notify customer for job {job.id}: {str(e)}")
+            logger.error(f"FieldOpsAI: Failed to notify customer for job {job.id}: {str(e)}")
             return False
 
     @staticmethod
@@ -34,10 +34,12 @@ class CommsAgent:
         """
         try:
             logger.info(
-                f"CommsAgent: Sending 'REASSIGNMENT' notification to new technician '{new_tech.technician_name}' "
+                f"FieldOpsAI: Sending 'REASSIGNMENT' notification to new technician '{new_tech.technician_name}' "
                 f"for job {job.id} (from {old_tech.technician_name})."
             )
             return True
         except Exception as e:
-            logger.error(f"CommsAgent: Failed to notify technician for job {job.id}: {str(e)}")
+            logger.error(f"FieldOpsAI: Failed to notify technician for job {job.id}: {str(e)}")
             return False
+
+

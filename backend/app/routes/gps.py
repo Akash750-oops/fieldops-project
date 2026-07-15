@@ -230,7 +230,7 @@ async def gps_ping(
             formatted_errors = [{"loc": ["body"], "msg": str(ve), "type": "value_error"}]
             
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             content={"detail": formatted_errors}
         )
 
@@ -352,6 +352,19 @@ async def gps_ping(
         )
         db.add(db_ping)
 
+        # Capture ping attributes before commit to avoid ObjectDeletedError
+        # after the after_insert event runs in a separate session
+        ping_technician_id = db_ping.technician_id
+        ping_job_id = db_ping.job_id
+        ping_tenant_id = db_ping.tenant_id
+        ping_latitude = db_ping.latitude
+        ping_longitude = db_ping.longitude
+        ping_accuracy = db_ping.accuracy
+        ping_altitude = db_ping.altitude
+        ping_timestamp = db_ping.timestamp
+        ping_ip_address = request.client.host if request.client else None
+        ping_user_agent = request.headers.get("User-Agent")
+
         # Race Condition Prevention: Refresh job right before commit
         db.refresh(job)
         if job.status.upper().strip() in ["CLOSED", "CANCELLED", "CANCELED"]:
@@ -363,26 +376,25 @@ async def gps_ping(
             )
 
         db.commit()
-        db.refresh(db_ping)
 
         try:
             update_payload = {
                 "type": "position_update",
-                "technician_id": db_ping.technician_id,
-                "job_id": db_ping.job_id,
-                "tenant_id": db_ping.tenant_id,
-                "latitude": float(db_ping.latitude),
-                "longitude": float(db_ping.longitude),
-                "accuracy": float(db_ping.accuracy) if db_ping.accuracy is not None else None,
-                "altitude": float(db_ping.altitude) if db_ping.altitude is not None else None,
+                "technician_id": ping_technician_id,
+                "job_id": ping_job_id,
+                "tenant_id": ping_tenant_id,
+                "latitude": float(ping_latitude),
+                "longitude": float(ping_longitude),
+                "accuracy": float(ping_accuracy) if ping_accuracy is not None else None,
+                "altitude": float(ping_altitude) if ping_altitude is not None else None,
                 "job_status": job.status if job else "ASSIGNED",
                 "eta": "calculating...",
                 "eta_duration_minutes": None,
-                "timestamp": db_ping.timestamp.isoformat() if hasattr(db_ping.timestamp, "isoformat") else str(db_ping.timestamp),
+                "timestamp": ping_timestamp.isoformat() if hasattr(ping_timestamp, "isoformat") else str(ping_timestamp),
                 "broadcast_at": datetime.now(timezone.utc).isoformat(),
             }
             try:
-                eta_key = f"eta:{db_ping.technician_id}:{db_ping.job_id}"
+                eta_key = f"eta:{ping_technician_id}:{ping_job_id}"
                 eta_raw = redis_client.get(eta_key)
                 if eta_raw:
                     eta_data = json.loads(eta_raw)
@@ -407,13 +419,13 @@ async def gps_ping(
             "GPS ping stored in audit trail",
             extra={
                 "ping_id": ping_id,
-                "technician_id": payload.technician_id,
-                "job_id": payload.job_id,
+                "technician_id": ping_technician_id,
+                "job_id": ping_job_id,
                 "timestamp": payload.timestamp.isoformat(),
-                "ip_address": db_ping.ip_address,
-                "user_agent": db_ping.user_agent,
+                "ip_address": ping_ip_address,
+                "user_agent": ping_user_agent,
                 "correlation_id": correlation_id,
-                "tenant_id": db_ping.tenant_id
+                "tenant_id": ping_tenant_id
             }
         )
 
@@ -500,7 +512,7 @@ async def gps_batch(
 
     if len(pings) > 100:
         return JSONResponse(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=413,
             content={"detail": "Maximum 100 pings per batch"}
         )
 

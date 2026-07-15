@@ -62,7 +62,7 @@ def render_notification(
         NotificationTemplate.type == template_type,
         NotificationTemplate.channel == channel,
         NotificationTemplate.locale == locale,
-        NotificationTemplate.is_active == 1
+        NotificationTemplate.is_active == True
     ).first()
     
     # Fallback if no template exists for locale, try English
@@ -71,7 +71,7 @@ def render_notification(
             NotificationTemplate.type == template_type,
             NotificationTemplate.channel == channel,
             NotificationTemplate.locale == "en",
-            NotificationTemplate.is_active == 1
+            NotificationTemplate.is_active == True
         ).first()
 
     # Generic Fallback if still no template

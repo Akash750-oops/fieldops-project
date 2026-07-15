@@ -81,7 +81,6 @@ def setup_db():
     connection_manager._total_messages_broadcast = 0
     
     fake_sync_redis.flushall()
-    fake_async_redis.flushall()
     
     db = TestingSessionLocal()
     yield db
@@ -337,7 +336,7 @@ def test_gps_ping_to_broadcast_pipeline_publish(setup_db):
     db.commit()
 
     # Clear fake redis pub/sub before pinging
-    fake_async_redis.flushall()
+    fake_sync_redis.flushall()
 
     # Call GPS ping
     client = TestClient(app)

@@ -37,3 +37,5 @@ coverage/
 htmlcov/
 .nyc_output/
 
+# Environment Variables
+.env

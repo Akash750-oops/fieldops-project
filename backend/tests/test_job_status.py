@@ -95,6 +95,14 @@ def test_transition_created_to_assigned_unauthorized_role(setup_db):
 
 def test_transition_assigned_to_en_route_success(setup_db):
     db = setup_db
+    tech = Technician(
+        tech_id="tech-en-route",
+        technician_name="Tech ER",
+        technician_skill="Plumbing",
+        technician_location="Zone A"
+    )
+    db.add(tech)
+    db.commit()
     job = Job(
         customer_name="Alice",
         location="Zone A",
@@ -103,7 +111,8 @@ def test_transition_assigned_to_en_route_success(setup_db):
         service_type="Plumbing",
         contact_number="1234567890",
         preferred_service_date=datetime.now().date(),
-        status="ASSIGNED"
+        status="ASSIGNED",
+        assigned_technician_id=tech.technician_id
     )
     db.add(job)
     db.commit()
@@ -124,7 +133,8 @@ def test_transition_en_route_to_on_site_success(setup_db):
         service_type="Plumbing",
         contact_number="1234567890",
         preferred_service_date=datetime.now().date(),
-        status="EN_ROUTE"
+        status="EN_ROUTE",
+        gps_active=True
     )
     db.add(job)
     db.commit()
@@ -145,7 +155,8 @@ def test_transition_on_site_to_completed_success(setup_db):
         service_type="Plumbing",
         contact_number="1234567890",
         preferred_service_date=datetime.now().date(),
-        status="ON_SITE"
+        status="ON_SITE",
+        work_report="Fixed the leak successfully"
     )
     db.add(job)
     db.commit()

@@ -22,7 +22,27 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 def pg_engine():
     if not DATABASE_URL or not DATABASE_URL.startswith("postgresql"):
         pytest.skip("PostgreSQL is not configured in DATABASE_URL")
-    engine = create_engine(DATABASE_URL)
+    try:
+        engine = create_engine(DATABASE_URL)
+        # Force immediate connection check
+        with engine.connect() as conn:
+            pass
+    except Exception as e:
+        pytest.skip(f"PostgreSQL server connection failed: {e}")
+        return
+
+    # Run alembic migrations to prepare partition tables
+    try:
+        alembic_cfg = Config("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
+        # Ensure June and July 2026 partitions are created for time-independent testing
+        with engine.connect() as conn:
+            conn.execute(text("SELECT create_gps_ping_partition('2026-06-15 12:00:00+00');"))
+            conn.execute(text("SELECT create_gps_ping_partition('2026-07-15 12:00:00+00');"))
+            conn.commit()
+    except Exception as e:
+        print(f"Failed to run alembic migrations: {e}")
+
     yield engine
     engine.dispose()
 
@@ -219,6 +239,13 @@ def test_downgrade_and_upgrade_reversibility(pg_engine):
 
     # Re-upgrade to head to restore db state for application
     command.upgrade(alembic_cfg, "head")
+    
+    # Re-create June/July 2026 partitions
+    with pg_engine.connect() as conn:
+        conn.execute(text("SELECT create_gps_ping_partition('2026-06-15 12:00:00+00');"))
+        conn.execute(text("SELECT create_gps_ping_partition('2026-07-15 12:00:00+00');"))
+        conn.commit()
+
     inspector = inspect(pg_engine)
     tables = inspector.get_table_names()
     assert "gps_pings" in tables
