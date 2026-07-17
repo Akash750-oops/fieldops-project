@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import uuid
 from dotenv import load_dotenv
 from pathlib import Path
+import app.database
 
 # Load environment variables
 env_path = Path(__file__).resolve().parent.parent / '.env'
@@ -180,37 +181,142 @@ def test_partition_pruning_explain(pg_session):
     assert "gps_pings_2026_07" not in plan_text
 
 def test_index_usage_explain(pg_session):
-    # Verify index usage on tenant_id, technician_id, timestamp
+
+    # Get valid technician and job
+    tech_id = pg_session.execute(
+        text("SELECT tech_id FROM technicians LIMIT 1;")
+    ).scalar()
+
+    job_id = pg_session.execute(
+        text("SELECT id FROM jobs LIMIT 1;")
+    ).scalar()
+
+    tenant_id = "d7b38d38-2d88-468f-9a1b-3f4119d8544e"
+
+    # Seed dummy technician/job if none exist
+    if not tech_id:
+        tech_id = "tech-val"
+        pg_session.execute(text("""
+            INSERT INTO technicians
+            (tech_id, technician_name, technician_skill, technician_location)
+            VALUES
+            ('tech-val', 'Test Technician', 'HVAC', '0,0')
+            ON CONFLICT DO NOTHING;
+        """))
+
+    if not job_id:
+        job_id = 99991
+        pg_session.execute(text("""
+            INSERT INTO jobs
+            (id, customer_name, location, issue_description,
+             priority, service_type, contact_number,
+             preferred_service_date, status)
+            VALUES
+            (99991,
+             'Customer',
+             '0,0',
+             'Test Job',
+             'HIGH',
+             'HVAC',
+             '1234567890',
+             NOW()::DATE,
+             'active')
+            ON CONFLICT DO NOTHING;
+        """))
+
+    pg_session.commit()
+
+    # Insert one GPS ping
+    pg_session.execute(text("""
+        INSERT INTO gps_pings
+        (
+            technician_id,
+            job_id,
+            latitude,
+            longitude,
+            timestamp,
+            tenant_id
+        )
+        VALUES
+        (
+            :tech_id,
+            :job_id,
+            13.0827,
+            80.2707,
+            '2026-06-15 12:00:00+00',
+            :tenant_id
+        );
+    """), {
+        "tech_id": tech_id,
+        "job_id": job_id,
+        "tenant_id": tenant_id
+    })
+
+    pg_session.commit()
+
+    # Verify composite index usage
     explain_query = """
-        EXPLAIN 
-        SELECT * FROM gps_pings 
-        WHERE tenant_id = 'd7b38d38-2d88-468f-9a1b-3f4119d8544e' 
-          AND technician_id = 'tech-val' 
-          AND timestamp BETWEEN '2026-06-02 00:00:00+00' AND '2026-06-28 00:00:00+00';
+        EXPLAIN
+        SELECT *
+        FROM gps_pings
+        WHERE tenant_id = :tenant_id
+          AND technician_id = :tech_id
+          AND timestamp BETWEEN
+              '2026-06-02 00:00:00+00'
+          AND
+              '2026-06-28 00:00:00+00';
     """
-    
-    pg_session.execute(text("SET enable_seqscan = off;"))
-    plan = pg_session.execute(text(explain_query)).all()
-    plan_text = "\n".join([row[0] for row in plan])
-    pg_session.execute(text("SET enable_seqscan = on;")) # restore
-    
-    # Check for presence of the partition composite index name pattern in the explain plan
-    assert "idx_gps_pings_tenant_tech_time" in plan_text or "tenant_id_technician_id_timestamp" in plan_text
 
-    # Verify index usage on job_id, timestamp
+    pg_session.execute(text("SET enable_seqscan = off;"))
+
+    plan = pg_session.execute(
+        text(explain_query),
+        {
+            "tenant_id": tenant_id,
+            "tech_id": tech_id
+        }
+    ).all()
+
+    plan_text = "\n".join(row[0] for row in plan)
+
+    pg_session.execute(text("SET enable_seqscan = on;"))
+
+    assert (
+        "tenant_id_technician_id_timestamp" in plan_text
+        or
+        "idx_gps_pings_tenant_tech_time" in plan_text
+    )
+
+    # Verify job index usage
     explain_query_job = """
-        EXPLAIN 
-        SELECT * FROM gps_pings 
-        WHERE job_id = 1 
-          AND timestamp BETWEEN '2026-06-02 00:00:00+00' AND '2026-06-28 00:00:00+00';
+        EXPLAIN
+        SELECT *
+        FROM gps_pings
+        WHERE job_id = :job_id
+          AND timestamp BETWEEN
+              '2026-06-02 00:00:00+00'
+          AND
+              '2026-06-28 00:00:00+00';
     """
-    pg_session.execute(text("SET enable_seqscan = off;"))
-    plan_job = pg_session.execute(text(explain_query_job)).all()
-    plan_job_text = "\n".join([row[0] for row in plan_job])
-    pg_session.execute(text("SET enable_seqscan = on;")) # restore
-    
-    assert "idx_gps_pings_job_time" in plan_job_text or "job_id_timestamp" in plan_job_text
 
+    pg_session.execute(text("SET enable_seqscan = off;"))
+
+    plan_job = pg_session.execute(
+        text(explain_query_job),
+        {
+            "job_id": job_id
+        }
+    ).all()
+
+    plan_job_text = "\n".join(row[0] for row in plan_job)
+
+    pg_session.execute(text("SET enable_seqscan = on;"))
+
+    assert (
+        "job_id_timestamp" in plan_job_text
+        or
+        "idx_gps_pings_job_time" in plan_job_text
+    )
 def test_auto_partition_creation(pg_engine, pg_session):
     inspector = inspect(pg_engine)
     if "gps_pings_2026_08" in inspector.get_table_names():

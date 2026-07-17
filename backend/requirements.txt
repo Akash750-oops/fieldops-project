@@ -32,5 +32,9 @@ celery==5.3.6
 structlog==24.1.0
 sendgrid==6.11.0
 pyyaml
-
-
+python-multipart
+groq
+fakeredis
+freezegun
+factory-boy
+alembic
