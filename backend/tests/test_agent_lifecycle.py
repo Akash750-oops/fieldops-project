@@ -1553,3 +1553,12 @@ async def test_mark_agent_error_does_not_count_existing_error_twice(
 
     assert lifecycle.agent.state is AgentState.ERROR
     assert health["error_count"] == 1
+
+
+def test_persist_state_none_check() -> None:
+    """Invoking _persist_state when state_manager is None returns early."""
+    agent = SuccessfulLifecycleAgent(build_config())
+    pool = AgentPool()
+    lifecycle = AgentLifecycle(agent=agent, pool=pool, state_manager=None)
+    # This should return immediately without raising or doing anything
+    lifecycle._persist_state()

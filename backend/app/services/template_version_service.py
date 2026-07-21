@@ -21,7 +21,11 @@ def create_version(
 
     template = (
         db.query(NotificationTemplate)
-        .filter(NotificationTemplate.id == template_id)
+        .filter(
+            NotificationTemplate.id == template_id,
+            NotificationTemplate.tenant_id == "**platform**",
+            NotificationTemplate.agent_type == "CommsAgent"
+        )
         .first()
     )
 
@@ -82,7 +86,11 @@ def get_versions(
 
     template = (
         db.query(NotificationTemplate)
-        .filter(NotificationTemplate.id == template_id)
+        .filter(
+            NotificationTemplate.id == template_id,
+            NotificationTemplate.tenant_id == "**platform**",
+            NotificationTemplate.agent_type == "CommsAgent"
+        )
         .first()
     )
 
@@ -140,7 +148,11 @@ def restore_version(
 
     template = (
         db.query(NotificationTemplate)
-        .filter(NotificationTemplate.id == template_id)
+        .filter(
+            NotificationTemplate.id == template_id,
+            NotificationTemplate.tenant_id == "**platform**",
+            NotificationTemplate.agent_type == "CommsAgent"
+        )
         .first()
     )
 

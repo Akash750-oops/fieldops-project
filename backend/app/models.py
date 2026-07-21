@@ -196,26 +196,123 @@ class InAppNotification(Base):
 class NotificationTemplate(Base):
     __tablename__ = "notification_templates"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False)
-    type = Column(String(50), nullable=False) # assignment, reminder, escalation
-    channel = Column(String(20), nullable=False) # push, sms, in_app, email
-    locale = Column(String(10), default="en") # en, hi, ta
-    format = Column(String(20), default="text") # html, text
-    title_template = Column(Text, nullable=True)
-    body_template = Column(Text, nullable=False)
-    version = Column(Integer, default=1)
-    is_active = Column(Boolean, nullable=False, default=True) 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    name = Column(
+        String(100),
+        nullable=False,
+    )
+
+    type = Column(
+        String(50),
+        nullable=False,
+    )
+
+    channel = Column(
+        String(20),
+        nullable=False,
+    )
+
+    locale = Column(
+        String(10),
+        nullable=False,
+        default="en",
+    )
+
+    format = Column(
+        String(20),
+        nullable=False,
+        default="text",
+    )
+
+    title_template = Column(
+        Text,
+        nullable=True,
+    )
+
+    body_template = Column(
+        Text,
+        nullable=False,
+    )
+
+    variables = Column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+
+    version = Column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+
+    is_active = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )
+
+    tenant_id = Column(
+        String(50),
+        nullable=False,
+        index=True,
+        default="**platform**",
+    )
+
+    agent_type = Column(
+        String(50),
+        nullable=False,
+        index=True,
+        default="CommsAgent",
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
     versions = relationship(
         "TemplateVersion",
         back_populates="template",
         cascade="all, delete-orphan",
-        order_by="TemplateVersion.version_number.desc()",
+        order_by=(
+            "TemplateVersion.version_number.desc()"
+        ),
     )
-    
+
     __table_args__ = (
-        Index("idx_template_lookup", "type", "channel", "locale", "is_active"),
+        Index(
+            "idx_template_lookup",
+            "type",
+            "channel",
+            "locale",
+            "is_active",
+        ),
+        Index(
+            "idx_managed_prompt_lookup",
+            "tenant_id",
+            "agent_type",
+            "channel",
+            "locale",
+            "type",
+            "is_active",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "agent_type",
+            "channel",
+            "locale",
+            "type",
+            "version",
+            name=(
+                "uq_notification_templates_lookup"
+            ),
+        ),
     )
 class TemplateVersion(Base):
     __tablename__ = "template_versions"
@@ -786,3 +883,119 @@ class JobAssignment(Base):
     responded_at = Column(DateTime(timezone=True),nullable=True,)
     is_current = Column(Boolean,nullable=False,default=False,)
     created_at = Column(DateTime(timezone=True),server_default=func.now(),)
+
+
+class AgentStateRecord(Base):
+    """
+    Persistent snapshot of a FieldOps AI agent's runtime state.
+
+    Story 1.5 — Persistent Agent State.
+
+    Privacy rules
+    -------------
+    Only operational metadata is stored here.  The following are
+    strictly forbidden:
+    - API keys
+    - Prompts
+    - AI provider responses
+    - Customer names, addresses, or contact details
+    - Technician GPS or private information
+    - Message contents or full job payloads
+    - Authentication tokens
+
+    Constraints
+    -----------
+    - At most one record per (tenant_id, agent_id) pair.
+    - agent_id is stored as a String(36) UUID.
+    - state stores the AgentState string value.
+    - agent_type stores the AITask string value.
+    - metadata is a JSON column (safe operational counters only).
+    """
+
+    __tablename__ = "agent_state_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    agent_id = Column(
+        String(36),
+        nullable=False,
+        comment="UUID4 agent instance identifier.",
+    )
+
+    agent_type = Column(
+        String(50),
+        nullable=False,
+        comment="AITask value for this agent.",
+    )
+
+    tenant_id = Column(
+        String(50),
+        nullable=False,
+        comment="Tenant that owns this agent.",
+    )
+
+    agent_version = Column(
+        String(50),
+        nullable=False,
+        default="1.0",
+        comment="Agent implementation version.",
+    )
+
+    state = Column(
+        String(30),
+        nullable=False,
+        comment="AgentState string value.",
+    )
+
+    correlation_id = Column(
+        String(100),
+        nullable=True,
+        comment="Correlation ID from the last lifecycle event.",
+    )
+
+    last_error = Column(
+        String(500),
+        nullable=True,
+        comment="Safe error summary only — no stack traces or secrets.",
+    )
+
+    safe_metadata = Column(
+        JSON,
+        nullable=True,
+        default=dict,
+        comment="Safe operational metadata — no customer data or secrets.",
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "agent_id",
+            name="uq_agent_state_tenant_agent",
+        ),
+        Index(
+            "idx_agent_state_tenant",
+            "tenant_id",
+        ),
+        Index(
+            "idx_agent_state_agent_id",
+            "agent_id",
+        ),
+        Index(
+            "idx_agent_state_tenant_state",
+            "tenant_id",
+            "state",
+        ),
+    )

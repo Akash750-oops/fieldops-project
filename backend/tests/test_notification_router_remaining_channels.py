@@ -547,3 +547,106 @@ def test_routing_uses_recipient_specific_templates(
         ]["dispatcher"]["template"]
         == "dispatcher_job_assigned"
     )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("invalid_subject", [
+    None,
+    12345,
+    [],
+    "",
+    "   ",
+    "A" * 79
+])
+async def test_email_rejects_invalid_subjects(invalid_subject) -> None:
+    """
+    Invalid subjects must be rejected before delivery.
+    """
+    from unittest.mock import AsyncMock
+    email_service = FakeEmailService()
+    email_service.send_email = AsyncMock(return_value=True)
+
+    class SubjectCommunicationIntegration:
+        async def generate(self, *args, **kwargs):
+            import types
+            decision = types.SimpleNamespace(
+                channel="EMAIL",
+                title=None,
+                subject=invalid_subject,
+                message="Test Message"
+            )
+            return types.SimpleNamespace(decision=decision)
+
+    router = NotificationRouter(
+        fcm_service=MagicMock(),
+        sms_service=MagicMock(),
+        email_service=email_service,
+        ws_manager=FakeWebSocketManager(),
+        redis_client=FakeRedis(),
+        communication_integration=SubjectCommunicationIntegration(),
+    )
+
+    delivered = await router._send_email(
+        build_event(status="COMPLETED"),
+        "customer",
+        {},
+        {"include_survey_link": False},
+        "job_done_survey"
+    )
+
+    assert delivered is False
+    email_service.send_email.assert_not_called()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("valid_subject", [
+    "A" * 78,
+    "Normal subject"
+])
+async def test_email_accepts_valid_subjects(valid_subject) -> None:
+    """
+    Valid subjects up to 78 characters must be accepted.
+    """
+    from unittest.mock import AsyncMock
+    email_service = FakeEmailService()
+    email_service.send_email = AsyncMock(return_value=True)
+
+    class SubjectCommunicationIntegration:
+        async def generate(self, *args, **kwargs) -> CommunicationServiceResult:
+            decision = CommunicationDecision(
+                channel="EMAIL",
+                title=None,
+                subject=valid_subject,
+                message="Test Message",
+                tone="PROFESSIONAL",
+                confidence=1.0,
+            )
+            return CommunicationServiceResult(
+                decision=decision,
+                used_fallback=False,
+                fallback_source=None,
+                fallback_template_id=None,
+                fallback_template_version=None,
+                guardrail_result=GuardrailPipelineResult.from_checks(checks=(), total_latency_ms=0.0),
+                audit_record_count=0,
+            )
+
+    router = NotificationRouter(
+        fcm_service=MagicMock(),
+        sms_service=MagicMock(),
+        email_service=email_service,
+        ws_manager=FakeWebSocketManager(),
+        redis_client=FakeRedis(),
+        communication_integration=SubjectCommunicationIntegration(),
+    )
+
+    delivered = await router._send_email(
+        build_event(status="COMPLETED"),
+        "customer",
+        {},
+        {"include_survey_link": False},
+        "job_done_survey"
+    )
+
+    assert delivered is True
+    email_service.send_email.assert_called_once()

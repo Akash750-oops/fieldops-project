@@ -10,9 +10,9 @@ The Planning Agent is responsible for:
 - Returning up to three recommended technicians.
 """
 
-from typing import Literal, Optional,Any
+from typing import Literal, Optional, Any, Dict, List
 
-from pydantic import BaseModel, Field, Dict, List
+from pydantic import BaseModel, Field
 
 class RecommendedTechnician(BaseModel):
     technician_id: int = Field(

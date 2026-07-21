@@ -7,8 +7,9 @@ AgentLifecycle coordinates agent setup, local pool registration,
 execution timeouts, standard results, lifecycle hooks, pause/resume,
 and controlled teardown.
 
-Persistent state, Redis registration, and database lifecycle auditing
-are added in later implementation steps.
+Optional persistent state snapshots are supported through an injected
+AgentStateManager. Redis registration and database lifecycle auditing
+remain future implementation steps.
 """
 
 from __future__ import annotations
@@ -96,9 +97,35 @@ class AgentLifecycle:
         pool: AgentPool,
         run_timeout_seconds: float | None = None,
         teardown_timeout_seconds: float = 5.0,
+        state_manager: "Any | None" = None,
+        health_monitor: "Any | None" = None,
     ) -> None:
         """
         Initialize lifecycle management without performing external I/O.
+
+        Parameters
+        ----------
+        agent:
+            BaseAgent instance managed by this lifecycle.
+        pool:
+            Local in-process AgentPool.
+        run_timeout_seconds:
+            Maximum execution duration.  Capped at 30 seconds.
+        teardown_timeout_seconds:
+            Maximum teardown duration.  Cannot exceed 5 seconds.
+        state_manager:
+            Optional AgentStateManager.  When supplied, agent state
+            snapshots are persisted after setup, after execution
+            (success and failure), and after teardown.
+
+            Persistence failures are logged and do not interrupt agent
+            execution (log-and-continue policy).
+
+            When None (the default), no persistence is performed and
+            existing behavior is fully preserved.
+        health_monitor:
+            Optional AgentHealthMonitor. When supplied, agent heartbeats
+            are recorded to track operational health and liveness.
         """
 
         if not isinstance(agent, BaseAgent):
@@ -143,6 +170,8 @@ class AgentLifecycle:
 
         self._agent = agent
         self._pool = pool
+        self._state_manager = state_manager
+        self._health_monitor = health_monitor
 
         self._run_timeout_seconds = (
             float(configured_run_timeout)
@@ -347,12 +376,23 @@ class AgentLifecycle:
 
         self._initialized = True
 
+        await self._record_health(
+            state=AgentState.IDLE,
+            correlation_id=active_correlation_id,
+        )
+
         await self._emit_event(
             event=LifecycleEvent.SETUP,
             phase=LifecycleHookPhase.POST,
             previous_state=previous_state,
             correlation_id=active_correlation_id,
         )
+
+        # Optional persistence after successful setup.
+        if self._state_manager is not None:
+            self._persist_state(
+                correlation_id=active_correlation_id,
+            )
 
         self._logger.info(
             "agent_lifecycle_initialized",
@@ -400,6 +440,11 @@ class AgentLifecycle:
 
         result: AgentResult
 
+        await self._record_health(
+            state=AgentState.RUNNING,
+            correlation_id=active_correlation_id,
+        )
+
         try:
             output = await asyncio.wait_for(
                 self._agent.execute(
@@ -419,6 +464,13 @@ class AgentLifecycle:
                     output
                 ),
                 agent_id=str(self._agent.agent_id),
+                correlation_id=active_correlation_id,
+            )
+
+            await self._record_health(
+                state=AgentState.IDLE,
+                result_status=AgentResultStatus.SUCCESS,
+                latency_ms=result.latency_ms,
                 correlation_id=active_correlation_id,
             )
 
@@ -447,6 +499,13 @@ class AgentLifecycle:
                 safe_error_message=(
                     "The agent exceeded its execution timeout."
                 ),
+            )
+
+            await self._record_health(
+                state=AgentState.ERROR,
+                result_status=AgentResultStatus.TIMEOUT,
+                safe_error_code="AGENT_EXECUTION_TIMEOUT",
+                correlation_id=active_correlation_id,
             )
 
         except asyncio.CancelledError:
@@ -486,6 +545,13 @@ class AgentLifecycle:
                 ),
             )
 
+            await self._record_health(
+                state=AgentState.ERROR,
+                result_status=AgentResultStatus.FAILED,
+                safe_error_code="AGENT_EXECUTION_FAILED",
+                correlation_id=active_correlation_id,
+            )
+
         await self._emit_event(
             event=LifecycleEvent.RUN,
             phase=LifecycleHookPhase.POST,
@@ -498,6 +564,17 @@ class AgentLifecycle:
                 "tokens_used": result.tokens_used,
             },
         )
+
+        # Optional persistence after execution (success, failure, or timeout).
+        if self._state_manager is not None:
+            self._persist_state(
+                correlation_id=active_correlation_id,
+                last_error=result.safe_error_message,
+                metadata={
+                    "result_status": result.status.value,
+                    "tokens_used": result.tokens_used,
+                },
+            )
 
         return result
 
@@ -700,6 +777,17 @@ class AgentLifecycle:
             previous_state=previous_state,
             correlation_id=active_correlation_id,
             latency_ms=self._elapsed_ms(started_at),
+        )
+
+        # Optional persistence after successful teardown.
+        if self._state_manager is not None:
+            self._persist_state(
+                correlation_id=active_correlation_id,
+            )
+
+        await self._record_health(
+            state=AgentState.TERMINATED,
+            correlation_id=active_correlation_id,
         )
 
         self._logger.info(
@@ -923,6 +1011,39 @@ class AgentLifecycle:
             3,
         )
 
+    def _persist_state(
+        self,
+        *,
+        correlation_id: str | None = None,
+        last_error: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Persist agent state via the optional state manager.
+
+        Persistence failures are logged and never interrupt agent
+        execution (log-and-continue policy).
+        """
+
+        if self._state_manager is None:
+            return
+
+        try:
+            self._state_manager.save_agent(
+                self._agent,
+                correlation_id=correlation_id,
+                last_error=last_error,
+                metadata=metadata,
+            )
+        except Exception:
+            self._logger.exception(
+                "agent_lifecycle_state_persistence_failed",
+                agent_id=str(self._agent.agent_id),
+                tenant_id=self._agent.tenant_id,
+                state=self._agent.state.value,
+                correlation_id=correlation_id,
+            )
+
     @staticmethod
     def _validate_positive_timeout(
         value: float,
@@ -944,4 +1065,52 @@ class AgentLifecycle:
         if value <= 0:
             raise ValueError(
                 f"{field_name} must be greater than zero."
+            )
+
+    async def _record_health(
+        self,
+        *,
+        state: AgentState,
+        result_status: AgentResultStatus | None = None,
+        latency_ms: float | None = None,
+        safe_error_code: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        correlation_id: str | None = None,
+    ) -> None:
+        """
+        Record a heartbeat with the health monitor if configured.
+
+        Follows a log-and-continue policy so monitor failures never
+        interrupt execution.
+        """
+        if self._health_monitor is None:
+            return
+
+        try:
+            from app.services.ai.FieldOpsAI.schemas.agent_health import AgentHeartbeat
+
+            heartbeat = AgentHeartbeat(
+                agent_id=self._agent.agent_id,
+                tenant_id=self._agent.tenant_id,
+                agent_type=self._agent.config.agent_type,
+                state=state,
+                observed_at=datetime.now(timezone.utc),
+                correlation_id=correlation_id,
+                result_status=result_status,
+                latency_ms=latency_ms,
+                safe_error_code=safe_error_code,
+                metadata=metadata or {},
+            )
+
+            await self._health_monitor.record_heartbeat(heartbeat)
+
+        except Exception:
+            self._logger.warning(
+                "agent_lifecycle_health_record_failed",
+                agent_id=str(self._agent.agent_id),
+                tenant_id=self._agent.tenant_id,
+                agent_type=self._agent.config.agent_type.value,
+                state=state.value,
+                correlation_id=correlation_id,
+                safe_error_code=safe_error_code,
             )

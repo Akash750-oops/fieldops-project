@@ -7,6 +7,7 @@ from ..database import get_db
 from ..models import NotificationTemplate,TemplateVersion
 from ..schemas import TemplateCreate, TemplateResponse, TemplatePreviewRequest, TemplatePreviewResponse
 from ..services.template_engine import render_preview
+from ..services.ai.FieldOpsAI.schemas.prompt_template import _validate_jinja_variables
 
 router = APIRouter(
     prefix="/templates",
@@ -24,7 +25,9 @@ async def create_template(
         NotificationTemplate.type == payload.type,
         NotificationTemplate.channel == payload.channel,
         NotificationTemplate.locale == payload.locale,
-        NotificationTemplate.is_active == True
+        NotificationTemplate.is_active == True,
+        NotificationTemplate.tenant_id == "**platform**",
+        NotificationTemplate.agent_type == "CommsAgent"
     ).first()
 
     new_version = 1
@@ -33,6 +36,16 @@ async def create_template(
         new_version = existing.version + 1
         existing.is_active = False
         db.commit()
+
+    # Derive variables automatically
+    from jinja2 import Environment, meta
+    env = Environment()
+    ast = env.parse(payload.body_template)
+    vars_set = meta.find_undeclared_variables(ast)
+    if payload.title_template:
+        ast_title = env.parse(payload.title_template)
+        vars_set.update(meta.find_undeclared_variables(ast_title))
+    variables = list(vars_set)
 
     # Create the active template
     new_template = NotificationTemplate(
@@ -43,8 +56,11 @@ async def create_template(
         format=payload.format,
         title_template=payload.title_template,
         body_template=payload.body_template,
+        variables=variables,
         version=new_version,
         is_active=True,
+        tenant_id="**platform**",
+        agent_type="CommsAgent"
     )
 
     db.add(new_template)
@@ -75,8 +91,12 @@ async def list_templates(
     db: Session = Depends(get_db),
     authorization: str = Depends(verify_jwt_token)
 ):
-    # Only return active templates by default
-    return db.query(NotificationTemplate).filter(NotificationTemplate.is_active == 1).all()
+    # Only return active platform CommsAgent templates by default
+    return db.query(NotificationTemplate).filter(
+        NotificationTemplate.is_active == True,
+        NotificationTemplate.tenant_id == "**platform**",
+        NotificationTemplate.agent_type == "CommsAgent"
+    ).all()
 
 @router.post("/preview", response_model=TemplatePreviewResponse)
 async def preview_template(
@@ -93,5 +113,5 @@ async def preview_template(
             "rendered_title": result["title"],
             "rendered_body": result["body"]
         }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Template render error: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Template render failed.")

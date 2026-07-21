@@ -488,6 +488,16 @@ def generate_default_templates():
 
                 body = template[channel]
 
+                # Derive variables automatically
+                from jinja2 import Environment, meta
+                env = Environment()
+                ast = env.parse(body)
+                vars_set = meta.find_undeclared_variables(ast)
+                if template["title"]:
+                    ast_title = env.parse(template["title"])
+                    vars_set.update(meta.find_undeclared_variables(ast_title))
+                variables = list(vars_set)
+
                 templates.append(
                     {
                         "name": build_template_name(
@@ -501,6 +511,9 @@ def generate_default_templates():
                         "format": get_format(channel),
                         "title_template": template["title"],
                         "body_template": body,
+                        "variables": variables,
+                        "tenant_id": "**platform**",
+                        "agent_type": "CommsAgent"
                     }
                 )
 
@@ -520,6 +533,8 @@ def seed_default_templates(db: Session):
                 type=template["type"],
                 channel=template["channel"],
                 locale=template["locale"],
+                tenant_id="**platform**",
+                agent_type="CommsAgent"
             )
             .first()
         )

@@ -394,6 +394,12 @@ class GuardrailFallbackService:
 
                         NotificationTemplate.is_active
                         .is_(True),
+
+                        NotificationTemplate.tenant_id
+                        == "**platform**",
+
+                        NotificationTemplate.agent_type
+                        == "CommsAgent",
                     )
                     .order_by(
                         NotificationTemplate.version.desc(),

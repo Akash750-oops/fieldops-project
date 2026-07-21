@@ -6,10 +6,13 @@ from fastapi.responses import JSONResponse
 from starlette import status
 import os
 import asyncio
+import logging
 import redis.asyncio as aioredis
 
+logger = logging.getLogger(__name__)
+
 from .database import SessionLocal
-from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking,template_version_routes,brand_safety_admin
+from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking,template_version_routes,brand_safety_admin,admin_prompts
 from . import models
 from .services.justification_validator import JustificationValidationError
 from .worker import start_scheduler, stop_scheduler
@@ -65,23 +68,37 @@ async def lifespan(app: FastAPI):
         print(f"Failed to seed default templates: {e}")
     finally:
         db.close()
-    
-    yield
-    
-    if scheduler:
-        await scheduler.stop()
-    if listener_task:
-        listener_task.cancel()
+
+    try:
+        from app.services.ai.FieldOpsAI.runtime.orchestrator import ai_orchestrator
+        await ai_orchestrator.provider_health_monitor.start()
+    except Exception:
+        logger.warning("ProviderHealthMonitor failed to start.")
+
+    try:
+        yield
+    finally:
         try:
-            await listener_task
-        except asyncio.CancelledError:
-            pass
-    if redis_async_client:
-        await redis_async_client.aclose()
-    if redis_pubsub_client:
-        await redis_pubsub_client.aclose()
-        
-    stop_scheduler()
+            from app.services.ai.FieldOpsAI.runtime.orchestrator import ai_orchestrator
+            await ai_orchestrator.provider_health_monitor.stop()
+        except Exception:
+            logger.warning("ProviderHealthMonitor failed to stop.")
+
+        if scheduler:
+            await scheduler.stop()
+        if listener_task:
+            listener_task.cancel()
+            try:
+                await listener_task
+            except asyncio.CancelledError:
+                pass
+        if redis_async_client:
+            await redis_async_client.aclose()
+        if redis_pubsub_client:
+            await redis_pubsub_client.aclose()
+
+        stop_scheduler()
+
 
 
 app = FastAPI(
@@ -147,7 +164,7 @@ async def justification_validation_exception_handler(request: Request, exc: Just
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     errors = exc.errors()
     
-    # Check if this is our custom priority error or priority field error
+    sanitized_errors = []
     for err in errors:
         loc = err.get("loc", [])
         is_priority = "priority" in loc
@@ -159,20 +176,25 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 content={"error": "Invalid priority value"}
             )
             
-        # Handle field_must_not_be_empty or other generic field errors
         if "Field cannot be empty" in msg:
              field = loc[-1] if loc else "field"
              return JSONResponse(
                  status_code=status.HTTP_400_BAD_REQUEST,
                  content={"error": f"{str(field).replace('_', ' ').capitalize()} cannot be empty"}
               )
+              
+        sanitized_errors.append({
+            "loc": err.get("loc"),
+            "msg": err.get("msg"),
+            "type": err.get("type")
+        })
 
     # Fallback for other validation errors
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={
-            "error": "Bad request",
-            "detail": errors
+            "error": "Bad Request",
+            "detail": sanitized_errors,
         },
     )
 
@@ -196,9 +218,9 @@ app.include_router(gps.router)
 app.include_router(admin_gps.router)
 app.include_router(eta.router)
 app.include_router(tracking.router)
-app.include_router(templates.router)
 app.include_router(template_version_routes.router)
 app.include_router(brand_safety_admin.router)
+app.include_router(admin_prompts.router)
 
 from .services.socket_manager import sio_app
 app.mount("/socket.io", sio_app)
