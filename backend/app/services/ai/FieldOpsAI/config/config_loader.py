@@ -74,6 +74,27 @@ class ConfigLoader:
         return self._section("provider")
 
     @property
+    def provider_budget(self) -> Dict[str, Any]:
+        import copy
+        return copy.deepcopy(self.provider.get("budget", {}))
+
+    @property
+    def provider_cache(self) -> Dict[str, Any]:
+        import copy
+        return copy.deepcopy(self.provider.get("cache", {}))
+
+    @property
+    def provider_circuit_breaker(self) -> Dict[str, Any]:
+        import copy
+        return copy.deepcopy(self.provider.get("circuit_breaker", {}))
+
+    @property
+    def provider_health(self) -> Dict[str, Any]:
+        import copy
+        return copy.deepcopy(self.provider.get("health", {}))
+
+
+    @property
     def model(self) -> Dict[str, Any]:
         return self._section("model")
 
@@ -96,6 +117,31 @@ class ConfigLoader:
         return self.provider["name"]
 
     @property
+    def provider_fallback_order(self) -> list[str]:
+        raw_order = self.provider.get("fallback_order")
+        if raw_order is None:
+            return [self.provider_name.strip().lower()]
+
+        if not isinstance(raw_order, (list, tuple)):
+            from app.services.ai.FieldOpsAI.providers.base_provider import ProviderConfigurationError
+            raise ProviderConfigurationError("provider.fallback_order must be a list of strings.")
+
+        normalized: list[str] = []
+        for item in raw_order:
+            if not isinstance(item, str) or not item.strip():
+                from app.services.ai.FieldOpsAI.providers.base_provider import ProviderConfigurationError
+                raise ProviderConfigurationError("provider.fallback_order elements must be non-blank strings.")
+            norm_name = item.strip().lower()
+            if norm_name not in normalized:
+                normalized.append(norm_name)
+
+        if not normalized:
+            from app.services.ai.FieldOpsAI.providers.base_provider import ProviderConfigurationError
+            raise ProviderConfigurationError("provider.fallback_order must contain at least one valid provider name.")
+
+        return normalized
+
+    @property
     def model_name(self) -> str:
         return self.model["name"]
 
@@ -110,3 +156,10 @@ class ConfigLoader:
     @property
     def runtime_engine(self) -> str:
         return self.runtime["engine"]
+
+    def get_config_snapshot(self) -> dict[str, Any]:
+        """
+        Return a defensive deep copy of the loaded configuration.
+        """
+        import copy
+        return copy.deepcopy(self._config)

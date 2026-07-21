@@ -181,7 +181,13 @@ def _ensure_model_compatibility():
                 if "tech_id" in kwargs:
                     tech_id = kwargs.pop("tech_id")
                     if "technician_id" not in kwargs:
-                        kwargs["technician_id"] = tech_id
+                        has_separate_tech_id = hasattr(technician_cls, "tech_id") and not isinstance(getattr(technician_cls, "tech_id", None), property)
+                        if not has_separate_tech_id:
+                            kwargs["technician_id"] = tech_id
+                        elif isinstance(tech_id, int):
+                            kwargs["technician_id"] = tech_id
+                        elif isinstance(tech_id, str) and tech_id.isdigit():
+                            kwargs["technician_id"] = int(tech_id)
                     if hasattr(technician_cls, "tech_id"):
                         kwargs["tech_id"] = tech_id
                 return original_init(self, *args, **kwargs)

@@ -93,9 +93,10 @@ class JobAssignmentRepository:
             self.db.query(JobAssignment)
             .filter(
                 JobAssignment.job_id == job_id,
-                JobAssignment.rank == current.rank + 1,
+                JobAssignment.rank > after_rank,
                 JobAssignment.status == "PENDING",
             )
+            .order_by(JobAssignment.rank)
             .first()
         )
 
@@ -157,15 +158,19 @@ class JobAssignmentRepository:
     def promote_next_candidate(
         self,
         job_id: int,
+        *,
+        after_rank: int | None = None,
     ) -> Optional[JobAssignment]:
         """
-        Make the next ranked technician the current candidate.
+        Make the next pending ranked technician the current candidate.
         """
 
-        next_candidate = self.get_next_candidate(job_id)
+        next_candidate = self.get_next_candidate(
+            job_id,
+            after_rank=after_rank,
+        )
 
-        if next_candidate:
-
+        if next_candidate is not None:
             next_candidate.is_current = True
 
         return next_candidate
@@ -192,6 +197,30 @@ class JobAssignmentRepository:
         return [row.technician_id for row in rows]
 
     # ---------------------------------------------------------
+
+    def get_remaining_candidates(
+        self,
+        *,
+        job_id: int,
+        after_rank: int,
+    ) -> List[JobAssignment]:
+        """
+        Retrieve all pending later-ranked candidates for a job.
+        """
+
+        return (
+            self.db.query(JobAssignment)
+            .filter(
+                JobAssignment.job_id == job_id,
+                JobAssignment.status == "PENDING",
+                JobAssignment.rank > after_rank,
+            )
+            .order_by(JobAssignment.rank)
+            .all()
+        )
+
+    # ---------------------------------------------------------
+
 
     def save(self) -> None:
         """

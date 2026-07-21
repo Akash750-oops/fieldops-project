@@ -40,6 +40,9 @@ from pydantic import (
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.services.ai.FieldOpsAI.config.agent_config_manager import AgentConfigManager
+from app.services.ai.FieldOpsAI.schemas.ai_task import AITask
+
 from app.services.ai.pii_sanitizer import (
     PIISanitizer,
     PlaceholderMap,
@@ -313,11 +316,15 @@ class CommunicationService:
         self._db = db
         self._tenant_id = normalized_tenant_id
 
-        self._agent = (
-            agent
-            if agent is not None
-            else CommunicationAgent()
-        )
+        if agent is not None:
+            self._agent = agent
+        else:
+            config_manager = AgentConfigManager()
+            config = config_manager.resolve(
+                agent_type=AITask.COMMUNICATION,
+                tenant_id=normalized_tenant_id,
+            )
+            self._agent = CommunicationAgent(config=config)
 
         self._sanitizer = (
             sanitizer

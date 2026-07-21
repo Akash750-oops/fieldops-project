@@ -17,9 +17,9 @@ Benefits
 - Clean separation of concerns
 """
 
-from pathlib import Path
-from typing import List
-
+from typing import List, Optional
+from app.services.ai.FieldOpsAI.runtime.prompt_registry import PromptTemplateRegistry, get_default_prompt_registry
+from app.services.ai.FieldOpsAI.schemas.ai_task import AITask
 
 class PromptBuilder:
     """
@@ -27,85 +27,35 @@ class PromptBuilder:
     FieldOps AI system prompt.
     """
 
-    PROMPT_FILES: List[str] = [
-        "IDENTITY.md",
-        "SOUL.md",
-        "knowledge/business_rules.md",
-        "knowledge/lifecycle.md",
-        "knowledge/roles.md",
-        "knowledge/validation.md",
-
-    ]
-
-    def __init__(self):
+    def __init__(self, registry: Optional[PromptTemplateRegistry] = None):
         """
-        Automatically locate the FieldOpsAI root directory.
-
-        No caller should have to provide the path manually.
+        Initialize PromptBuilder.
+        Uses the default PromptTemplateRegistry if none is provided.
         """
+        self._registry = registry
 
-        self.base_directory = Path(__file__).resolve().parent.parent
-
-    # ---------------------------------------------------------
-
-    def _read_markdown(self, relative_path: str) -> str:
-        """
-        Read a Markdown file.
-
-        Parameters
-        ----------
-        relative_path
-            Path relative to the FieldOpsAI directory.
-
-        Returns
-        -------
-        str
-            Markdown file contents.
-
-        Raises
-        ------
-        FileNotFoundError
-            If the required Markdown file is missing.
-        """
-
-        file_path = self.base_directory / relative_path
-
-        if not file_path.exists():
-            raise FileNotFoundError(
-                f"Missing AI configuration file: {file_path}"
-            )
-
-        return file_path.read_text(
-            encoding="utf-8"
-        ).strip()
-
-    # ---------------------------------------------------------
+    @property
+    def registry(self) -> PromptTemplateRegistry:
+        if self._registry is None:
+            self._registry = get_default_prompt_registry()
+        return self._registry
 
     def build(self) -> str:
         """
         Build the complete system prompt.
 
-        The prompt is assembled in a fixed order:
-
-        Identity
-            ↓
-        Soul
-            ↓
-        Business Rules
-            ↓
-        Knowledge
-            ↓
-        Shared Communication Rules
-
+        The prompt is assembled in a fixed order based on the registry.
+        
         Returns
         -------
         str
             Complete system prompt.
         """
-
-        sections: List[str] = [
-            self._read_markdown(file)
-            for file in self.PROMPT_FILES
-        ]
-
+        sections: List[str] = list(self.registry.get_system_instructions())
         return "\n\n".join(sections)
+
+    def get_task_prompt(self, task: AITask) -> str:
+        """
+        Get the prompt for a specific AI task from the registry.
+        """
+        return self.registry.get_task_prompt(task)

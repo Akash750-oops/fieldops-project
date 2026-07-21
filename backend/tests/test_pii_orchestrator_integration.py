@@ -24,7 +24,18 @@ from typing import Any
 
 import pytest
 from pydantic import BaseModel
+from unittest.mock import MagicMock
 
+from app.services.ai.FieldOpsAI.providers.base_provider import (
+    ProviderExecutionError,
+)
+from app.services.ai.FieldOpsAI.providers.budget import (
+    BudgetExceededError,
+)
+from app.services.ai.FieldOpsAI.runtime.circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerConfig,
+)
 from app.services.ai.pii_sanitizer import (
     PIICategory,
     PIILeakageError,
@@ -155,6 +166,30 @@ class RecordingClient:
 
         return self.response
 
+    def generate_result(
+        self,
+        task: AITask,
+        messages: list[dict[str, str]],
+        context: dict[str, Any],
+    ) -> GenerationResult:
+        from app.services.ai.FieldOpsAI.schemas.provider import GenerationResult, UsageStats
+        text = self.generate(task=task, messages=messages, context=context)
+        prompt_tokens = len(str(messages).split())
+        completion_tokens = len(text.split())
+        return GenerationResult(
+            text=text,
+            provider_name="Groq",
+            model_name="llama-3.3-70b-versatile",
+            usage=UsageStats(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=prompt_tokens + completion_tokens,
+                request_count=1,
+                latency_ms=10.0,
+                cost_usd=0.0,
+            ),
+        )
+
 
 class FailingClient(RecordingClient):
     """
@@ -251,11 +286,21 @@ def build_orchestrator(
     """
     Build an isolated orchestrator using fake dependencies.
     """
+    import fakeredis
+    from app.services.ai.FieldOpsAI.providers.budget import SyncTokenBudgetManager, TokenBudgetConfig
+    fake_redis = fakeredis.FakeRedis(decode_responses=True)
+    budget_manager = SyncTokenBudgetManager(fake_redis, TokenBudgetConfig(atomic_strategy="transaction"))
+    circuit_breaker = CircuitBreaker(
+        fake_redis,
+        CircuitBreakerConfig(),
+    )
 
     orchestrator = AIOrchestrator(
         client=client,  # type: ignore[arg-type]
         sanitizer=sanitizer,
         prompt_builder=StaticPromptBuilder(),  # type: ignore[arg-type]
+        budget_manager=budget_manager,
+        circuit_breaker=circuit_breaker,
     )
 
     # Prevent this test from depending on physical Markdown
@@ -268,9 +313,6 @@ def build_orchestrator(
             "Generate a safe FieldOps communication response."
         ),
     )
-
-    # Prevent previous tests from affecting the token budget.
-    orchestrator.token_tracker.reset()
 
     return orchestrator
 
@@ -574,9 +616,8 @@ def test_orchestrator_clears_mapping_after_provider_failure(
     )
 
     with pytest.raises(
-        RuntimeError,
-        match="AI orchestration failed",
-    ):
+        ProviderExecutionError
+    ) as exc_info:
         orchestrator.execute(
             task=AITask.COMMUNICATION,
             context={
@@ -587,6 +628,9 @@ def test_orchestrator_clears_mapping_after_provider_failure(
                 "job_id": "JOB-1001",
             },
         )
+
+    assert "AI provider execution failed." in str(exc_info.value)
+    assert "Simulated provider failure." not in str(exc_info.value)
 
     assert client.call_count == 1
 
@@ -637,3 +681,45 @@ def test_orchestrator_clears_mapping_after_provider_failure(
     assert len(
         sanitizer.last_placeholder_map
     ) == 0
+
+def test_reconciliation_overrun_stops_execution_without_cancel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = RecordingClient(
+        response='{"message": "Safe response"}',
+    )
+
+    sanitizer = TrackingPIISanitizer()
+
+    orchestrator = build_orchestrator(
+        client=client,
+        sanitizer=sanitizer,
+        monkeypatch=monkeypatch,
+    )
+
+    orchestrator.token_budget_manager.reconcile = MagicMock(
+        side_effect=BudgetExceededError(
+            "Sensitive internal budget information"
+        )
+    )
+
+    orchestrator.token_budget_manager.cancel = MagicMock()
+
+    with pytest.raises(
+        ProviderExecutionError
+    ) as exc_info:
+        orchestrator.execute(
+            task=AITask.COMMUNICATION,
+            context={
+                "job_status": "ASSIGNED",
+            },
+        )
+
+    assert exc_info.value.is_retryable is False
+    assert "Sensitive internal budget information" not in str(exc_info.value)
+
+    assert client.call_count == 1
+
+    orchestrator.token_budget_manager.reconcile.assert_called_once()
+
+    orchestrator.token_budget_manager.cancel.assert_not_called()

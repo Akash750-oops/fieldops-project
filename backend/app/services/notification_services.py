@@ -1306,15 +1306,30 @@ class NotificationRouter:
             communication.decision.message
         )
 
-        if subject is None:
-            if len(subject) > 78:
-                logger.error(
-                    "Final email subject exceeds the transport limit. "
-                    "Delivery was skipped. job_id=%s",
-                    event.job_id,
-                )
+        if not isinstance(subject, str):
+            logger.error(
+                "Final email subject is not a string. "
+                "Delivery was skipped. job_id=%s",
+                event.job_id,
+            )
+            return False
 
-                return False
+        if not subject.strip():
+            logger.error(
+                "Final email subject is empty or blank. "
+                "Delivery was skipped. job_id=%s",
+                event.job_id,
+            )
+            return False
+
+        if len(subject) > 78:
+            logger.error(
+                "Final email subject exceeds the transport limit. "
+                "Delivery was skipped. job_id=%s",
+                event.job_id,
+            )
+
+            return False
 
         # This deterministic URL is backend-generated. It is not
         # taken from AI output or free-form user input.
