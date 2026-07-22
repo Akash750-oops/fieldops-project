@@ -800,6 +800,47 @@ def on_job_status_changed(mapper, connection, target):
             dispatch_tasks()
 
 
+class CommunicationChannelConfiguration(Base):
+    __tablename__ = "communication_channel_configurations"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    channel = Column(String(50), nullable=False, unique=True, index=True)
+    state = Column(String(20), nullable=False)
+    revision = Column(Integer, nullable=False)
+    updated_by = Column(String(100), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("state IN ('ENABLED', 'DISABLED', 'EMERGENCY_ONLY')", name="ck_communication_channel_state"),
+        CheckConstraint("revision >= 1", name="ck_communication_channel_revision"),
+    )
+
+class CommunicationConfigurationAudit(Base):
+    __tablename__ = "communication_configuration_audits"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    channel = Column(String(50), nullable=False, index=True)
+    previous_state = Column(String(20), nullable=True)
+    new_state = Column(String(20), nullable=False)
+    previous_revision = Column(Integer, nullable=True)
+    new_revision = Column(Integer, nullable=False)
+    actor_id = Column(String(100), nullable=False)
+    actor_tenant_id = Column(String(50), nullable=False)
+    reason = Column(String(500), nullable=False)
+    correlation_id = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+@event.listens_for(CommunicationConfigurationAudit, "before_update")
+def prevent_communication_audit_update(mapper, connection, target):
+    raise ValueError("CommunicationConfigurationAudit is immutable")
+
+@event.listens_for(CommunicationConfigurationAudit, "before_delete")
+def prevent_communication_audit_delete(mapper, connection, target):
+    raise ValueError("CommunicationConfigurationAudit is immutable")
+
+
+
 class ETAHistory(Base):
     __tablename__ = "eta_history"
 
