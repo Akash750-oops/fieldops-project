@@ -597,10 +597,24 @@ LOCALIZED_NOTIFICATION_TYPES = {
     "es": {
         "job_assigned": {
             "title": "Trabajo asignado",
-            "sms": "Hola {{customer_name}}, se ha asignado a {{job_title}}. ETA: {{eta}}.",
-            "email": "<h2>Trabajo asignado</h2>\n\n<p>Hola {{customer_name}},</p>\n\n<p><strong>{{technician_name}}</strong> ha sido asignado a su solicitud de servicio.</p>\n\n<p><strong>Trabajo:</strong> {{job_title}}</p>\n\n<p><strong>ETA:</strong> {{eta}}</p>\n\n<p>Gracias,<br>\nFieldOps Team</p>",
-            "push": "asignado. ETA {{eta}}",
-            "in_app": "Su trabajo '{{job_title}}' ha sido asignado a {{technician_name}}."
+            "sms": (
+                "Hola {{customer_name}}, "
+                "{{technician_name}} ha sido asignado a "
+                "{{job_title}}. ETA: {{eta}}."),
+            "email": (
+                "<h2>Trabajo asignado</h2>\n\n"
+                "<p>Hola {{customer_name}},</p>\n\n"
+                "<p><strong>{{technician_name}}</strong> "
+                "ha sido asignado a su solicitud de servicio.</p>\n\n"
+                "<p><strong>Trabajo:</strong> {{job_title}}</p>\n\n"
+                "<p><strong>ETA:</strong> {{eta}}</p>\n\n"
+                "<p>Gracias,<br>FieldOps Team</p>"),
+            "push": (
+                "{{technician_name}} asignado. "
+                "ETA {{eta}}"),
+            "in_app": (
+                "Su trabajo '{{job_title}}' ha sido asignado a "
+                "{{technician_name}}."),
         },
         "technician_job_assigned": {
             "title": "Nueva asignación de trabajo",

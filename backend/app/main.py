@@ -12,7 +12,7 @@ import redis.asyncio as aioredis
 logger = logging.getLogger(__name__)
 
 from .database import SessionLocal
-from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking,template_version_routes,brand_safety_admin,admin_prompts
+from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking,template_version_routes,brand_safety_admin,admin_prompts,admin_communication_configuration
 from . import models
 from .services.justification_validator import JustificationValidationError
 from .worker import start_scheduler, stop_scheduler
@@ -221,6 +221,7 @@ app.include_router(eta.router)
 app.include_router(tracking.router)
 app.include_router(brand_safety_admin.router)
 app.include_router(admin_prompts.router)
+app.include_router(admin_communication_configuration.router)
 
 from .services.socket_manager import sio_app
 app.mount("/socket.io", sio_app)

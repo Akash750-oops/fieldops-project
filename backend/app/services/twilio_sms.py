@@ -60,6 +60,10 @@ def generate_sms_template(job_title: str, address: str, priority: str, job_id: s
     )
     return message
 
+from .ai.FieldOpsAI.schemas.communication_configuration import CommunicationMessageCategory, CommunicationChannelDisabledError
+from .ai.FieldOpsAI.services.communication_configuration_service import CommunicationConfigurationService
+from .ai.FieldOpsAI.repositories.communication_configuration_repository import CommunicationConfigurationRepository
+
 def check_rate_limit(redis_client, tech_id: str) -> bool:
     """Check if the technician has exceeded 10 SMS per minute."""
     if not redis_client:
@@ -90,6 +94,7 @@ async def send_job_assignment_sms(
     correlation_id: str = None,
     max_retries: int = 3,
     effective_message: str | None = None,
+    category: CommunicationMessageCategory = CommunicationMessageCategory.STANDARD,
 ) -> dict:
     correlation_id = correlation_id or str(uuid.uuid4())
     log_extra = {"correlation_id": correlation_id, "job_id": job_id}
@@ -135,6 +140,14 @@ async def send_job_assignment_sms(
             "SMS message exceeds 160 characters."
         )
     
+    # Enforce delivery policy before iterating over technicians
+    repo = CommunicationConfigurationRepository(db)
+    config_service = CommunicationConfigurationService(repo, db)
+    decision = config_service.evaluate_delivery(channel="SMS", category=category)
+    
+    if not decision.allowed:
+        raise CommunicationChannelDisabledError("SMS delivery blocked by system configuration policy", decision)
+
     for tech in techs:
         # Check Opt-out
         if tech.sms_opt_out:
