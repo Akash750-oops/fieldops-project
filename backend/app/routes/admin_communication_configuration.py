@@ -1,18 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Optional
-from pydantic import BaseModel
 
 from ..database import get_db
-from .admin_prompts import require_prompt_admin # Reusing the strongest admin dependency
+from app.dependencies.prompt_admin_authorization import require_prompt_admin, PromptAdminPrincipal
 from ..services.ai.FieldOpsAI.schemas.communication_configuration import (
     CommunicationChannelStateUpdate,
     CommunicationConfigurationResponse,
-    CommunicationChannelState
+    UnsupportedCommunicationChannelError,
+    CommunicationConfigurationUnavailableError,
+    CommunicationConfigurationNotFoundError
 )
 from ..services.ai.FieldOpsAI.repositories.communication_configuration_repository import CommunicationConfigurationRepository
 from ..services.ai.FieldOpsAI.services.communication_configuration_service import CommunicationConfigurationService
 from ..context import correlation_id_ctx
+
+def require_platform_super_admin(principal: PromptAdminPrincipal = Depends(require_prompt_admin)) -> PromptAdminPrincipal:
+    if principal.tenant_id != "**platform**" or principal.role != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Platform super-admin access required.")
+    return principal
 
 router = APIRouter(
     prefix="/admin/communication-config/channels",
@@ -26,43 +31,56 @@ def get_config_service(db: Session = Depends(get_db)) -> CommunicationConfigurat
 @router.get("/{channel}", response_model=CommunicationConfigurationResponse)
 def get_channel_configuration(
     channel: str,
-    admin=Depends(require_prompt_admin),
+    principal: PromptAdminPrincipal = Depends(require_platform_super_admin),
     service: CommunicationConfigurationService = Depends(get_config_service)
 ):
-    if admin.tenant_id != "**platform**":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Platform super-admin required")
-        
-    if channel.lower() != "sms":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Channel {channel} is not supported.")
-        
-    return service.get_channel_configuration(channel.upper())
+    try:
+        return service.get_channel_configuration(channel)
+    except UnsupportedCommunicationChannelError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported communication channel.",
+        ) from None
+
+    except CommunicationConfigurationUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Communication configuration unavailable.",
+        ) from None
+
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Communication configuration unavailable.",
+        ) from None
 
 @router.put("/{channel}", response_model=CommunicationConfigurationResponse)
 def update_channel_configuration(
     channel: str,
     update: CommunicationChannelStateUpdate,
-    admin=Depends(require_prompt_admin),
+    principal: PromptAdminPrincipal = Depends(require_platform_super_admin),
     service: CommunicationConfigurationService = Depends(get_config_service)
 ):
-    if admin.tenant_id != "**platform**":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Platform super-admin required")
-        
-    if channel.lower() != "sms":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Channel {channel} is not supported.")
-        
-    reason = update.reason.strip()
-    if len(reason) < 10 or len(reason) > 500:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reason length must be between 10 and 500 characters")
-
     try:
         correlation_id = correlation_id_ctx.get()
         return service.update_channel_state(
-            channel=channel.upper(),
+            channel=channel,
             new_state=update.state,
-            actor_id=admin.user_id,
-            actor_tenant_id=admin.tenant_id,
-            reason=reason,
+            actor_id=principal.actor_id,
+            actor_tenant_id=principal.tenant_id,
+            reason=update.reason,
             correlation_id=correlation_id
         )
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except UnsupportedCommunicationChannelError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported communication channel.")
+    except CommunicationConfigurationNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Communication configuration not found.")
+    except CommunicationConfigurationConflictError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Communication configuration conflict.")
+    except CommunicationConfigurationUnavailableError:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Communication configuration unavailable.")
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Communication configuration unavailable.",
+        ) from None

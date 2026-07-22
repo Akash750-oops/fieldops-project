@@ -1,6 +1,6 @@
 """Add communication config
 
-Revision ID: xxx_communication_config
+Revision ID: 1a2b3c4d5e6f
 Revises: 5a33c0bd93b5
 Create Date: 2026-07-22
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'xxx_communication_config'
+revision = '1a2b3c4d5e6f'
 down_revision = '5a33c0bd93b5'
 branch_labels = None
 depends_on = None
@@ -25,14 +25,13 @@ def upgrade() -> None:
         sa.Column('state', sa.String(length=20), nullable=False),
         sa.Column('revision', sa.Integer(), nullable=False),
         sa.Column('updated_by', sa.String(length=100), nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('channel'),
+        sa.UniqueConstraint('channel', name='uq_communication_channel_configuration_channel'),
         sa.CheckConstraint("state IN ('ENABLED', 'DISABLED', 'EMERGENCY_ONLY')", name='ck_communication_channel_state'),
         sa.CheckConstraint("revision >= 1", name='ck_communication_channel_revision')
     )
-    op.create_index(op.f('ix_communication_channel_configurations_channel'), 'communication_channel_configurations', ['channel'], unique=True)
 
     # communication_configuration_audits
     op.create_table(
@@ -47,7 +46,7 @@ def upgrade() -> None:
         sa.Column('actor_tenant_id', sa.String(length=50), nullable=False),
         sa.Column('reason', sa.String(length=500), nullable=False),
         sa.Column('correlation_id', sa.String(length=100), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
         sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_communication_configuration_audits_channel'), 'communication_configuration_audits', ['channel'], unique=False)
@@ -65,5 +64,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index(op.f('ix_communication_configuration_audits_channel'), table_name='communication_configuration_audits')
     op.drop_table('communication_configuration_audits')
-    op.drop_index(op.f('ix_communication_channel_configurations_channel'), table_name='communication_channel_configurations')
     op.drop_table('communication_channel_configurations')
