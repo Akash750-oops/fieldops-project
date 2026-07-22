@@ -276,6 +276,23 @@ class NotificationTemplate(Base):
         server_default=func.now(),
     )
 
+    is_deleted = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        index=True,
+    )
+
+    deleted_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    deleted_by = Column(
+        String(100),
+        nullable=True,
+    )
+
     versions = relationship(
         "TemplateVersion",
         back_populates="template",
@@ -328,8 +345,15 @@ class TemplateVersion(Base):
 
     version_number = Column(Integer, nullable=False)
 
-    title_template = Column(Text, nullable=True)
+    name = Column(String(100), nullable=True)
+    type = Column(String(50), nullable=True)
+    channel = Column(String(20), nullable=True)
+    locale = Column(String(10), nullable=True)
+    format = Column(String(20), nullable=True)
+    agent_type = Column(String(50), nullable=True)
+    variables = Column(JSON, nullable=True)
 
+    title_template = Column(Text, nullable=True)
     body_template = Column(Text, nullable=False)
 
     created_by = Column(String(100), nullable=False)
@@ -342,6 +366,12 @@ class TemplateVersion(Base):
     change_summary = Column(Text, nullable=True)
 
     is_active = Column(Boolean, nullable=False, default=True)
+    template_is_active = Column(Boolean, nullable=True)
+    restored_from_version = Column(Integer, nullable=True)
+
+    is_deleted = Column(Boolean, nullable=False, default=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_by = Column(String(100), nullable=True)
 
     template = relationship(
         "NotificationTemplate",
@@ -353,6 +383,18 @@ class TemplateVersion(Base):
             "idx_template_version",
             "template_id",
             "version_number",
+        ),
+        UniqueConstraint(
+            "template_id",
+            "version_number",
+            name="uq_template_version"
+        ),
+        Index(
+            "idx_active_template_version",
+            "template_id",
+            unique=True,
+            postgresql_where=(is_active == True) & (is_deleted == False),
+            sqlite_where=(is_active == True) & (is_deleted == False),
         ),
     )
     

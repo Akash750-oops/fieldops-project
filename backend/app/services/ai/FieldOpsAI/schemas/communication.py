@@ -23,14 +23,16 @@ It never:
 
 from __future__ import annotations
 
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
     model_validator,
+    field_validator,
 )
+from app.services.ai.FieldOpsAI.services.prompt_locale_service import normalize_locale, InvalidLocaleError
 
 
 # ==========================================================
@@ -146,13 +148,20 @@ class CommunicationContext(BaseModel):
 
     locale: str = Field(
         default="en",
-        min_length=2,
-        max_length=10,
-        pattern=r"^[a-z]{2}(?:-[A-Z]{2})?$",
         description=(
             "Requested locale, such as en or en-US."
         ),
     )
+
+    @field_validator("locale", mode="before")
+    @classmethod
+    def normalize_request_locale(cls, v: Any) -> str:
+        if not v or not str(v).strip():
+            return "en"
+        try:
+            return normalize_locale(str(v))
+        except InvalidLocaleError:
+            raise ValueError("Invalid or unsupported locale.")
 
     customer_name: str | None = Field(
         default=None,

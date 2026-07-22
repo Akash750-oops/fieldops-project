@@ -33,23 +33,22 @@ import re
 from enum import StrEnum
 from typing import Final
 
-from jinja2 import (
-    StrictUndefined,
-    TemplateError,
-    meta,
+from app.services.ai.FieldOpsAI.services.prompt_variable_injector import (
+    PromptVariableInjector
 )
-from jinja2.sandbox import SandboxedEnvironment
+from app.services.ai.FieldOpsAI.schemas.prompt_variable import PromptVariableDefinition
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
 )
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import NotificationTemplate
+from app.services.ai.FieldOpsAI.services.prompt_locale_service import locale_candidates
 from app.services.default_template import (
-    NOTIFICATION_TYPES,
+    LOCALIZED_NOTIFICATION_TYPES,
 )
 from app.services.ai.FieldOpsAI.schemas.communication import (
     CommunicationContext,
@@ -140,16 +139,37 @@ class GuardrailFallbackService:
         }
     )
 
-    # Safe values prevent None/null/undefined from entering
-    # recipient-facing communication.
     SAFE_OPTIONAL_DEFAULTS: Final[
-        dict[str, str]
+        dict[str, dict[str, str]]
     ] = {
-        "customer_name": "Customer",
-        "technician_name": "Your technician",
-        "job_title": "your service request",
-        "eta": "not yet available",
-        "appointment_time": "the scheduled time",
+        "en": {
+            "customer_name": "Customer",
+            "technician_name": "Your technician",
+            "job_title": "your service request",
+            "eta": "not yet available",
+            "appointment_time": "the scheduled time",
+        },
+        "es": {
+            "customer_name": "Cliente",
+            "technician_name": "Su técnico",
+            "job_title": "su solicitud de servicio",
+            "eta": "aún no disponible",
+            "appointment_time": "la hora programada",
+        },
+        "ta": {
+            "customer_name": "வாடிக்கையாளர்",
+            "technician_name": "உங்கள் தொழில்நுட்பவியலாளர்",
+            "job_title": "உங்கள் சேவை கோரிக்கை",
+            "eta": "இன்னும் கிடைக்கவில்லை",
+            "appointment_time": "திட்டமிடப்பட்ட நேரம்",
+        },
+        "hi": {
+            "customer_name": "ग्राहक",
+            "technician_name": "आपके तकनीशियन",
+            "job_title": "आपका सेवा अनुरोध",
+            "eta": "अभी उपलब्ध नहीं है",
+            "appointment_time": "निर्धारित समय",
+        }
     }
 
     # ------------------------------------------------------
@@ -227,18 +247,6 @@ class GuardrailFallbackService:
 
         self._db = db
 
-        self._text_environment = (
-            self._build_environment(
-                autoescape=False
-            )
-        )
-
-        self._html_environment = (
-            self._build_environment(
-                autoescape=True
-            )
-        )
-
     # ------------------------------------------------------
 
     def render(
@@ -268,6 +276,16 @@ class GuardrailFallbackService:
         # --------------------------------------------------
 
         if template_row is not None:
+            if template_row.variables:
+                db_vars = []
+                for v in template_row.variables:
+                    if isinstance(v, dict):
+                        db_vars.append(PromptVariableDefinition(**v))
+                    elif isinstance(v, str):
+                        db_vars.append(PromptVariableDefinition(name=v))
+            else:
+                db_vars = None
+
             decision = self._try_build_decision(
                 context=context,
                 title_template=(
@@ -276,6 +294,8 @@ class GuardrailFallbackService:
                 body_template=(
                     template_row.body_template
                 ),
+                variables=db_vars,
+                resolved_locale=resolved_locale,
             )
 
             if decision is not None:
@@ -296,15 +316,17 @@ class GuardrailFallbackService:
         # 2. Approved built-in event template
         # --------------------------------------------------
 
-        builtin = self._get_builtin_template(
+        builtin_result = self._get_builtin_template(
             context=context
         )
 
-        if builtin is not None:
+        if builtin_result is not None:
+            builtin, builtin_locale = builtin_result
             decision = self._try_build_decision(
                 context=context,
                 title_template=builtin["title"],
                 body_template=builtin["body"],
+                resolved_locale=builtin_locale,
             )
 
             if decision is not None:
@@ -314,7 +336,7 @@ class GuardrailFallbackService:
                         FallbackTemplateSource.BUILTIN
                     ),
                     requested_locale=context.locale,
-                    resolved_locale="en",
+                    resolved_locale=builtin_locale,
                 )
 
         # --------------------------------------------------
@@ -335,6 +357,7 @@ class GuardrailFallbackService:
             context=context,
             title_template=emergency["title"],
             body_template=emergency["body"],
+            resolved_locale="en",
         )
 
         if decision is None:
@@ -374,7 +397,7 @@ class GuardrailFallbackService:
         en
         """
 
-        for locale in self._locale_candidates(
+        for locale in locale_candidates(
             context.locale
         ):
             try:
@@ -400,6 +423,9 @@ class GuardrailFallbackService:
 
                         NotificationTemplate.agent_type
                         == "CommsAgent",
+
+                        NotificationTemplate.is_deleted
+                        .is_(False),
                     )
                     .order_by(
                         NotificationTemplate.version.desc(),
@@ -418,47 +444,6 @@ class GuardrailFallbackService:
 
         return None, "en"
 
-    # ------------------------------------------------------
-
-    @staticmethod
-    def _locale_candidates(
-        locale: str,
-    ) -> tuple[str, ...]:
-        """
-        Return exact locale, base language, and English.
-
-        Examples
-        --------
-        en-US:
-            en-US, en
-
-        ta-IN:
-            ta-IN, ta, en
-        """
-
-        candidates: list[str] = [
-            locale,
-        ]
-
-        if "-" in locale:
-            candidates.append(
-                locale.split(
-                    "-",
-                    1,
-                )[0]
-            )
-
-        candidates.append(
-            "en"
-        )
-
-        # Remove duplicate values while preserving order.
-        return tuple(
-            dict.fromkeys(
-                candidates
-            )
-        )
-
     # ======================================================
     # Built-in Template Selection
     # ======================================================
@@ -467,9 +452,9 @@ class GuardrailFallbackService:
     def _get_builtin_template(
         *,
         context: CommunicationContext,
-    ) -> dict[
-        str,
-        str | None,
+    ) -> tuple[
+        dict[str, str | None],
+        str
     ] | None:
         """
         Return an approved built-in event template.
@@ -478,48 +463,57 @@ class GuardrailFallbackService:
 
         app/services/default_template.py
         """
-
-        event_template = NOTIFICATION_TYPES.get(
-            context.notification_type
-        )
-
-        if event_template is None:
-            return None
-
-        body = event_template.get(
-            context.channel.lower()
-        )
-
-        if (
-            not isinstance(
-                body,
-                str,
-            )
-            or not body.strip()
-        ):
-            return None
-
-        title: str | None = None
-
-        if context.channel in {
-            "EMAIL",
-            "PUSH",
-            "IN_APP",
-        }:
-            candidate_title = event_template.get(
-                "title"
+        
+        candidates = locale_candidates(context.locale)
+        
+        for cand in candidates:
+            catalog = LOCALIZED_NOTIFICATION_TYPES.get(cand)
+            if catalog is None:
+                continue
+                
+            event_template = catalog.get(
+                context.notification_type
             )
 
-            if isinstance(
-                candidate_title,
-                str,
+            if event_template is None:
+                continue
+
+            body = event_template.get(
+                context.channel.lower()
+            )
+
+            if (
+                not isinstance(
+                    body,
+                    str,
+                )
+                or not body.strip()
             ):
-                title = candidate_title
+                continue
 
-        return {
-            "title": title,
-            "body": body,
-        }
+            title: str | None = None
+
+            if context.channel in {
+                "EMAIL",
+                "PUSH",
+                "IN_APP",
+            }:
+                candidate_title = event_template.get(
+                    "title"
+                )
+
+                if isinstance(
+                    candidate_title,
+                    str,
+                ):
+                    title = candidate_title
+
+            return {
+                "title": title,
+                "body": body,
+            }, cand
+            
+        return None
 
     # ======================================================
     # Decision Rendering
@@ -531,6 +525,8 @@ class GuardrailFallbackService:
         context: CommunicationContext,
         title_template: str | None,
         body_template: str,
+        variables: list[PromptVariableDefinition] | None = None,
+        resolved_locale: str = "en",
     ) -> CommunicationDecision | None:
         """
         Render and validate one fallback candidate.
@@ -546,25 +542,66 @@ class GuardrailFallbackService:
                 )
             )
 
-            message = self._render_string(
-                template_source=body_template,
-                render_context=render_context,
-                html=(
-                    context.channel
-                    == "EMAIL"
-                ),
+            injector = PromptVariableInjector()
+
+            if variables is None:
+                # Infer for built-in/emergency
+                try:
+                    paths = injector.infer_declarations(
+                        body=body_template,
+                        title=title_template
+                    )
+                except Exception:
+                    paths = []
+                    
+                
+                locale_defaults = self.SAFE_OPTIONAL_DEFAULTS.get(resolved_locale, self.SAFE_OPTIONAL_DEFAULTS["en"])
+                variables = []
+                for path in paths:
+                    key = path.split('.')[0]
+                    if key in self.ALLOWED_TEMPLATE_VARIABLES:
+                        if key in locale_defaults:
+                            variables.append(PromptVariableDefinition(
+                                name=key,
+                                required=False,
+                                default=locale_defaults[key]
+                            ))
+                        else:
+                            variables.append(PromptVariableDefinition(
+                                name=key,
+                                required=True
+                            ))
+            else:
+                # For database templates, only use approved variables
+                filtered_vars = []
+                for v in variables:
+                    key = v.name.split('.')[0]
+                    if key not in self.ALLOWED_TEMPLATE_VARIABLES:
+                        raise ValueError("Unapproved variable declaration")
+                    filtered_vars.append(v)
+                variables = filtered_vars
+
+            result = injector.render(
+                body=body_template,
+                title=title_template,
+                variables=variables,
+                context=render_context,
+                html=(context.channel == "EMAIL"),
             )
 
-            rendered_title: str | None = None
+            message = result.rendered_body.strip()
+            if context.channel != "EMAIL":
+                message = re.sub(r"\s+", " ", message).strip()
 
+            if not message or self.INVALID_OUTPUT_TOKEN_PATTERN.search(message):
+                return None
+
+            rendered_title: str | None = None
             if title_template is not None:
-                rendered_title = self._render_string(
-                    template_source=(
-                        title_template
-                    ),
-                    render_context=render_context,
-                    html=False,
-                )
+                rendered_title = result.rendered_title.strip() if result.rendered_title else ""
+                rendered_title = re.sub(r"\s+", " ", rendered_title).strip()
+                if not rendered_title or self.INVALID_OUTPUT_TOKEN_PATTERN.search(rendered_title):
+                    return None
 
             # ----------------------------------------------
             # EMAIL
@@ -635,96 +672,8 @@ class GuardrailFallbackService:
 
             return decision
 
-        except (
-            TemplateError,
-            TypeError,
-            ValueError,
-        ):
+        except Exception:
             return None
-
-    # ======================================================
-    # Secure Jinja Rendering
-    # ======================================================
-
-    def _render_string(
-        self,
-        *,
-        template_source: str,
-        render_context: dict[str, str],
-        html: bool,
-    ) -> str:
-        """
-        Render one sandboxed Jinja2 template string.
-        """
-
-        if not isinstance(
-            template_source,
-            str,
-        ):
-            raise TypeError(
-                "Fallback template source must be text."
-            )
-
-        environment = (
-            self._html_environment
-            if html
-            else self._text_environment
-        )
-
-        parsed_template = environment.parse(
-            template_source
-        )
-
-        variables = (
-            meta.find_undeclared_variables(
-                parsed_template
-            )
-        )
-
-        unsupported_variables = (
-            variables
-            - self.ALLOWED_TEMPLATE_VARIABLES
-        )
-
-        if unsupported_variables:
-            raise ValueError(
-                "Fallback template contains unsupported "
-                "variables."
-            )
-
-        template = environment.from_string(
-            template_source
-        )
-
-        rendered = str(
-            template.render(
-                **render_context
-            )
-        ).strip()
-
-        # Text channels should not contain unexpected line
-        # breaks or repeated whitespace.
-        if not html:
-            rendered = re.sub(
-                r"\s+",
-                " ",
-                rendered,
-            ).strip()
-
-        if not rendered:
-            raise ValueError(
-                "Fallback template rendered empty content."
-            )
-
-        if self.INVALID_OUTPUT_TOKEN_PATTERN.search(
-            rendered
-        ):
-            raise ValueError(
-                "Fallback template rendered an invalid "
-                "optional value."
-            )
-
-        return rendered
 
     # ======================================================
     # Safe Template Context
@@ -736,38 +685,8 @@ class GuardrailFallbackService:
     ) -> dict[str, str]:
         """
         Build a null-safe and allow-listed rendering context.
-
-        additional_context and correlation_id are deliberately
-        excluded.
         """
-
-        context_data = context.model_dump(
-            mode="python"
-        )
-
-        rendered_context: dict[
-            str,
-            str,
-        ] = {}
-
-        for key in self.ALLOWED_TEMPLATE_VARIABLES:
-            value = context_data.get(
-                key
-            )
-
-            if value is None:
-                value = (
-                    self.SAFE_OPTIONAL_DEFAULTS.get(
-                        key,
-                        "",
-                    )
-                )
-
-            rendered_context[key] = str(
-                value
-            )
-
-        return rendered_context
+        return context.model_dump(mode="python")
 
     # ======================================================
     # Channel Limits
@@ -809,42 +728,4 @@ class GuardrailFallbackService:
             )
 
         return True
-
-    # ======================================================
-    # Jinja Environment
-    # ======================================================
-
-    @staticmethod
-    def _build_environment(
-        *,
-        autoescape: bool,
-    ) -> SandboxedEnvironment:
-        """
-        Create a restricted Jinja2 environment.
-
-        SandboxedEnvironment prevents templates from accessing
-        unsafe Python internals.
-
-        StrictUndefined rejects missing template variables.
-
-        Email values are HTML escaped.
-        """
-
-        environment = SandboxedEnvironment(
-            undefined=StrictUndefined,
-            autoescape=autoescape,
-            trim_blocks=True,
-            lstrip_blocks=True,
-        )
-
-        # Templates do not need Jinja globals such as:
-        #
-        # range
-        # cycler
-        # joiner
-        # namespace
-        #
-        # Removing them reduces the available template surface.
-        environment.globals.clear()
-
-        return environment
+

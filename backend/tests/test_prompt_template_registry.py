@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app.models import (
     Base,
     NotificationTemplate,
+    TemplateVersion,
 )
 from app.services.ai.FieldOpsAI.schemas.prompt_template import (
     AgentType,
@@ -442,22 +443,84 @@ def test_create_get_update_and_soft_delete(
         created.id
     )
 
-    deleted = registry.get(
-        created.id
+    stored_template = (
+        registry.db.query(
+            NotificationTemplate
+        )
+        .filter(
+            NotificationTemplate.id
+            == created.id
+        )
+        .one()
     )
 
-    assert deleted.is_active is False
+    assert stored_template.is_active is False
+    assert stored_template.is_deleted is True
+    assert stored_template.deleted_at is not None
+    assert stored_template.deleted_by == "actor_1"
+
+    stored_versions = (
+        registry.db.query(
+            TemplateVersion
+        )
+        .filter(
+            TemplateVersion.template_id
+            == created.id
+        )
+        .all()
+    )
+
+    assert stored_versions
+    assert all(
+        version.is_active is False
+        for version in stored_versions
+    )
+    assert all(
+        version.is_deleted is True
+        for version in stored_versions
+    )
+    assert all(
+        version.deleted_at is not None
+        for version in stored_versions
+    )
+    assert all(
+        version.deleted_by == "actor_1"
+        for version in stored_versions
+    )
+
+    with pytest.raises(
+        NotFoundError
+    ):
+        registry.get(
+            created.id
+        )
 
 
 def test_patch_updates_agent_channel_and_language(
     registry: ManagedPromptTemplateRegistry,
 ) -> None:
+    registry.create(
+        make_prompt(
+            status="patch_fields",
+            language=PromptLanguage.en
+        )
+    )
     created = registry.create(
         make_prompt(
-            status="patch_fields"
+            status="patch_fields",
+            language=PromptLanguage.es
         )
     )
 
+    registry.create(
+        make_prompt(
+            agent_type=AgentType.SentimentAgent,
+            channel=PromptChannel.email,
+            language=PromptLanguage.en,
+            status="patch_fields"
+        )
+    )
+    
     updated = registry.update(
         created.id,
         PromptTemplateUpdate(
@@ -550,6 +613,14 @@ def test_list_filters_by_combined_fields(
             name="SMS English",
             status="assigned",
             channel=PromptChannel.sms,
+            language=PromptLanguage.en,
+        )
+    )
+    registry.create(
+        make_prompt(
+            name="Email English",
+            status="completed",
+            channel=PromptChannel.email,
             language=PromptLanguage.en,
         )
     )
@@ -658,6 +729,16 @@ def test_each_fallback_level(
         candidate_tenant,
     )
 
+    if candidate_language != "en":
+        candidate_registry.create(
+            make_prompt(
+                name="Fallback candidate EN",
+                language=PromptLanguage.en,
+                status=candidate_status,
+                body="Selected fallback",
+                variables=[],
+            )
+        )
     candidate_registry.create(
         make_prompt(
             name="Fallback candidate",
@@ -912,18 +993,33 @@ def test_inactive_get_is_not_cached(
             status="inactive_cache"
         )
     )
+    tenant_hash = registry._hash_tenant(
+        "tenant_1"
+    )
+
+    generation_before = registry._get_generation(
+        tenant_hash
+    )
 
     registry.delete(
         created.id
     )
+    generation_after = registry._get_generation(
+        tenant_hash
+    )
+
+    assert generation_after == (
+        generation_before + 1
+    )
 
     fake_redis.reset()
 
-    result = registry.get(
-        created.id
-    )
-
-    assert result.is_active is False
+    with pytest.raises(
+        NotFoundError
+    ):
+        registry.get(
+            created.id
+        )
 
     cache_key = registry._build_cache_key(
         "prompt_get",
@@ -1093,3 +1189,54 @@ def test_model_contains_prompt_uniqueness_constraint() -> None:
         matching_constraints[0].name
         == "uq_notification_templates_lookup"
     )
+
+
+import pytest
+from app.services.ai.FieldOpsAI.services.managed_prompt_template_registry import TemplateValidationServiceError
+
+def test_non_english_create_without_english(registry, db_session):
+    from app.services.ai.FieldOpsAI.schemas.prompt_template import PromptTemplateCreate
+    payload = PromptTemplateCreate(
+        name="test-es",
+        agent_type="CommsAgent",
+        channel="sms",
+        language="es",
+        status="job_assigned",
+        body="Hola",
+    )
+    with pytest.raises(TemplateValidationServiceError) as e:
+        registry.create(payload)
+    assert "canonical English template is required" in str(e.value)
+
+def test_non_english_update_without_english(registry, db_session):
+    from app.services.ai.FieldOpsAI.schemas.prompt_template import PromptTemplateCreate, PromptTemplateUpdate
+    # Create en first
+    en_payload = PromptTemplateCreate(name="test-en", agent_type="CommsAgent", channel="sms", language="en", status="job_assigned", body="Hello")
+    en_t = registry.create(en_payload)
+    
+    es_payload = PromptTemplateCreate(name="test-es", agent_type="CommsAgent", channel="sms", language="es", status="job_assigned", body="Hola")
+    es_t = registry.create(es_payload)
+    
+    # Delete en
+    registry.delete(en_t.id)
+    
+    # Try to update es
+    upd = PromptTemplateUpdate(body="Hola 2")
+    with pytest.raises(TemplateValidationServiceError) as e:
+        registry.update(es_t.id, upd)
+    assert "canonical English template is required" in str(e.value)
+
+def test_es_mx_database_lookup_falls_back_to_es(registry, db_session):
+    from app.services.ai.FieldOpsAI.schemas.prompt_template import PromptTemplateCreate
+    # Create en first
+    en_payload = PromptTemplateCreate(name="test-en", agent_type="CommsAgent", channel="sms", language="en", status="job_assigned", body="Hello")
+    registry.create(en_payload)
+    
+    es_payload = PromptTemplateCreate(name="test-es", agent_type="CommsAgent", channel="sms", language="es", status="job_assigned", body="Hola desde es")
+    registry.create(es_payload)
+    
+    # Lookup es-MX
+    match = registry.find("CommsAgent", "sms", "es-MX", "job_assigned")
+    assert match.language.value == "es"
+    assert match.body == "Hola desde es"
+

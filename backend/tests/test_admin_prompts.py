@@ -629,6 +629,30 @@ def test_post_works(
     assert result["status"] == "default"
 
 
+def test_post_whitespace_preserved(
+    api_client: TestClient,
+) -> None:
+    body_with_spaces = "  Hello \n  "
+    response = api_client.post(
+        "/admin/prompts",
+        json=prompt_payload(
+            name="  spaced name  ",
+            prompt_status=" ACTIVE ",
+            body=body_with_spaces,
+            variables=[]
+        ),
+        headers=get_headers(),
+    )
+
+    assert response.status_code == 201
+
+    result = response.json()
+
+    assert result["name"] == "spaced name"
+    assert result["status"] == "active"
+    assert result["body"] == body_with_spaces
+
+
 def test_get_collection(
     api_client: TestClient,
 ) -> None:
@@ -745,12 +769,24 @@ def test_patch_works(
 def test_patch_agent_channel_and_language(
     api_client: TestClient,
 ) -> None:
+    # Create English template first
+    api_client.post(
+        "/admin/prompts",
+        json=prompt_payload(
+            prompt_status="patch_lookup_fields",
+            body="Original",
+            variables=[],
+            language="en"
+        ),
+        headers=get_headers(),
+    )
     create_response = api_client.post(
         "/admin/prompts",
         json=prompt_payload(
             prompt_status="patch_lookup_fields",
             body="Original",
             variables=[],
+            language="es"
         ),
         headers=get_headers(),
     )
@@ -759,6 +795,19 @@ def test_patch_agent_channel_and_language(
 
     template_id = create_response.json()["id"]
 
+    # Create the en sibling for SentimentAgent/email
+    api_client.post(
+        "/admin/prompts",
+        json=prompt_payload(
+            agent_type="SentimentAgent",
+            channel="email",
+            language="en",
+            prompt_status="patch_lookup_fields",
+            body="Original",
+            variables=[],
+        ),
+        headers=get_headers(),
+    )
     response = api_client.patch(
         f"/admin/prompts/{template_id}",
         json={
@@ -810,8 +859,8 @@ def test_delete_soft_deactivates_template(
         headers=get_headers(),
     )
 
-    assert get_response.status_code == 200
-    assert get_response.json()["is_active"] is False
+    assert get_response.status_code == 404
+    assert get_response.json()["detail"] == "Template not found."
 
 
 def test_cross_tenant_access_returns_404(
@@ -937,3 +986,40 @@ def test_persistence_error_returns_503(
         "Sensitive database information"
         not in response.text
     )
+
+
+def test_platform_completeness_super_admin(api_client):
+    headers = get_headers(tenant="**platform**", role="super_admin")
+    resp = api_client.get(
+        "/admin/prompts/translations/completeness",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+
+
+def test_tenant_cannot_select_platform_completeness(
+    api_client,
+):
+    response = api_client.get(
+        (
+            "/admin/prompts/"
+            "translations/completeness"
+            "?tenant_id=**platform**"
+        ),
+        headers=get_headers(
+            tenant="tenant_1",
+            role="admin",
+        ),
+    )
+
+    # The unknown query parameter must not change
+    # the authenticated tenant scope.
+    assert response.status_code == 200
+
+    data = response.json()
+
+    # This clean test has no tenant_1 families.
+    # It must not return platform families.
+    assert data["total_families"] == 0
+    assert data["items"] == []
+

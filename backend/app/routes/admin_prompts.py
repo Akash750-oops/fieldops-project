@@ -36,6 +36,12 @@ from app.services.ai.FieldOpsAI.services.managed_prompt_template_registry import
     RegistryServiceError,
     TemplateValidationServiceError,
 )
+from app.services.template_version_service import (
+    TemplateNotFoundError,
+    VersionNotFoundError,
+    ConflictError as VersionConflictError,
+    TemplateVersionError
+)
 
 
 router = APIRouter(
@@ -69,7 +75,7 @@ def normalize_status(
 
     if not normalized:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Status cannot be blank.",
         )
 
@@ -78,7 +84,7 @@ def normalize_status(
         normalized,
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Status must use lowercase snake_case.",
         )
 
@@ -139,7 +145,7 @@ def create_prompt(
 
     except TemplateValidationServiceError:
         raise HTTPException(
-            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Template validation failed.",
         ) from None
 
@@ -245,7 +251,7 @@ def list_prompts(
 def lookup_prompt(
     agent_type: AgentType = Query(...),
     channel: PromptChannel = Query(...),
-    language: PromptLanguage = Query(...),
+    language: str = Query(...),
     prompt_status: str = Query(
         ...,
         alias="status",
@@ -261,7 +267,7 @@ def lookup_prompt(
 
     if normalized_status is None:
         raise HTTPException(
-            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Status is required.",
         )
 
@@ -269,14 +275,14 @@ def lookup_prompt(
         return registry.find(
             agent_type=agent_type.value,
             channel=channel.value,
-            language=language.value,
+            language=language,
             status=normalized_status,
         )
 
     except TemplateValidationServiceError:
         raise HTTPException(
-            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Prompt lookup validation failed.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or unsupported locale.",
         ) from None
 
     except RegistryServiceError:
@@ -285,6 +291,52 @@ def lookup_prompt(
             detail="Prompt registry unavailable.",
         ) from None
 
+
+# ==========================================================
+# Completeness
+# ==========================================================
+
+from app.services.ai.FieldOpsAI.schemas.prompt_locale import TranslationCompletenessResult
+from app.services.ai.FieldOpsAI.services.prompt_locale_service import validate_translation_completeness
+
+@router.get(
+    "/translations/completeness",
+    response_model=TranslationCompletenessResult,
+)
+def get_translations_completeness(
+    agent_type: Optional[AgentType] = Query(default=None),
+    channel: Optional[PromptChannel] = Query(default=None),
+    prompt_status: Optional[str] = Query(default=None, alias="status"),
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    principal: PromptAdminPrincipal = Depends(require_prompt_admin),
+) -> TranslationCompletenessResult:
+    normalized_status = normalize_status(prompt_status)
+    
+    target_tenant = principal.tenant_id
+    if target_tenant == "**platform**":
+        if principal.role != "super_admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Super admin authorization required for platform completeness.",
+            )
+
+    try:
+        return validate_translation_completeness(
+            db=db,
+            tenant_id=target_tenant,
+            limit=limit,
+            offset=offset,
+            agent_type=agent_type.value if agent_type else None,
+            channel=channel.value if channel else None,
+            status=normalized_status,
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to validate translation completeness.",
+        ) from None
 
 # ==========================================================
 # Get by ID
@@ -364,7 +416,7 @@ def update_prompt(
 
     except TemplateValidationServiceError:
         raise HTTPException(
-            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Template validation failed.",
         ) from None
 
@@ -413,3 +465,185 @@ def delete_prompt(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Prompt registry unavailable.",
         ) from None
+
+
+# ==========================================================
+# Version History and Rollback
+# ==========================================================
+
+from app.schemas import (
+    TemplateVersionResponse,
+    TemplateVersionHistoryResponse,
+    TemplateRollbackRequest,
+    TemplateRestoreResponse,
+    TemplateCompareResponse,
+)
+from app.services import template_version_service
+
+@router.get(
+    "/{template_id}/versions",
+    response_model=TemplateVersionHistoryResponse,
+    summary="List all template versions",
+)
+def list_template_versions(
+    template_id: int = Path(..., ge=1),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    principal: PromptAdminPrincipal = Depends(require_prompt_admin)
+):
+    try:
+        versions = template_version_service.get_versions(
+            db=db,
+            template_id=template_id,
+            tenant_id=principal.tenant_id,
+            limit=limit,
+            offset=offset
+        )
+        current = template_version_service.get_current_version(
+            db=db,
+            template_id=template_id,
+            tenant_id=principal.tenant_id
+        )
+        return {
+            "template_id": template_id,
+            "current_version": current,
+            "versions": versions,
+        }
+    except (TemplateNotFoundError, VersionNotFoundError):
+        raise HTTPException(status_code=404, detail="Template or version not found or inaccessible")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="Safe persistence failure")
+
+@router.get(
+    "/{template_id}/versions/compare",
+    response_model=TemplateCompareResponse,
+    summary="Compare two template versions",
+)
+def compare_template_versions(
+    old_version: int = Query(..., ge=1),
+    new_version: int = Query(..., ge=1),
+    template_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    principal: PromptAdminPrincipal = Depends(require_prompt_admin)
+):
+    try:
+        return template_version_service.compare_versions(
+            db=db,
+            template_id=template_id,
+            old_version=old_version,
+            new_version=new_version,
+            tenant_id=principal.tenant_id
+        )
+    except (TemplateNotFoundError, VersionNotFoundError):
+        raise HTTPException(status_code=404, detail="Template or version not found or inaccessible")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="Safe persistence failure")
+
+@router.get(
+    "/{template_id}/versions/{version_number}",
+    response_model=TemplateVersionResponse,
+    summary="Get one template version",
+)
+def get_template_version(
+    version_number: int = Path(..., ge=1),
+    template_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    principal: PromptAdminPrincipal = Depends(require_prompt_admin)
+):
+    try:
+        return template_version_service.get_version(
+            db=db,
+            template_id=template_id,
+            version_number=version_number,
+            tenant_id=principal.tenant_id
+        )
+    except (TemplateNotFoundError, VersionNotFoundError):
+        raise HTTPException(status_code=404, detail="Template or version not found or inaccessible")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="Safe persistence failure")
+
+@router.post(
+    "/{template_id}/versions/{version_number}/rollback",
+    response_model=TemplateRestoreResponse,
+    summary="Restore an older template version",
+)
+def restore_template_version(
+    payload: TemplateRollbackRequest,
+    version_number: int = Path(..., ge=1),
+    template_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    principal: PromptAdminPrincipal = Depends(require_prompt_admin),
+    redis_client = Depends(get_redis_client),
+):
+    try:
+        res = template_version_service.restore_version(
+            db=db,
+            template_id=template_id,
+            version_number=version_number,
+            actor_id=principal.actor_id,
+            tenant_id=principal.tenant_id,
+            change_summary=payload.change_summary
+        )
+        db.commit()
+        
+        # Invalidate cache
+        registry = ManagedPromptTemplateRegistry(
+            db=db,
+            tenant_id=principal.tenant_id,
+            actor_id=principal.actor_id,
+            redis_client=redis_client,
+        )
+        registry._invalidate_cache()
+        
+        return res
+    except (TemplateNotFoundError, VersionNotFoundError):
+        db.rollback()
+        raise HTTPException(status_code=404, detail="Template or version not found or inaccessible")
+    except VersionConflictError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Version conflict or invalid state")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Safe persistence failure")
+
+@router.delete(
+    "/{template_id}/versions/{version_number}",
+    summary="Delete a template version",
+)
+def delete_template_version(
+    version_number: int = Path(..., ge=1),
+    template_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    principal: PromptAdminPrincipal = Depends(require_prompt_admin),
+    redis_client = Depends(get_redis_client),
+):
+    try:
+        res = template_version_service.delete_version(
+            db=db,
+            template_id=template_id,
+            version_number=version_number,
+            actor_id=principal.actor_id,
+            tenant_id=principal.tenant_id
+        )
+        db.commit()
+        
+        # Invalidate cache
+        registry = ManagedPromptTemplateRegistry(
+            db=db,
+            tenant_id=principal.tenant_id,
+            actor_id=principal.actor_id,
+            redis_client=redis_client,
+        )
+        registry._invalidate_cache()
+        
+        return res
+    except (TemplateNotFoundError, VersionNotFoundError):
+        db.rollback()
+        raise HTTPException(status_code=404, detail="Template or version not found or inaccessible")
+    except VersionConflictError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Version conflict or invalid state")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Safe persistence failure")

@@ -18,7 +18,19 @@ from app.services.ai.FieldOpsAI.schemas.prompt_template import (
     PromptLanguage,
     _validate_jinja_variables
 )
+from app.services.ai.FieldOpsAI.services.prompt_locale_service import (
+    normalize_locale,
+    locale_candidates
+)
 from pydantic import ValidationError
+
+from app.services.template_version_service import (
+    ConflictError as VersionConflictError,
+    TemplateNotFoundError as VersionTemplateNotFoundError,
+    create_initial_version,
+    soft_delete_template,
+    update_version,
+)
 
 class RegistryServiceError(Exception):
     pass
@@ -136,10 +148,35 @@ class ManagedPromptTemplateRegistry:
         ):
             raise ConflictError("Active template with same attributes and version already exists.")
 
+        if payload.language.value != "en":
+            en_templates = self.repo.list_templates(
+                agent_type=payload.agent_type,
+                channel=payload.channel,
+                language="en",
+                status=payload.status,
+                is_active=True
+            )
+            if not en_templates:
+                raise TemplateValidationServiceError("Tenant-scoped canonical English template is required before creating translations.")
+            if en_templates:
+                en_template = en_templates[0]
+                from app.models import NotificationTemplate
+                temp = NotificationTemplate(
+                    locale=payload.language.value,
+                    variables=payload.variables or [],
+                    body_template=payload.body,
+                    title_template=payload.title
+                )
+                from app.services.ai.FieldOpsAI.services.prompt_locale_service import validate_translation_parity
+                issues = validate_translation_parity(en_template, temp)
+                if issues:
+                    raise TemplateValidationServiceError("Variable contract does not match the canonical English template.")
+
         try:
             model = self.repo.create(
-        payload.model_dump(mode="json")
-    )
+                payload.model_dump(mode="json")
+            )
+            create_initial_version(self.db, model, self.actor_id)
             self.db.commit()
             self._invalidate_cache()
             return self._to_response(model)
@@ -218,7 +255,32 @@ class ManagedPromptTemplateRegistry:
                 merged_data
             )
             
+            if merged_data["language"] != "en":
+                en_templates = self.repo.list_templates(
+                    agent_type=merged_data["agent_type"],
+                    channel=merged_data["channel"],
+                    language="en",
+                    status=merged_data["status"],
+                    is_active=True
+                )
+                if not en_templates:
+                    raise TemplateValidationServiceError("Tenant-scoped canonical English template is required before creating translations.")
+                if en_templates:
+                    en_template = en_templates[0]
+                    from app.models import NotificationTemplate
+                    temp = NotificationTemplate(
+                        locale=merged_data["language"],
+                        variables=merged_data.get("variables") or [],
+                        body_template=merged_data.get("body"),
+                        title_template=merged_data.get("title")
+                    )
+                    from app.services.ai.FieldOpsAI.services.prompt_locale_service import validate_translation_parity
+                    issues = validate_translation_parity(en_template, temp)
+                    if issues:
+                        raise TemplateValidationServiceError("Variable contract does not match the canonical English template.")
+            
             updated_model = self.repo.update(template_id, update_dict)
+            update_version(self.db, updated_model, getattr(payload, 'change_summary', None), self.actor_id, self.tenant_id)
             self.db.commit()
                 
             self._invalidate_cache()
@@ -238,17 +300,44 @@ class ManagedPromptTemplateRegistry:
             self.db.rollback()
             raise RegistryServiceError("Database error")
 
-    def delete(self, template_id: int) -> None:
+    def delete(
+        self,
+        template_id: int,
+    ) -> None:
         try:
-            self.repo.deactivate(template_id)
+            soft_delete_template(
+                db=self.db,
+                template_id=template_id,
+                actor_id=self.actor_id,
+                tenant_id=self.tenant_id,
+            )
+
             self.db.commit()
+
+            # Cache invalidation must happen only after
+            # the database commit succeeds.
             self._invalidate_cache()
-        except TemplateNotFoundError:
+
+        except VersionTemplateNotFoundError:
             self.db.rollback()
-            raise NotFoundError("Template not found")
-        except RepositoryError:
+
+            raise NotFoundError(
+                "Template not found"
+            ) from None
+
+        except VersionConflictError:
             self.db.rollback()
-            raise RegistryServiceError("Database error")
+
+            raise ConflictError(
+                "Template deletion conflict"
+            ) from None
+
+        except Exception:
+            self.db.rollback()
+
+            raise RegistryServiceError(
+                "Failed to delete template"
+            ) from None
 
     def list(self, **kwargs) -> List[PromptTemplateResponse]:
         limit = kwargs.pop('limit', 100)
@@ -260,7 +349,12 @@ class ManagedPromptTemplateRegistry:
             raise RegistryServiceError("Database error")
 
     def find(self, agent_type: str, channel: str, language: str, status: str) -> PromptTemplateLookupResponse:
-        cache_key = self._build_cache_key("prompt_find", agent_type=agent_type, channel=channel, language=language, status=status)
+        from app.services.ai.FieldOpsAI.services.prompt_locale_service import InvalidLocaleError
+        try:
+            norm_language = normalize_locale(language)
+        except InvalidLocaleError:
+            raise TemplateValidationServiceError("Invalid locale")
+        cache_key = self._build_cache_key("prompt_find", agent_type=agent_type, channel=channel, language=norm_language, status=status)
         cached = self._read_from_cache(cache_key)
         if cached:
             try:
@@ -277,29 +371,20 @@ class ManagedPromptTemplateRegistry:
                     cache_key
                 )
         try:
-            candidates = self.repo.find_active_candidates(agent_type, channel, language, status)
-            
-            # Order of precedence:
-            # 1. Tenant: exact language + exact status
-            # 2. Tenant: English + exact status
-            # 3. Tenant: exact language + status="default"
-            # 4. Tenant: English + status="default"
-            # 5. Platform: exact language + exact status
-            # 6. Platform: English + exact status
-            # 7. Platform: exact language + status="default"
-            # 8. Platform: English + status="default"
+            cands = locale_candidates(norm_language)
+            candidates = self.repo.find_active_candidates(agent_type, channel, cands, status)
             
             match = None
-            rules = [
-                (self.tenant_id, language, status),
-                (self.tenant_id, "en", status),
-                (self.tenant_id, language, "default"),
-                (self.tenant_id, "en", "default"),
-                ("**platform**", language, status),
-                ("**platform**", "en", status),
-                ("**platform**", language, "default"),
-                ("**platform**", "en", "default"),
-            ]
+            rules = []
+            cands = locale_candidates(norm_language)
+            for lang_cand in cands:
+                rules.append((self.tenant_id, lang_cand, status))
+            for lang_cand in cands:
+                rules.append((self.tenant_id, lang_cand, "default"))
+            for lang_cand in cands:
+                rules.append(("**platform**", lang_cand, status))
+            for lang_cand in cands:
+                rules.append(("**platform**", lang_cand, "default"))
             
             for t_id, lang, stat in rules:
                 for c in candidates:
