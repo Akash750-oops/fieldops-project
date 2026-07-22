@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from typing import Literal, Optional, Union
-from pydantic import BaseModel, field_validator, ConfigDict
+from pydantic import BaseModel, field_validator, ConfigDict, Field
+from .services.ai.FieldOpsAI.schemas.prompt_variable import PromptVariableDeclaration
 
 
 class JobCreate(BaseModel):
@@ -272,9 +273,11 @@ class TemplateResponse(TemplateCreate):
     model_config = ConfigDict(from_attributes=True)
 
 class TemplatePreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     title_template: Optional[str] = None
     body_template: str
     mock_context: dict
+    variables: Optional[list[PromptVariableDeclaration]] = None
 
 class TemplatePreviewResponse(BaseModel):
     rendered_title: Optional[str] = None
@@ -284,25 +287,50 @@ class TemplateVersionResponse(BaseModel):
     id: int
     template_id: int
     version_number: int
+    name: Optional[str] = None
+    type: Optional[str] = None
+    channel: Optional[str] = None
+    locale: Optional[str] = None
+    format: Optional[str] = None
+    agent_type: Optional[str] = None
+    variables: Optional[list] = None
     title_template: Optional[str] = None
     body_template: str
     created_by: str
     created_at: datetime
     change_summary: Optional[str] = None
     is_active: bool
+    template_is_active: Optional[bool] = None
+    restored_from_version: Optional[int] = None
+    is_deleted: bool
 
     model_config = ConfigDict(from_attributes=True)
 
 class TemplateVersionCreate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    channel: Optional[str] = None
+    locale: Optional[str] = None
+    format: Optional[str] = None
+    agent_type: Optional[str] = None
+    variables: Optional[list] = None
     title_template: Optional[str] = None
     body_template: str
-    created_by: str
-    change_summary: Optional[str] = None
+    change_summary: Optional[str] = Field(None, max_length=500)
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+class TemplateRollbackRequest(BaseModel):
+    change_summary: Optional[str] = Field(None, max_length=500)
+    
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 class TemplateRestoreRequest(BaseModel):
-    version_number: int
-    restored_by: str
+    version_number: int = Field(..., ge=1)
 
+    model_config = ConfigDict(
+        extra="forbid",
+    )
 class TemplateRestoreResponse(BaseModel):
     template_id: int
     previous_version: int
@@ -324,10 +352,7 @@ class TemplateCompareResponse(BaseModel):
     template_id: int
     old_version: int
     new_version: int
-    old_title: Optional[str] = None
-    new_title: Optional[str] = None
-    old_body: str
-    new_body: str
+    changes: dict = Field(default_factory=dict)
 
 class NotificationPreferences(BaseModel):
     sms_enabled: bool = True

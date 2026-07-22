@@ -57,7 +57,8 @@ class PromptTemplateRepository:
         try:
             return self.db.query(NotificationTemplate).filter(
                 NotificationTemplate.id == template_id,
-                NotificationTemplate.tenant_id == self.tenant_id
+                NotificationTemplate.tenant_id == self.tenant_id,
+                NotificationTemplate.is_deleted == False
             ).first()
         except SQLAlchemyError:
             raise RepositoryError("Failed to retrieve template.") from None
@@ -116,7 +117,8 @@ class PromptTemplateRepository:
     ) -> List[NotificationTemplate]:
         try:
             query = self.db.query(NotificationTemplate).filter(
-                NotificationTemplate.tenant_id == self.tenant_id
+                NotificationTemplate.tenant_id == self.tenant_id,
+                NotificationTemplate.is_deleted == False
             )
             
             if agent_type:
@@ -142,7 +144,7 @@ class PromptTemplateRepository:
         self,
         agent_type: str,
         channel: str,
-        language: str,
+        locales: Tuple[str, ...],
         status: str
     ) -> List[NotificationTemplate]:
         """
@@ -157,7 +159,8 @@ class PromptTemplateRepository:
                 NotificationTemplate.agent_type == agent_type,
                 NotificationTemplate.channel == db_channel,
                 NotificationTemplate.is_active == True,
-                NotificationTemplate.locale.in_([language, "en"]),
+                NotificationTemplate.is_deleted == False,
+                NotificationTemplate.locale.in_(locales),
                 NotificationTemplate.type.in_([status, "default"])
             ).order_by(NotificationTemplate.version.desc(), NotificationTemplate.id.desc()).all()
             

@@ -706,3 +706,36 @@ def test_rendered_fallback_passes_default_guardrails(
     )
 
     assert guardrail_result.passed is True
+
+
+from app.services.ai.guardrails.fallback_service import GuardrailFallbackService
+from app.services.ai.FieldOpsAI.schemas.communication import CommunicationContext
+
+def test_database_lookup_failure_reaches_builtin_fallback(db_session, monkeypatch):
+    from sqlalchemy.exc import SQLAlchemyError
+    def mock_query(*args, **kwargs):
+        raise SQLAlchemyError("DB Down")
+    monkeypatch.setattr(db_session, "query", mock_query)
+    
+    svc = GuardrailFallbackService(db=db_session)
+    ctx = CommunicationContext(job_id="1", notification_type="job_assigned", recipient_type="CUSTOMER", channel="SMS", locale="es", job_status="ASSIGNED")
+    res = svc.render(context=ctx)
+    assert res.source == "BUILTIN"
+
+def test_spanish_missing_optional_values_use_spanish_defaults(db_session):
+    svc = GuardrailFallbackService(db=db_session)
+    ctx = CommunicationContext(job_id="1", notification_type="job_assigned", recipient_type="CUSTOMER", channel="SMS", locale="es", job_status="ASSIGNED")
+    res = svc.render(context=ctx)
+    assert "Cliente" in res.decision.message or "técnico" in res.decision.message
+
+def test_tamil_missing_optional_values_use_tamil_defaults(db_session):
+    svc = GuardrailFallbackService(db=db_session)
+    ctx = CommunicationContext(job_id="1", notification_type="job_assigned", recipient_type="CUSTOMER", channel="SMS", locale="ta", job_status="ASSIGNED")
+    res = svc.render(context=ctx)
+    assert "வாடிக்கையாளர்" in res.decision.message or "தொழில்நுட்பவியலாளர்" in res.decision.message
+
+def test_hindi_missing_optional_values_use_hindi_defaults(db_session):
+    svc = GuardrailFallbackService(db=db_session)
+    ctx = CommunicationContext(job_id="1", notification_type="job_assigned", recipient_type="CUSTOMER", channel="SMS", locale="hi", job_status="ASSIGNED")
+    res = svc.render(context=ctx)
+    assert "ग्राहक" in res.decision.message or "तकनीशियन" in res.decision.message

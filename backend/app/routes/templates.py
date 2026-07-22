@@ -1,91 +1,185 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+
 
 from .dispatch import verify_jwt_token
 from ..database import get_db
-from ..models import NotificationTemplate,TemplateVersion
+from ..models import NotificationTemplate
 from ..schemas import TemplateCreate, TemplateResponse, TemplatePreviewRequest, TemplatePreviewResponse
 from ..services.template_engine import render_preview
-from ..services.ai.FieldOpsAI.schemas.prompt_template import _validate_jinja_variables
+from ..services.template_version_service import create_initial_version,update_version
+from app.services.ai.FieldOpsAI.services.prompt_variable_injector import (
+    PromptVariableInjector,
+    PromptVariableInjectionError,
+)
 
 router = APIRouter(
     prefix="/templates",
     tags=["Templates"]
 )
 
-@router.post("", response_model=TemplateResponse)
+@router.post(
+    "",
+    response_model=TemplateResponse,
+)
 async def create_template(
     payload: TemplateCreate,
-    authorization: str = Depends(verify_jwt_token),
-    db: Session = Depends(get_db)
+    authorization: str = Depends(
+        verify_jwt_token
+    ),
+    db: Session = Depends(get_db),
 ):
-    # Find existing active template of same type/channel/locale
-    existing = db.query(NotificationTemplate).filter(
-        NotificationTemplate.type == payload.type,
-        NotificationTemplate.channel == payload.channel,
-        NotificationTemplate.locale == payload.locale,
-        NotificationTemplate.is_active == True,
-        NotificationTemplate.tenant_id == "**platform**",
-        NotificationTemplate.agent_type == "CommsAgent"
-    ).first()
+    """
+    Create a legacy platform template or update the
+    existing live template and create a new history version.
 
-    new_version = 1
+    One NotificationTemplate row represents the live template.
+    TemplateVersion stores its complete version history.
+    """
 
-    if existing:
-        new_version = existing.version + 1
-        existing.is_active = False
+    injector = PromptVariableInjector()
+
+    # --------------------------------------------------
+    # Validate before changing the database
+    # --------------------------------------------------
+
+    try:
+        inferred_paths = (
+            injector.infer_declarations(
+                body=payload.body_template,
+                title=payload.title_template,
+            )
+        )
+
+        # The legacy API intentionally stores
+        # top-level declarations.
+        variables = sorted({
+            path.split(".", 1)[0]
+            for path in inferred_paths
+        })
+
+    except PromptVariableInjectionError:
+        raise HTTPException(
+            status_code=400,
+            detail="Template validation failed.",
+        ) from None
+
+    # --------------------------------------------------
+    # Create or update atomically
+    # --------------------------------------------------
+
+    try:
+        existing = (
+            db.query(NotificationTemplate)
+            .filter(
+                NotificationTemplate.type
+                == payload.type,
+
+                NotificationTemplate.channel
+                == payload.channel,
+
+                NotificationTemplate.locale
+                == payload.locale,
+
+                NotificationTemplate.tenant_id
+                == "**platform**",
+
+                NotificationTemplate.agent_type
+                == "CommsAgent",
+
+                NotificationTemplate.is_active
+                .is_(True),
+
+                NotificationTemplate.is_deleted
+                .is_(False),
+            )
+            .with_for_update()
+            .first()
+        )
+
+        # ----------------------------------------------
+        # Existing live template:
+        # update the same row and create version history
+        # ----------------------------------------------
+
+        if existing is not None:
+            existing.name = payload.name
+            existing.format = payload.format
+            existing.title_template = (
+                payload.title_template
+            )
+            existing.body_template = (
+                payload.body_template
+            )
+            existing.variables = variables
+
+            update_version(
+                db=db,
+                template=existing,
+                change_summary=(
+                    "Legacy template update"
+                ),
+                actor_id="system",
+                tenant_id="**platform**",
+            )
+
+            db.commit()
+            db.refresh(existing)
+
+            return existing
+
+        # ----------------------------------------------
+        # First template:
+        # create live row and version 1 together
+        # ----------------------------------------------
+
+        new_template = NotificationTemplate(
+            name=payload.name,
+            type=payload.type,
+            channel=payload.channel,
+            locale=payload.locale,
+            format=payload.format,
+            title_template=(
+                payload.title_template
+            ),
+            body_template=(
+                payload.body_template
+            ),
+            variables=variables,
+            version=1,
+            is_active=True,
+            is_deleted=False,
+            tenant_id="**platform**",
+            agent_type="CommsAgent",
+        )
+
+        db.add(new_template)
+        db.flush()
+
+        create_initial_version(
+            db=db,
+            template=new_template,
+            created_by="system",
+        )
+
         db.commit()
+        db.refresh(new_template)
 
-    # Derive variables automatically
-    from jinja2 import Environment, meta
-    env = Environment()
-    ast = env.parse(payload.body_template)
-    vars_set = meta.find_undeclared_variables(ast)
-    if payload.title_template:
-        ast_title = env.parse(payload.title_template)
-        vars_set.update(meta.find_undeclared_variables(ast_title))
-    variables = list(vars_set)
+        return new_template
 
-    # Create the active template
-    new_template = NotificationTemplate(
-        name=payload.name,
-        type=payload.type,
-        channel=payload.channel,
-        locale=payload.locale,
-        format=payload.format,
-        title_template=payload.title_template,
-        body_template=payload.body_template,
-        variables=variables,
-        version=new_version,
-        is_active=True,
-        tenant_id="**platform**",
-        agent_type="CommsAgent"
-    )
+    except HTTPException:
+        db.rollback()
+        raise
 
-    db.add(new_template)
-    db.commit()
-    db.refresh(new_template)
+    except Exception:
+        db.rollback()
 
-    # -------------------------------------------------
-    # Automatically create a version history record
-    # -------------------------------------------------
+        raise HTTPException(
+            status_code=503,
+            detail="Template persistence failed.",
+        ) from None
 
-    version = TemplateVersion(
-        template_id=new_template.id,
-        version_number=new_version,
-        title_template=new_template.title_template,
-        body_template=new_template.body_template,
-        created_by="system",
-        change_summary="Initial version" if new_version == 1 else f"Version {new_version}",
-        is_active=True,
-    )
-
-    db.add(version)
-    db.commit()
-
-    return new_template
-
+        
 @router.get("", response_model=list[TemplateResponse])
 async def list_templates(
     db: Session = Depends(get_db),
@@ -107,7 +201,8 @@ async def preview_template(
         result = render_preview(
             title_template=payload.title_template,
             body_template=payload.body_template,
-            context=payload.mock_context
+            context=payload.mock_context,
+            variables=payload.variables,
         )
         return {
             "rendered_title": result["title"],
