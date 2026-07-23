@@ -30,6 +30,9 @@ from app.services.notification_services import (
     JobStatusEvent,
     NotificationRouter,
 )
+from app.services.ai.FieldOpsAI.schemas.communication_configuration import (
+    CommunicationMessageCategory,
+)
 
 
 class FakeCommunicationIntegration:
@@ -380,10 +383,15 @@ async def test_technician_sms_uses_safe_message(
     assert delivered is True
     assert len(sms_calls) == 1
 
-    assert sms_calls[0]["message_body"] == (
+    assert sms_calls[0]["effective_message"] == (
         "A FieldOps job has an update. "
         "Open the app for details."
     )
+
+    assert sms_calls[0]["category"] == (
+        CommunicationMessageCategory.STANDARD
+    )
+    assert "message_body" not in sms_calls[0]
 
     assert integration.calls[0][
         "recipient_type"

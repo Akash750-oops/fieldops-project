@@ -20,6 +20,15 @@ from ..models import AuditEvent, Technician, InAppNotification, Job
 from ..redis_client import get_redis_client
 from ..context import correlation_id_ctx
 from .preferences import get_technician_preferences
+from .ai.FieldOpsAI.services.communication_configuration_service import CommunicationConfigurationService
+from .ai.FieldOpsAI.repositories.communication_configuration_repository import CommunicationConfigurationRepository
+from .ai.FieldOpsAI.schemas.communication_configuration import (
+    CommunicationMessageCategory,
+    CommunicationChannelDisabledError,
+)
+from .ai.FieldOpsAI.services.customer_preference_service import CustomerPreferenceService
+from .ai.FieldOpsAI.repositories.customer_profile_repository import CustomerProfileRepository
+from .ai.FieldOpsAI.services.communication_delivery_policy_service import CommunicationDeliveryPolicyService
 
 logger = logging.getLogger(__name__)
 
@@ -175,8 +184,8 @@ class EventPublisher:
             try:
                 self.redis.publish(self.channel, json.dumps(payload_dict))
                 logger.info(f"Published status event to Redis channel {self.channel} for job {event.job_id}")
-            except Exception as e:
-                logger.error(f"Failed to publish status event to Redis: {e}")
+            except Exception:
+                logger.error("Failed to publish status event to Redis.")
         
         # Write to audit_events table
         await self._write_audit(event)
@@ -207,8 +216,8 @@ class EventPublisher:
             db.add(audit_record)
             db.commit()
             logger.info(f"Written AuditEvent for transition to {event.to_status} of job {event.job_id}")
-        except Exception as e:
-            logger.error(f"Failed to write AuditEvent for transition: {e}")
+        except Exception:
+            logger.error("Failed to write AuditEvent for transition.")
             db.rollback()
         finally:
             db.close()
@@ -482,6 +491,60 @@ class NotificationRouter:
                 redis_client=self.redis
             )
         )
+    def _evaluate_customer_delivery_policy(
+        self,
+        *,
+        event: JobStatusEvent,
+        channel: str,
+        category: CommunicationMessageCategory,
+    ):
+        """
+        Evaluate final customer delivery eligibility.
+
+        This helper is shared by customer SMS and EMAIL.
+        """
+
+        with SessionLocal() as db:
+            configuration_repository = (
+                CommunicationConfigurationRepository(
+                    db
+                )
+            )
+
+            configuration_service = (
+                CommunicationConfigurationService(
+                    configuration_repository,
+                    db,
+                    redis_client=self.redis,
+                )
+            )
+
+            preference_repository = (
+                CustomerProfileRepository(
+                    db
+                )
+            )
+
+            preference_service = (
+                CustomerPreferenceService(
+                    preference_repository
+                )
+            )
+
+            policy_service = (
+                CommunicationDeliveryPolicyService(
+                    configuration_service,
+                    preference_service,
+                )
+            )
+
+            return policy_service.evaluate(
+                channel=channel,
+                category=category,
+                recipient_type="CUSTOMER",
+                tenant_id=event.tenant_id,
+                customer_id=event.customer_id,
+            )
 
     # ======================================================
     # Main Routing
@@ -538,21 +601,36 @@ class NotificationRouter:
                     )
 
                 elif channel == "sms":
-                    await self._send_sms(
-                        event,
-                        recipient_type,
-                        payload,
-                        notification_type,
-                    )
+                    try:
+                        await self._send_sms(
+                            event,
+                            recipient_type,
+                            payload,
+                            notification_type,
+                            category=(
+                                CommunicationMessageCategory
+                                .STANDARD
+                            ),
+                        )
+                    except CommunicationChannelDisabledError:
+                        # Policy block is deterministic and
+                        # must not be retried as provider failure.
+                        pass
 
                 elif channel == "email":
-                    await self._send_email(
-                        event,
-                        recipient_type,
-                        payload,
-                        config,
-                        notification_type,
-                    )
+                    try:
+                        await self._send_email(
+                            event,
+                            recipient_type,
+                            payload,
+                            config,
+                            notification_type,
+                            category=CommunicationMessageCategory.STANDARD,
+                        )
+                    except CommunicationChannelDisabledError:
+                        # Policy block — deterministic, non-retryable.
+                        # Already logged inside _send_email.
+                        pass
 
                 elif channel == "in_app":
                     await self._send_in_app(
@@ -1074,6 +1152,9 @@ class NotificationRouter:
         recipient_type: str,
         payload: dict,
         notification_type: str,
+        category: CommunicationMessageCategory = (
+            CommunicationMessageCategory.STANDARD
+        ),
     ) -> bool:
         """
         Send guardrail-approved SMS communication.
@@ -1151,7 +1232,8 @@ class NotificationRouter:
                         event.technician_id,
                     ],
                     correlation_id_ctx.get(),
-                    message_body=message_body,
+                    effective_message=message_body,
+                    category=category,
                 )
 
                 if isinstance(
@@ -1196,16 +1278,37 @@ class NotificationRouter:
             )
 
             return False
+        decision = (
+            self._evaluate_customer_delivery_policy(
+                event=event,
+                channel="SMS",
+                category=category,
+            )
+        )
+
+        if not decision.allowed:
+            logger.warning(
+                "Customer SMS delivery blocked by policy. "
+                "reason_code=%s channel=SMS",
+                decision.final_reason_code,
+            )
+
+            raise CommunicationChannelDisabledError(
+                (
+                    "SMS delivery blocked: "
+                    f"{decision.final_reason_code}"
+                ),
+                decision,
+            )
 
         from .twilio_sms import (
             TWILIO_ACCOUNT_SID,
             TWILIO_PHONE_NUMBER,
-            twilio_client,
+            dispatch_twilio_message,
         )
 
         local_mock_mode = (
-            twilio_client is None
-            or "dummy"
+            "dummy"
             in TWILIO_ACCOUNT_SID.lower()
         )
 
@@ -1224,12 +1327,9 @@ class NotificationRouter:
             await loop.run_in_executor(
                 None,
                 lambda: (
-                    twilio_client
-                    .messages
-                    .create(
+                    dispatch_twilio_message(
                         body=message_body,
-                        from_=TWILIO_PHONE_NUMBER,
-                        to=event.customer_phone,
+                        to_phone=event.customer_phone,
                     )
                 ),
             )
@@ -1262,6 +1362,7 @@ class NotificationRouter:
         payload: dict,
         config: dict,
         notification_type: str,
+        category: CommunicationMessageCategory = CommunicationMessageCategory.STANDARD,
     ) -> bool:
         """
         Send guardrail-approved customer email.
@@ -1355,6 +1456,26 @@ class NotificationRouter:
                 f'{escape(survey_url, quote=True)}'
                 f'">Take Survey</a>'
                 "</p>"
+            )
+
+        # Enforce email delivery policy
+        decision = (
+            self._evaluate_customer_delivery_policy(
+                event=event,
+                channel="EMAIL",
+                category=category,
+            )
+        )
+
+        if not decision.allowed:
+            logger.warning(
+                "Customer email delivery blocked by policy. "
+                "reason_code=%s channel=EMAIL",
+                decision.final_reason_code,
+            )
+            raise CommunicationChannelDisabledError(
+                f"Email delivery blocked: {decision.final_reason_code}",
+                decision,
             )
 
         delivered = await self.email.send_email(

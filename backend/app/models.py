@@ -1083,3 +1083,61 @@ class AgentStateRecord(Base):
             "state",
         ),
     )
+
+
+class CustomerProfile(Base):
+    __tablename__ = "customer_profiles"
+
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'customer_id', name='uq_customer_profiles_tenant_customer'),
+        CheckConstraint('revision >= 1', name='chk_customer_profiles_revision_positive'),
+        Index('ix_customer_profiles_tenant_id', 'tenant_id'),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String(50), nullable=False)
+    customer_id = Column(String(50), nullable=False)
+    preferred_locale = Column(String(10), nullable=False, default="en")
+
+    sms_enabled = Column(Boolean, nullable=False, default=True)
+    email_enabled = Column(Boolean, nullable=False, default=True)
+    push_enabled = Column(Boolean, nullable=False, default=False)
+    portal_enabled = Column(Boolean, nullable=False, default=True)
+
+    revision = Column(Integer, nullable=False, default=1)
+    updated_by = Column(String(100), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class CustomerPreferenceAudit(Base):
+    __tablename__ = "customer_preference_audits"
+
+    __table_args__ = (
+        CheckConstraint("actor_source IN ('CUSTOMER', 'ADMIN', 'SYSTEM')", name="chk_audit_actor_source"),
+        CheckConstraint("previous_revision >= 0", name="chk_audit_prev_revision"),
+        CheckConstraint("new_revision >= 1", name="chk_audit_new_revision"),
+        CheckConstraint("new_revision > previous_revision", name="chk_audit_revision_progression"),
+        Index('ix_customer_preference_audits_tenant_id', 'tenant_id'),
+        Index('ix_customer_preference_audits_profile_id', 'customer_profile_id'),
+        Index('ix_customer_preference_audits_tenant_profile', 'tenant_id', 'customer_profile_id'),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    customer_profile_id = Column(String(36), ForeignKey("customer_profiles.id"), nullable=False)
+    tenant_id = Column(String(50), nullable=False)
+    previous_revision = Column(Integer, nullable=False)
+    new_revision = Column(Integer, nullable=False)
+    changed_fields = Column(JSON, nullable=False)
+    actor_id = Column(String(100), nullable=False)
+    actor_source = Column(String(50), nullable=False)
+    correlation_id = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+@event.listens_for(CustomerPreferenceAudit, "before_update")
+def prevent_customer_preference_audit_update(mapper, connection, target):
+    raise ValueError("CustomerPreferenceAudit is immutable")
+
+@event.listens_for(CustomerPreferenceAudit, "before_delete")
+def prevent_customer_preference_audit_delete(mapper, connection, target):
+    raise ValueError("CustomerPreferenceAudit is immutable")

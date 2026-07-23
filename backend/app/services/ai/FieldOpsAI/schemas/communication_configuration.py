@@ -1,5 +1,6 @@
+from typing import Literal, Optional
 from enum import Enum
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from datetime import datetime
 
 class UnsupportedCommunicationChannelError(Exception):
@@ -22,7 +23,7 @@ class CommunicationConfigurationConflictError(Exception):
 
 def normalize_channel(channel: str) -> str:
     normalized = channel.strip().upper()
-    if normalized != "SMS":
+    if normalized not in {"SMS", "EMAIL"}:
         raise UnsupportedCommunicationChannelError(normalized)
     return normalized
 class CommunicationChannelState(str, Enum):
@@ -59,8 +60,53 @@ class DeliveryDecision(BaseModel):
     category: CommunicationMessageCategory
     reason_code: str
     revision: int
+    persistent_state: Optional[str] = None
+    override_active: Optional[bool] = None
+    effective_state: Optional[str] = None
+    policy_source: Optional[str] = None
 
 class CommunicationChannelDisabledError(Exception):
     def __init__(self, message: str, decision: DeliveryDecision):
         super().__init__(message)
         self.decision = decision
+
+
+# ---------------------------------------------------------------------------
+# Story 14.3 — Cache payload contract
+# ---------------------------------------------------------------------------
+# Internal frozen model used exclusively by CommunicationConfigurationService.
+# Callers outside the service must never construct or inspect this directly.
+
+_CACHE_PAYLOAD_MAX_BYTES = 512  # safety ceiling; real payloads are ~150 bytes
+
+
+class CommunicationConfigurationCachePayload(BaseModel):
+    """
+    Safe, strictly-validated Redis cache payload for one channel configuration.
+
+    Constraints
+    -----------
+    - No PII, no customer data, no message content, no credentials.
+    - Extra fields are forbidden so a schema-version mismatch is caught on read.
+    - timezone-aware updated_at preserves the authoritative database timestamp.
+    """
+
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    schema_version: Literal[1]
+    channel: Literal["SMS", "EMAIL"]
+    state: CommunicationChannelState
+    revision: int = Field(..., ge=1)
+    updated_at: datetime
+    updated_by: str = Field(..., min_length=1, max_length=100)
+
+    @field_validator("updated_at")
+    @classmethod
+    def validate_timezone_aware(cls, v: datetime) -> datetime:
+        if v.tzinfo is None or v.tzinfo.utcoffset(v) is None:
+            raise ValueError("updated_at must be timezone-aware")
+        return v
