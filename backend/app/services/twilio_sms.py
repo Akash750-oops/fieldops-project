@@ -23,7 +23,7 @@ if 'AC' in TWILIO_ACCOUNT_SID:
         twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         logger.info("Twilio client initialized.")
     except Exception as e:
-        logger.error(f"Failed to initialize Twilio client: {e}")
+        logger.error("Failed to initialize Twilio client.")
 
 def validate_phone_number(phone_number: str) -> bool:
     """Validate E.164 phone number format (e.g., +919876543210)"""
@@ -63,6 +63,24 @@ def generate_sms_template(job_title: str, address: str, priority: str, job_id: s
 from .ai.FieldOpsAI.schemas.communication_configuration import CommunicationMessageCategory, CommunicationChannelDisabledError
 from .ai.FieldOpsAI.services.communication_configuration_service import CommunicationConfigurationService
 from .ai.FieldOpsAI.repositories.communication_configuration_repository import CommunicationConfigurationRepository
+from .ai.FieldOpsAI.services.customer_preference_service import CustomerPreferenceService
+from .ai.FieldOpsAI.repositories.customer_profile_repository import CustomerProfileRepository
+from .ai.FieldOpsAI.services.communication_delivery_policy_service import CommunicationDeliveryPolicyService
+
+def dispatch_twilio_message(to_phone: str, body: str) -> str:
+    """
+    The single authoritative Twilio transport boundary for both technicians and customers.
+    """
+    if not twilio_client:
+        return f"SMmock_{uuid.uuid4().hex[:12]}"
+        
+    response = twilio_client.messages.create(
+        body=body,
+        from_=TWILIO_PHONE_NUMBER,
+        to=to_phone,
+        status_callback="https://api.fieldops.io/v1/webhooks/twilio-status"
+    )
+    return response.sid
 
 def check_rate_limit(redis_client, tech_id: str) -> bool:
     """Check if the technician has exceeded 10 SMS per minute."""
@@ -81,7 +99,7 @@ def check_rate_limit(redis_client, tech_id: str) -> bool:
         pipe.execute()
         return True
     except Exception as e:
-        logger.error(f"Redis rate limiting error: {e}")
+        logger.error("Redis rate limiting error occurred.")
         return True # fail open
 
 async def send_job_assignment_sms(
@@ -144,7 +162,10 @@ async def send_job_assignment_sms(
     
     # Enforce delivery policy before iterating over technicians
     repo = CommunicationConfigurationRepository(db)
-    config_service = CommunicationConfigurationService(repo, db)
+    config_service = CommunicationConfigurationService(repo, db, redis_client=redis_client)
+    pref_repo = CustomerProfileRepository(db)
+    pref_service = CustomerPreferenceService(pref_repo)
+    policy_service = CommunicationDeliveryPolicyService(config_service, pref_service)
 
     for tech in techs:
         # Check Opt-out
@@ -191,19 +212,23 @@ async def send_job_assignment_sms(
         
         for attempt in range(max_retries):
             # Enforce delivery policy before every attempt
-            decision = config_service.evaluate_delivery(channel="SMS", category=category)
+            decision = policy_service.evaluate(
+                channel="SMS", 
+                category=category, 
+                recipient_type="TECHNICIAN",
+            )
             if not decision.allowed:
                 delivery.error_message = (
-                    decision.reason_code
+                    decision.final_reason_code
                 )
 
                 blocked_count += 1
 
                 blocked_reasons[
-                    decision.reason_code
+                    decision.final_reason_code
                 ] = (
                     blocked_reasons.get(
-                        decision.reason_code,
+                        decision.final_reason_code,
                         0,
                     )
                     + 1
@@ -212,28 +237,19 @@ async def send_job_assignment_sms(
                 break
                 
             try:
-                if not twilio_client:
-                    # Mock for local dev
+                sms_sid = dispatch_twilio_message(to_phone=tech.phone_number, body=effective_message)
+                
+                if sms_sid.startswith("SMmock_"):
                     logger.info(
                             "Technician SMS delivery simulated.",
                             extra={**log_extra, "delivery_id": delivery.id, "attempt": attempt, "operation": "simulate_sms"}
                         )
-                    delivery.status = "sent"
-                    delivery.sms_sid = f"SMmock_{uuid.uuid4().hex[:12]}"
-                    success = True
-                    break
+                else:
+                    logger.info("Sent SMS successfully", extra={**log_extra, "delivery_id": delivery.id, "attempt": attempt, "operation": "send_sms"})
 
-                response = twilio_client.messages.create(
-                    body=effective_message,
-                    from_=TWILIO_PHONE_NUMBER,
-                    to=tech.phone_number,
-                    status_callback="https://api.fieldops.io/v1/webhooks/twilio-status"
-                )
-                
                 delivery.status = "sent"
-                delivery.sms_sid = response.sid
+                delivery.sms_sid = sms_sid
                 success = True
-                logger.info("Sent SMS successfully", extra={**log_extra, "delivery_id": delivery.id, "attempt": attempt, "operation": "send_sms"})
                 break
                 
             except TwilioRestException as e:

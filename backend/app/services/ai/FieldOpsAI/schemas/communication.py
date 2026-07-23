@@ -24,6 +24,7 @@ It never:
 from __future__ import annotations
 
 from typing import Any, Literal, Self
+from enum import Enum
 
 from pydantic import (
     BaseModel,
@@ -48,11 +49,12 @@ CommunicationChannel = Literal[
 ]
 
 
-CommunicationRecipient = Literal[
-    "CUSTOMER",
-    "TECHNICIAN",
-    "DISPATCHER",
-]
+class CommunicationRecipient(str, Enum):
+    CUSTOMER = "CUSTOMER"
+    TECHNICIAN = "TECHNICIAN"
+    DISPATCHER = "DISPATCHER"
+    MANAGER = "MANAGER"
+    SYSTEM = "SYSTEM"
 
 
 CommunicationTone = Literal[

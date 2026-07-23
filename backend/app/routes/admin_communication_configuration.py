@@ -3,12 +3,14 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from app.dependencies.prompt_admin_authorization import require_prompt_admin, PromptAdminPrincipal
+from ..redis_client import get_redis_client
 from ..services.ai.FieldOpsAI.schemas.communication_configuration import (
     CommunicationChannelStateUpdate,
     CommunicationConfigurationResponse,
     UnsupportedCommunicationChannelError,
     CommunicationConfigurationUnavailableError,
-    CommunicationConfigurationNotFoundError
+    CommunicationConfigurationNotFoundError,
+    CommunicationConfigurationConflictError,
 )
 from ..services.ai.FieldOpsAI.repositories.communication_configuration_repository import CommunicationConfigurationRepository
 from ..services.ai.FieldOpsAI.services.communication_configuration_service import CommunicationConfigurationService
@@ -24,9 +26,16 @@ router = APIRouter(
     tags=["admin", "communication-config"]
 )
 
-def get_config_service(db: Session = Depends(get_db)) -> CommunicationConfigurationService:
+def get_config_service(
+    db: Session = Depends(get_db),
+    redis_client=Depends(get_redis_client),
+) -> CommunicationConfigurationService:
     repository = CommunicationConfigurationRepository(db)
-    return CommunicationConfigurationService(repository, db)
+    return CommunicationConfigurationService(
+        repository,
+        db,
+        redis_client=redis_client,
+    )
 
 @router.get("/{channel}", response_model=CommunicationConfigurationResponse)
 def get_channel_configuration(

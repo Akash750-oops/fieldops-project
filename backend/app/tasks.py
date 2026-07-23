@@ -450,35 +450,117 @@ def process_job_status_transition_task(job_id, from_status, to_status, actor_id,
             notification_channels=[]
         )
 
-        # Run async event and notification routing in an event loop
+        # --------------------------------------------------
+        # Handle SLA timer updates before notifications.
+        # Notification generation or delivery may fail, but
+        # that failure must never prevent SLA cleanup.
+        # --------------------------------------------------
+
+        sla = SLAService()
+
+        from_status_upper = (
+            str(from_status).upper().strip()
+            if from_status
+            else ""
+        )
+
+        to_status_upper = (
+            str(to_status).upper().strip()
+            if to_status
+            else ""
+        )
+
+        try:
+            # Resume must be checked before the general
+            # EN_ROUTE start condition.
+            if (
+                from_status_upper == "ON_SITE"
+                and to_status_upper
+                in {"ASSIGNED", "EN_ROUTE"}
+            ):
+                sla.resume_sla_timer(
+                    str(job.id)
+                )
+
+            elif to_status_upper == "EN_ROUTE":
+                if job.sla_deadline:
+                    sla.start_sla_timer(
+                        str(job.id),
+                        job.sla_deadline,
+                    )
+
+            elif to_status_upper == "ON_SITE":
+                sla.pause_sla_timer(
+                    str(job.id)
+                )
+
+            elif to_status_upper in {
+                "CLOSED",
+                "CANCELLED",
+                "COMPLETED",
+            }:
+                sla.clear_sla_timer(
+                    str(job.id)
+                )
+
+        except Exception:
+            logger.error(
+                "SLA timer state update failed.",
+                extra={
+                    "job_id": str(job.id),
+                    "to_status": to_status_upper,
+                },
+            )
+
+        # --------------------------------------------------
+        # Publish and route notifications after SLA handling.
+        # Notification failure must not undo SLA processing.
+        # --------------------------------------------------
+
         import asyncio
+
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            
-        if loop.is_running():
-            asyncio.ensure_future(EventPublisher().publish(event))
-            asyncio.ensure_future(NotificationRouter().route(event))
-        else:
-            loop.run_until_complete(EventPublisher().publish(event))
-            loop.run_until_complete(NotificationRouter().route(event))
 
-        # Handle SLA Timer State Updates
-        sla = SLAService()
-        from_status_upper = str(from_status).upper().strip() if from_status else ""
-        to_status_upper = str(to_status).upper().strip() if to_status else ""
+        try:
+            if loop.is_running():
+                asyncio.ensure_future(
+                    EventPublisher().publish(
+                        event
+                    )
+                )
 
-        if to_status_upper == "EN_ROUTE":
-            if job.sla_deadline:
-                sla.start_sla_timer(str(job.id), job.sla_deadline)
-        elif to_status_upper == "ON_SITE":
-            sla.pause_sla_timer(str(job.id))
-        elif from_status_upper == "ON_SITE" and to_status_upper in ("ASSIGNED", "EN_ROUTE"):
-            sla.resume_sla_timer(str(job.id))
-        elif to_status_upper in ("CLOSED", "CANCELLED", "COMPLETED"):
-            sla.clear_sla_timer(str(job.id))
+                asyncio.ensure_future(
+                    NotificationRouter().route(
+                        event
+                    )
+                )
+
+            else:
+                loop.run_until_complete(
+                    EventPublisher().publish(
+                        event
+                    )
+                )
+
+                loop.run_until_complete(
+                    NotificationRouter().route(
+                        event
+                    )
+                )
+
+        except Exception:
+            logger.error(
+                "Job transition notification processing "
+                "failed.",
+                extra={
+                    "job_id": str(job.id),
+                    "to_status": to_status_upper,
+                },
+            )
 
     except Exception as e:
         logger.error(f"Error in process_job_status_transition_task: {e}", exc_info=True)

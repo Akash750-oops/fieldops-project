@@ -10,7 +10,7 @@ class CommunicationConfigurationRepository:
     def get_by_channel(self, channel: str, for_update: bool = False) -> Optional[CommunicationChannelConfiguration]:
         query = self.db.query(CommunicationChannelConfiguration).filter(
             CommunicationChannelConfiguration.channel == channel
-        )
+        ).execution_options(populate_existing=True)
         if for_update:
             # Using with_for_update to lock the row for atomic updates
             query = query.with_for_update()
