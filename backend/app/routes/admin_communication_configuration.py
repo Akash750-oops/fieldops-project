@@ -23,7 +23,7 @@ def require_platform_super_admin(principal: PromptAdminPrincipal = Depends(requi
 
 router = APIRouter(
     prefix="/admin/communication-config/channels",
-    tags=["admin", "communication-config"]
+    tags=["communication-config"]
 )
 
 def get_config_service(

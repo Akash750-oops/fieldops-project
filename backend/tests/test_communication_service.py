@@ -311,6 +311,9 @@ def add_unsafe_database_template(
             body_template=(
                 "Hello {{customer_name}}, shut up and wait."
             ),
+            variables=[
+                {"name": "customer_name", "required": False}
+            ],
             version=1,
             is_active=True,
         )

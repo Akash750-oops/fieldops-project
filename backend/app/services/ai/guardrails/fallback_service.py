@@ -33,23 +33,22 @@ import re
 from enum import StrEnum
 from typing import Final
 
-from app.services.ai.FieldOpsAI.services.prompt_variable_injector import (
-    PromptVariableInjector
-)
-from app.services.ai.FieldOpsAI.schemas.prompt_variable import PromptVariableDefinition
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
 )
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
-
-from app.models import NotificationTemplate
-from app.services.ai.FieldOpsAI.services.prompt_locale_service import locale_candidates
-from app.services.default_template import (
-    LOCALIZED_NOTIFICATION_TYPES,
+from app.services.template_engine import (
+    render_managed_template,
+    render_template_source,
+    MessageTemplateLookupError,
+    MessageTemplateRenderingError,
+    MessageTemplateEngineError,
 )
+
+from app.services.ai.FieldOpsAI.services.prompt_locale_service import locale_candidates
+import app.services.default_template as _default_template
 from app.services.ai.FieldOpsAI.schemas.communication import (
     CommunicationContext,
     CommunicationDecision,
@@ -263,54 +262,68 @@ class GuardrailFallbackService:
         2. Built-in event template
         3. Emergency template
         """
-
-        (
-            template_row,
-            resolved_locale,
-        ) = self._find_database_template(
-            context=context
-        )
-
         # --------------------------------------------------
         # 1. Approved database template
+        #
+        # Pass the original requested locale to render_managed_template.
+        # The registry and locale service perform exact → base → English
+        # fallback internally and report the actual selected locale via
+        # RenderedMessageResult.resolved_locale.
         # --------------------------------------------------
 
-        if template_row is not None:
-            if template_row.variables:
-                db_vars = []
-                for v in template_row.variables:
-                    if isinstance(v, dict):
-                        db_vars.append(PromptVariableDefinition(**v))
-                    elif isinstance(v, str):
-                        db_vars.append(PromptVariableDefinition(name=v))
-            else:
-                db_vars = None
-
-            decision = self._try_build_decision(
-                context=context,
-                title_template=(
-                    template_row.title_template
-                ),
-                body_template=(
-                    template_row.body_template
-                ),
-                variables=db_vars,
-                resolved_locale=resolved_locale,
+        try:
+            tenant_id = (
+                getattr(context, "tenant_id", None)
+                or "**platform**"
             )
 
-            if decision is not None:
-                return GuardrailFallbackResult(
-                    decision=decision,
-                    source=(
-                        FallbackTemplateSource.DATABASE
-                    ),
-                    requested_locale=context.locale,
-                    resolved_locale=resolved_locale,
-                    template_id=template_row.id,
-                    template_version=(
-                        template_row.version
-                    ),
-                )
+            # Build an allowlisted rendering context — never pass the raw
+            # model dump so that additional_context and other sensitive
+            # fields cannot reach the template engine.
+            ctx_dump = self._build_render_context(context)
+
+            # Determine locale defaults: use base language when no exact
+            # match exists in SAFE_OPTIONAL_DEFAULTS.
+            locale_for_defaults = context.locale
+            if locale_for_defaults not in self.SAFE_OPTIONAL_DEFAULTS:
+                base = locale_for_defaults.split("-")[0]
+                locale_for_defaults = base if base in self.SAFE_OPTIONAL_DEFAULTS else "en"
+
+            defaults = self.SAFE_OPTIONAL_DEFAULTS[locale_for_defaults]
+            for k, v in defaults.items():
+                if ctx_dump.get(k) is None:
+                    ctx_dump[k] = v
+
+            res = render_managed_template(
+                db=self._db,
+                tenant_id=tenant_id,
+                agent_type="CommsAgent",
+                channel=context.channel.lower(),
+                language=context.locale,
+                status=context.notification_type,
+                context=ctx_dump,
+                allowed_variable_paths=self.ALLOWED_TEMPLATE_VARIABLES,
+            )
+
+            # Only accept a real DB template, not the 'builtin_default' sentinel.
+            # When the registry has no matching DB template, it returns a sentinel
+            # with source='builtin_default'; we must fall through to step 2.
+            if res.source in ("tenant", "platform"):
+                decision = self._build_decision_from_res(res, context)
+                if decision is not None:
+                    src = FallbackTemplateSource.DATABASE
+                    actual_locale = res.resolved_locale or context.locale
+                    return GuardrailFallbackResult(
+                        decision=decision,
+                        source=src,
+                        requested_locale=context.locale,
+                        resolved_locale=actual_locale,
+                        template_id=res.template_id,
+                        template_version=res.template_version,
+                    )
+
+        except MessageTemplateEngineError:
+            pass
 
         # --------------------------------------------------
         # 2. Approved built-in event template
@@ -322,7 +335,7 @@ class GuardrailFallbackService:
 
         if builtin_result is not None:
             builtin, builtin_locale = builtin_result
-            decision = self._try_build_decision(
+            decision = self._try_build_decision_builtin(
                 context=context,
                 title_template=builtin["title"],
                 body_template=builtin["body"],
@@ -332,9 +345,7 @@ class GuardrailFallbackService:
             if decision is not None:
                 return GuardrailFallbackResult(
                     decision=decision,
-                    source=(
-                        FallbackTemplateSource.BUILTIN
-                    ),
+                    source=FallbackTemplateSource.BUILTIN,
                     requested_locale=context.locale,
                     resolved_locale=builtin_locale,
                 )
@@ -353,7 +364,7 @@ class GuardrailFallbackService:
                 "the communication channel."
             )
 
-        decision = self._try_build_decision(
+        decision = self._try_build_decision_builtin(
             context=context,
             title_template=emergency["title"],
             body_template=emergency["body"],
@@ -368,81 +379,156 @@ class GuardrailFallbackService:
 
         return GuardrailFallbackResult(
             decision=decision,
-            source=(
-                FallbackTemplateSource.EMERGENCY
-            ),
+            source=FallbackTemplateSource.EMERGENCY,
             requested_locale=context.locale,
             resolved_locale="en",
         )
 
-    # ======================================================
-    # Database Template Lookup
-    # ======================================================
+    def _build_decision_from_res(self, result, context: CommunicationContext):
+        message = result.body.strip()
+        if context.channel != "EMAIL":
+            message = re.sub(r"\s+", " ", message).strip()
 
-    def _find_database_template(
+        if not message or self.INVALID_OUTPUT_TOKEN_PATTERN.search(message):
+            return None
+
+        rendered_title: str | None = None
+        if result.title is not None:
+            rendered_title = result.title.strip() if result.title else ""
+            rendered_title = re.sub(r"\s+", " ", rendered_title).strip()
+            if not rendered_title or self.INVALID_OUTPUT_TOKEN_PATTERN.search(rendered_title):
+                return None
+
+        if context.channel == "EMAIL":
+            if rendered_title is None:
+                return None
+            decision = CommunicationDecision(channel="EMAIL", title=None, subject=rendered_title, message=message, tone="PROFESSIONAL", confidence=1.0)
+        elif context.channel == "PUSH":
+            if rendered_title is None:
+                return None
+            decision = CommunicationDecision(channel="PUSH", title=rendered_title, subject=None, message=message, tone="PROFESSIONAL", confidence=1.0)
+        elif context.channel == "IN_APP":
+            decision = CommunicationDecision(channel="IN_APP", title=rendered_title, subject=None, message=message, tone="PROFESSIONAL", confidence=1.0)
+        else:
+            decision = CommunicationDecision(channel="SMS", title=None, subject=None, message=message, tone="PROFESSIONAL", confidence=1.0)
+
+        if not self._within_channel_limits(decision):
+            return None
+        return decision
+
+    def _try_build_decision_builtin(
         self,
         *,
         context: CommunicationContext,
-    ) -> tuple[
-        NotificationTemplate | None,
-        str,
-    ]:
+        title_template: str | None,
+        body_template: str,
+        resolved_locale: str = "en",
+    ) -> CommunicationDecision | None:
         """
-        Find the first active locale-compatible template.
+        Attempt to render an approved built-in template.
 
-        Example locale order:
+        Inference failures (unsafe or invalid syntax) propagate
+        as errors and cause this candidate to be skipped so the
+        service continues to the emergency template.
 
-        en-US
-            ↓
-        en
+        Exception text is never printed or logged.
         """
+        from app.services.template_engine import (
+            infer_template_declarations,
+            UnsupportedTemplateFormatError,
+        )
+        from app.services.ai.FieldOpsAI.schemas.prompt_variable import PromptVariableDefinition
+        from app.services.ai.FieldOpsAI.services.prompt_variable_injector import (
+            PromptVariableInjectionError,
+        )
 
-        for locale in locale_candidates(
-            context.locale
-        ):
+        try:
+            render_context = self._build_render_context(context)
+
+            # Infer declarations from the built-in template.
+            # Do NOT swallow inference failure: an unsafe or invalid
+            # built-in template must skip this candidate.
             try:
-                row = (
-                    self._db.query(
-                        NotificationTemplate
-                    )
-                    .filter(
-                        NotificationTemplate.type
-                        == context.notification_type,
-
-                        NotificationTemplate.channel
-                        == context.channel.lower(),
-
-                        NotificationTemplate.locale
-                        == locale,
-
-                        NotificationTemplate.is_active
-                        .is_(True),
-
-                        NotificationTemplate.tenant_id
-                        == "**platform**",
-
-                        NotificationTemplate.agent_type
-                        == "CommsAgent",
-
-                        NotificationTemplate.is_deleted
-                        .is_(False),
-                    )
-                    .order_by(
-                        NotificationTemplate.version.desc(),
-                        NotificationTemplate.id.desc(),
-                    )
-                    .first()
+                paths = infer_template_declarations(body=body_template, title=title_template)
+            except (MessageTemplateEngineError, PromptVariableInjectionError):
+                # Propagate as a rendering error so the outer except
+                # handler skips this candidate.
+                raise MessageTemplateRenderingError(
+                    "Built-in template inference failed."
                 )
 
-            except SQLAlchemyError:
-                # A fallback must remain available even when
-                # template database access fails.
-                return None, "en"
+            # Determine locale defaults using the resolved locale.
+            base_for_defaults = resolved_locale.split("-")[0]
+            locale_defaults = self.SAFE_OPTIONAL_DEFAULTS.get(
+                resolved_locale,
+                self.SAFE_OPTIONAL_DEFAULTS.get(
+                    base_for_defaults,
+                    self.SAFE_OPTIONAL_DEFAULTS["en"],
+                )
+            )
 
-            if row is not None:
-                return row, locale
+            variables = []
+            seen_roots: set[str] = set()
 
-        return None, "en"
+            for path in paths:
+                # Validate the exact path — never collapse nested names.
+                root = path.split(".")[0]
+
+                if root not in self.ALLOWED_TEMPLATE_VARIABLES:
+                    # Path is not allowlisted — reject this candidate.
+                    raise MessageTemplateRenderingError(
+                        "Built-in template uses disallowed variable."
+                    )
+
+                # Avoid duplicate declarations when several nested paths
+                # share the same simple root (e.g. customer.name and
+                # customer.address both start with customer).
+                if path in seen_roots:
+                    continue
+                seen_roots.add(path)
+
+                # Look up defaults using the exact path first, then root.
+                if path in locale_defaults:
+                    variables.append(
+                        PromptVariableDefinition(
+                            name=path,
+                            required=False,
+                            default=locale_defaults[path],
+                        )
+                    )
+                elif root in locale_defaults:
+                    variables.append(
+                        PromptVariableDefinition(
+                            name=path,
+                            required=False,
+                            default=locale_defaults[root],
+                        )
+                    )
+                else:
+                    variables.append(
+                        PromptVariableDefinition(
+                            name=path,
+                            required=True,
+                        )
+                    )
+
+            res = render_template_source(
+                body=body_template,
+                title=title_template,
+                variables=variables,
+                context=render_context,
+                format="html" if context.channel == "EMAIL" else "text"
+            )
+
+            return self._build_decision_from_res(res, context)
+
+        except (MessageTemplateEngineError, PromptVariableInjectionError):
+            # A typed rendering failure means this candidate cannot be
+            # used. Return None so fallback selection continues.
+            # Exception text is never printed or logged.
+            return None
+
+
 
     # ======================================================
     # Built-in Template Selection
@@ -463,14 +549,15 @@ class GuardrailFallbackService:
 
         app/services/default_template.py
         """
-        
+
         candidates = locale_candidates(context.locale)
-        
+
         for cand in candidates:
-            catalog = LOCALIZED_NOTIFICATION_TYPES.get(cand)
+            # Access the catalog at call-time so monkeypatching works in tests.
+            catalog = _default_template.LOCALIZED_NOTIFICATION_TYPES.get(cand)
             if catalog is None:
                 continue
-                
+
             event_template = catalog.get(
                 context.notification_type
             )
@@ -512,181 +599,34 @@ class GuardrailFallbackService:
                 "title": title,
                 "body": body,
             }, cand
-            
+
         return None
 
-    # ======================================================
-    # Decision Rendering
-    # ======================================================
 
-    def _try_build_decision(
-        self,
-        *,
-        context: CommunicationContext,
-        title_template: str | None,
-        body_template: str,
-        variables: list[PromptVariableDefinition] | None = None,
-        resolved_locale: str = "en",
-    ) -> CommunicationDecision | None:
-        """
-        Render and validate one fallback candidate.
-
-        Invalid templates are rejected without exposing their
-        content in an exception or log.
-        """
-
-        try:
-            render_context = (
-                self._build_render_context(
-                    context
-                )
-            )
-
-            injector = PromptVariableInjector()
-
-            if variables is None:
-                # Infer for built-in/emergency
-                try:
-                    paths = injector.infer_declarations(
-                        body=body_template,
-                        title=title_template
-                    )
-                except Exception:
-                    paths = []
-                    
-                
-                locale_defaults = self.SAFE_OPTIONAL_DEFAULTS.get(resolved_locale, self.SAFE_OPTIONAL_DEFAULTS["en"])
-                variables = []
-                for path in paths:
-                    key = path.split('.')[0]
-                    if key in self.ALLOWED_TEMPLATE_VARIABLES:
-                        if key in locale_defaults:
-                            variables.append(PromptVariableDefinition(
-                                name=key,
-                                required=False,
-                                default=locale_defaults[key]
-                            ))
-                        else:
-                            variables.append(PromptVariableDefinition(
-                                name=key,
-                                required=True
-                            ))
-            else:
-                # For database templates, only use approved variables
-                filtered_vars = []
-                for v in variables:
-                    key = v.name.split('.')[0]
-                    if key not in self.ALLOWED_TEMPLATE_VARIABLES:
-                        raise ValueError("Unapproved variable declaration")
-                    filtered_vars.append(v)
-                variables = filtered_vars
-
-            result = injector.render(
-                body=body_template,
-                title=title_template,
-                variables=variables,
-                context=render_context,
-                html=(context.channel == "EMAIL"),
-            )
-
-            message = result.rendered_body.strip()
-            if context.channel != "EMAIL":
-                message = re.sub(r"\s+", " ", message).strip()
-
-            if not message or self.INVALID_OUTPUT_TOKEN_PATTERN.search(message):
-                return None
-
-            rendered_title: str | None = None
-            if title_template is not None:
-                rendered_title = result.rendered_title.strip() if result.rendered_title else ""
-                rendered_title = re.sub(r"\s+", " ", rendered_title).strip()
-                if not rendered_title or self.INVALID_OUTPUT_TOKEN_PATTERN.search(rendered_title):
-                    return None
-
-            # ----------------------------------------------
-            # EMAIL
-            # ----------------------------------------------
-
-            if context.channel == "EMAIL":
-                if rendered_title is None:
-                    return None
-
-                decision = CommunicationDecision(
-                    channel="EMAIL",
-                    title=None,
-                    subject=rendered_title,
-                    message=message,
-                    tone="PROFESSIONAL",
-                    confidence=1.0,
-                )
-
-            # ----------------------------------------------
-            # PUSH
-            # ----------------------------------------------
-
-            elif context.channel == "PUSH":
-                if rendered_title is None:
-                    return None
-
-                decision = CommunicationDecision(
-                    channel="PUSH",
-                    title=rendered_title,
-                    subject=None,
-                    message=message,
-                    tone="PROFESSIONAL",
-                    confidence=1.0,
-                )
-
-            # ----------------------------------------------
-            # IN-APP
-            # ----------------------------------------------
-
-            elif context.channel == "IN_APP":
-                decision = CommunicationDecision(
-                    channel="IN_APP",
-                    title=rendered_title,
-                    subject=None,
-                    message=message,
-                    tone="PROFESSIONAL",
-                    confidence=1.0,
-                )
-
-            # ----------------------------------------------
-            # SMS
-            # ----------------------------------------------
-
-            else:
-                decision = CommunicationDecision(
-                    channel="SMS",
-                    title=None,
-                    subject=None,
-                    message=message,
-                    tone="PROFESSIONAL",
-                    confidence=1.0,
-                )
-
-            if not self._within_channel_limits(
-                decision
-            ):
-                return None
-
-            return decision
-
-        except Exception:
-            return None
 
     # ======================================================
-    # Safe Template Context
+    # Safe Template Context (allowlisted)
     # ======================================================
 
     def _build_render_context(
         self,
         context: CommunicationContext,
-    ) -> dict[str, str]:
+    ) -> dict[str, object]:
         """
-        Build a null-safe and allow-listed rendering context.
+        Build a null-safe, allow-listed rendering context.
+
+        Only the 12 explicitly approved fields are included.
+        Fields such as additional_context, correlation internals,
+        tenant authentication metadata, recipient addresses,
+        phone numbers, provider data, and unknown model extras
+        are never passed to the template engine.
         """
-        return context.model_dump(mode="python")
+        raw = context.model_dump(mode="python")
+
+        return {
+            key: raw.get(key)
+            for key in self.ALLOWED_TEMPLATE_VARIABLES
+        }
 
     # ======================================================
     # Channel Limits
@@ -728,4 +668,3 @@ class GuardrailFallbackService:
             )
 
         return True
-

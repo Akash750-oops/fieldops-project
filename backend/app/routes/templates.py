@@ -6,10 +6,9 @@ from .dispatch import verify_jwt_token
 from ..database import get_db
 from ..models import NotificationTemplate
 from ..schemas import TemplateCreate, TemplateResponse, TemplatePreviewRequest, TemplatePreviewResponse
-from ..services.template_engine import render_preview
 from ..services.template_version_service import create_initial_version,update_version
+from app.services.template_engine import render_preview, infer_template_declarations, MessageTemplateEngineError
 from app.services.ai.FieldOpsAI.services.prompt_variable_injector import (
-    PromptVariableInjector,
     PromptVariableInjectionError,
 )
 
@@ -37,28 +36,21 @@ async def create_template(
     TemplateVersion stores its complete version history.
     """
 
-    injector = PromptVariableInjector()
-
     # --------------------------------------------------
     # Validate before changing the database
     # --------------------------------------------------
 
     try:
         inferred_paths = (
-            injector.infer_declarations(
+            infer_template_declarations(
                 body=payload.body_template,
                 title=payload.title_template,
             )
         )
 
-        # The legacy API intentionally stores
-        # top-level declarations.
-        variables = sorted({
-            path.split(".", 1)[0]
-            for path in inferred_paths
-        })
+        variables = sorted(set(inferred_paths))
 
-    except PromptVariableInjectionError:
+    except (PromptVariableInjectionError, MessageTemplateEngineError):
         raise HTTPException(
             status_code=400,
             detail="Template validation failed.",
@@ -188,6 +180,7 @@ async def list_templates(
     # Only return active platform CommsAgent templates by default
     return db.query(NotificationTemplate).filter(
         NotificationTemplate.is_active == True,
+        NotificationTemplate.is_deleted.is_(False),
         NotificationTemplate.tenant_id == "**platform**",
         NotificationTemplate.agent_type == "CommsAgent"
     ).all()
@@ -198,15 +191,17 @@ async def preview_template(
     authorization: str = Depends(verify_jwt_token)
 ):
     try:
+        format_val = getattr(payload, 'format', 'text')
         result = render_preview(
             title_template=payload.title_template,
             body_template=payload.body_template,
             context=payload.mock_context,
             variables=payload.variables,
+            format=format_val
         )
         return {
             "rendered_title": result["title"],
             "rendered_body": result["body"]
         }
-    except Exception:
-        raise HTTPException(status_code=400, detail="Template render failed.")
+    except (MessageTemplateEngineError, PromptVariableInjectionError):
+        raise HTTPException(status_code=400, detail="Template render failed.") from None

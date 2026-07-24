@@ -1,10 +1,14 @@
 import re
 from datetime import date, datetime
 from typing import Any
+import hashlib
+from collections import OrderedDict
+from threading import RLock
 
 from jinja2 import StrictUndefined, TemplateSyntaxError, meta, nodes
 from jinja2.sandbox import SandboxedEnvironment
 from jinja2.visitor import NodeVisitor
+from jinja2 import Template
 from pydantic import BaseModel
 
 from app.services.ai.FieldOpsAI.schemas.prompt_variable import PromptVariableDefinition, PromptVariableDeclaration
@@ -115,10 +119,36 @@ class PromptVariableInjector:
     MAX_AST_NODES = 500
     MAX_CONTEXT_DEPTH = 10
     MAX_COLLECTION_SIZE = 1000
+    MAX_COMPILED_TEMPLATES = 256
+
+    _compiled_cache: OrderedDict[str, Template] = OrderedDict()
+    _cache_lock: RLock = RLock()
+    _cache_hits = 0
+    _cache_misses = 0
+    _cache_evictions = 0
 
     def __init__(self) -> None:
         self._text_env = self._build_env(autoescape=False)
         self._html_env = self._build_env(autoescape=True)
+
+    @classmethod
+    def compiled_cache_info(cls) -> dict[str, int]:
+        with cls._cache_lock:
+            return {
+                "max_size": cls.MAX_COMPILED_TEMPLATES,
+                "current_size": len(cls._compiled_cache),
+                "hits": cls._cache_hits,
+                "misses": cls._cache_misses,
+                "evictions": cls._cache_evictions,
+            }
+
+    @classmethod
+    def _clear_cache(cls) -> None:
+        with cls._cache_lock:
+            cls._compiled_cache.clear()
+            cls._cache_hits = 0
+            cls._cache_misses = 0
+            cls._cache_evictions = 0
 
     def _build_env(self, autoescape: bool) -> SandboxedEnvironment:
         env = SandboxedEnvironment(
@@ -144,9 +174,48 @@ class PromptVariableInjector:
         
         return env
 
+    def _build_cache_key(self, source: str, html: bool) -> str:
+        source_sha256 = hashlib.sha256(source.encode("utf-8")).hexdigest()
+        mode = "html" if html else "text"
+        policy_version = "1"
+        return f"{source_sha256}:{mode}:{policy_version}"
+
+    def _get_or_compile(self, source: str, html: bool) -> Template:
+        cache_key = self._build_cache_key(source, html)
+
+        with self._cache_lock:
+            if cache_key in self._compiled_cache:
+                self.__class__._cache_hits += 1
+                template = self._compiled_cache.pop(cache_key)
+                self._compiled_cache[cache_key] = template
+                return template
+
+            self.__class__._cache_misses += 1
+
+        env = self._html_env if html else self._text_env
+        try:
+            compiled = env.from_string(source)
+        except Exception as e:
+            raise InvalidTemplateSyntaxError("Invalid Jinja syntax.") from None
+
+        with self._cache_lock:
+            if cache_key in self._compiled_cache:
+                self._compiled_cache.pop(cache_key)
+            self._compiled_cache[cache_key] = compiled
+            
+            if len(self._compiled_cache) > self.MAX_COMPILED_TEMPLATES:
+                self._compiled_cache.popitem(last=False)
+                self.__class__._cache_evictions += 1
+
+        return compiled
+
     def infer_declarations(self, *, body: str, title: str | None = None) -> list[str]:
+        if not isinstance(body, str):
+            raise InvalidTemplateSyntaxError("Body must be a string")
         if len(body) > self.MAX_BODY_LENGTH:
             raise InvalidTemplateSyntaxError("Body exceeds maximum length")
+        if title and not isinstance(title, str):
+            raise InvalidTemplateSyntaxError("Title must be a string")
         if title and len(title) > self.MAX_TITLE_LENGTH:
             raise InvalidTemplateSyntaxError("Title exceeds maximum length")
             
@@ -156,49 +225,37 @@ class PromptVariableInjector:
             parsed_title = self._parse_ast(title)
             paths.update(self._extract_paths(parsed_title))
             
-        # Return exact declarations referenced directly in template, sorted
         return sorted(list(paths))
 
     def validate(self, body: str, variables: list[PromptVariableDeclaration], title: str | None = None) -> list[PromptVariableDefinition]:
+        if not isinstance(body, str):
+            raise InvalidTemplateSyntaxError("Body must be a string")
         if len(body) > self.MAX_BODY_LENGTH:
             raise InvalidTemplateSyntaxError("Body exceeds maximum length")
+        if title and not isinstance(title, str):
+            raise InvalidTemplateSyntaxError("Title must be a string")
         if title and len(title) > self.MAX_TITLE_LENGTH:
             raise InvalidTemplateSyntaxError("Title exceeds maximum length")
 
         defs = self._normalize_declarations(variables)
         
-        # Check duplicate exact declarations
         seen = set()
         for d in defs:
             if d.name in seen:
                 raise InvalidVariableDeclarationError(f"Duplicate variable names: {d.name}")
             seen.add(d.name)
             
-            # Name rules
             if not d.name or ".." in d.name or d.name.startswith(".") or d.name.endswith("."):
                 raise InvalidVariableDeclarationError(f"Invalid path syntax: {d.name}")
             segments = d.name.split(".")
 
             for index, segment in enumerate(segments):
-                # Integer segments are permitted after the root
-                # for static list access such as technicians.0.name.
                 if index > 0 and segment.isdigit():
                     continue
-
-                    if not re.fullmatch(
-                        r"[A-Za-z_][A-Za-z0-9_]*",
-                        segment,
-                    ):
-                        raise InvalidVariableDeclarationError(
-                            "Invalid identifier segment: "
-                            f"{segment}"
-                        )
-
-                    if "__" in segment:
-                        raise InvalidVariableDeclarationError(
-                            "Dunder names are rejected: "
-                            f"{d.name}"
-                        )
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", segment):
+                    raise InvalidVariableDeclarationError(f"Invalid identifier segment: {segment}")
+                if "__" in segment:
+                    raise InvalidVariableDeclarationError(f"Dunder names are rejected: {d.name}")
 
         parsed_body = self._parse_ast(body)
         paths = self._extract_paths(parsed_body)
@@ -229,11 +286,14 @@ class PromptVariableInjector:
 
         render_ctx, missing_optional = self._build_render_context(context, defs, paths)
 
-        env = self._html_env if html else self._text_env
-        
+        compiled_body = self._get_or_compile(body, html)
+        compiled_title = None
+        if title:
+            compiled_title = self._get_or_compile(title, False)
+
         try:
-            rendered_title = env.from_string(title).render(**render_ctx) if title else None
-            rendered_body = env.from_string(body).render(**render_ctx)
+            rendered_title = compiled_title.render(**render_ctx) if compiled_title else None
+            rendered_body = compiled_body.render(**render_ctx)
         except Exception as e:
             raise PromptRenderingError(f"Template rendering failed: {type(e).__name__}") from None
 
@@ -401,18 +461,9 @@ class PromptVariableInjector:
         defs: list[PromptVariableDefinition],
         paths: set[str],
     ) -> tuple[dict[str, Any], set[str]]:
-        """
-        Build a safe rendering context containing only
-        declared variables.
-
-        Required missing values raise an error.
-        Optional missing values receive their default.
-        """
-
         render_context: dict[str, Any] = {}
         missing_optional: set[str] = set()
 
-        # Copy only declared top-level context values.
         authorized_top_level = {
             definition.name.split(".")[0]
             for definition in defs
@@ -426,7 +477,6 @@ class PromptVariableInjector:
                     )
                 )
 
-        # Check both referenced paths and declared paths.
         all_paths_to_check = (
             paths
             | {
@@ -460,8 +510,6 @@ class PromptVariableInjector:
             if exists and value is not None:
                 continue
 
-            # Referenced paths covered by a required
-            # declaration must exist.
             if (
                 path in paths
                 and declaration.required
@@ -470,7 +518,6 @@ class PromptVariableInjector:
                     f"Missing required path: {path}"
                 )
 
-            # Missing optional paths receive their default.
             if not declaration.required:
                 self._set_path_safe(
                     render_context,
@@ -486,27 +533,27 @@ class PromptVariableInjector:
         )
 
 
-    def test_inferred_static_list_path_renders():
-        injector = PromptVariableInjector()
+def test_inferred_static_list_path_renders():
+    injector = PromptVariableInjector()
 
-        declarations = injector.infer_declarations(
-            body="{{ technicians[0].name }}"
-        )
+    declarations = injector.infer_declarations(
+        body="{{ technicians[0].name }}"
+    )
 
-        assert declarations == [
-            "technicians.0.name"
-        ]
+    assert declarations == [
+        "technicians.0.name"
+    ]
 
-        result = injector.render(
-            body="{{ technicians[0].name }}",
-            variables=declarations,
-            context={
-                "technicians": [
-                    {
-                        "name": "Bob"
-                    }
-                ]
-            },
-        )
+    result = injector.render(
+        body="{{ technicians[0].name }}",
+        variables=declarations,
+        context={
+            "technicians": [
+                {
+                    "name": "Bob"
+                }
+            ]
+        },
+    )
 
-        assert result.rendered_body == "Bob"
+    assert result.rendered_body == "Bob"

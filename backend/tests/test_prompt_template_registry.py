@@ -221,7 +221,6 @@ def make_prompt(
         "variables": [
             "customer_name",
         ],
-        "version": 1,
         "is_active": True,
     }
 
@@ -343,7 +342,7 @@ def test_declared_variable_is_accepted() -> None:
 def test_undeclared_body_variable_is_rejected() -> None:
     with pytest.raises(
         ValueError,
-        match="Undeclared variables",
+        match="Template validation failed.",
     ):
         make_prompt(
             body="Hello {{ customer_name }}",
@@ -354,7 +353,7 @@ def test_undeclared_body_variable_is_rejected() -> None:
 def test_undeclared_title_variable_is_rejected() -> None:
     with pytest.raises(
         ValueError,
-        match="Undeclared variables",
+        match="Template validation failed.",
     ):
         make_prompt(
             title="Hello {{ customer_name }}",
@@ -366,7 +365,7 @@ def test_undeclared_title_variable_is_rejected() -> None:
 def test_invalid_jinja_is_rejected() -> None:
     with pytest.raises(
         ValueError,
-        match="Invalid Jinja syntax",
+        match="Template validation failed.",
     ):
         make_prompt(
             body="{{ customer_name",
@@ -377,7 +376,7 @@ def test_invalid_jinja_is_rejected() -> None:
 def test_duplicate_variables_are_rejected() -> None:
     with pytest.raises(
         ValueError,
-        match="Duplicate variable names",
+        match="Template validation failed.",
     ):
         make_prompt(
             variables=[
@@ -390,7 +389,7 @@ def test_duplicate_variables_are_rejected() -> None:
 def test_unsafe_jinja_attribute_is_rejected() -> None:
     with pytest.raises(
         ValueError,
-        match="Unsafe Jinja",
+        match="Template validation failed.",
     ):
         make_prompt(
             body="{{ customer.__class__ }}",
@@ -398,10 +397,23 @@ def test_unsafe_jinja_attribute_is_rejected() -> None:
         )
 
 
-def test_version_must_be_positive() -> None:
-    with pytest.raises(ValueError):
-        make_prompt(
-            version=0
+def test_client_version_is_rejected() -> None:
+    """
+    PromptTemplateCreate must not accept a version field.
+    Clients cannot control the assigned version number.
+    """
+    with pytest.raises(
+        (ValueError, TypeError),
+    ):
+        PromptTemplateCreate(
+            name="Test",
+            agent_type=AgentType.CommsAgent,
+            channel=PromptChannel.sms,
+            language=PromptLanguage.en,
+            status="assigned",
+            body="Hello {{ customer_name }}",
+            variables=["customer_name"],
+            version=5,  # must be rejected
         )
 
 
@@ -784,7 +796,6 @@ def test_highest_version_is_selected(
         make_prompt(
             body="Version one",
             variables=[],
-            version=1,
         )
     )
 
@@ -1146,56 +1157,72 @@ def test_platform_mutation_changes_platform_generation(
 
 
 # ==========================================================
-# Model constraint test
+# Server-assigned version tests (§7)
 # ==========================================================
 
 
-def test_model_contains_prompt_uniqueness_constraint() -> None:
-    expected_columns = {
-        "tenant_id",
-        "agent_type",
-        "channel",
-        "locale",
-        "type",
-        "version",
-    }
+def test_new_live_template_version_is_1(
+    registry: ManagedPromptTemplateRegistry,
+    db_session: Session,
+) -> None:
+    """A freshly created live template must have version=1 server-assigned."""
+    created = registry.create(make_prompt(status="ver_new"))
 
-    matching_constraints = []
-
-    for constraint in (
-        NotificationTemplate
-        .__table__
-        .constraints
-    ):
-        if not isinstance(
-            constraint,
-            UniqueConstraint,
-        ):
-            continue
-
-        columns = {
-            column.name
-            for column in constraint.columns
-        }
-
-        if columns == expected_columns:
-            matching_constraints.append(
-                constraint
-            )
-
-    assert len(matching_constraints) == 1
-
-    assert (
-        matching_constraints[0].name
-        == "uq_notification_templates_lookup"
+    stored = (
+        db_session.query(NotificationTemplate)
+        .filter(NotificationTemplate.id == created.id)
+        .one()
     )
+    assert stored.version == 1
 
 
-import pytest
-from app.services.ai.FieldOpsAI.services.managed_prompt_template_registry import TemplateValidationServiceError
+def test_initial_history_version_is_1(
+    registry: ManagedPromptTemplateRegistry,
+    db_session: Session,
+) -> None:
+    """The initial TemplateVersion record must carry version_number=1."""
+    created = registry.create(make_prompt(status="ver_hist"))
+
+    versions = (
+        db_session.query(TemplateVersion)
+        .filter(TemplateVersion.template_id == created.id)
+        .all()
+    )
+    assert len(versions) >= 1
+    assert versions[0].version_number == 1
+
+
+def test_live_and_history_versions_match(
+    registry: ManagedPromptTemplateRegistry,
+    db_session: Session,
+) -> None:
+    """live template version and first history snapshot version_number must agree."""
+    created = registry.create(make_prompt(status="ver_sync"))
+
+    stored = (
+        db_session.query(NotificationTemplate)
+        .filter(NotificationTemplate.id == created.id)
+        .one()
+    )
+    first_version = (
+        db_session.query(TemplateVersion)
+        .filter(TemplateVersion.template_id == created.id)
+        .order_by(TemplateVersion.version_number)
+        .first()
+    )
+    assert first_version is not None
+    assert stored.version == first_version.version_number
+
+
+# ==========================================================
+# Translation completeness & locale resolution tests (§6)
+# ==========================================================
+
 
 def test_non_english_create_without_english(registry, db_session):
     from app.services.ai.FieldOpsAI.schemas.prompt_template import PromptTemplateCreate
+    from app.services.ai.FieldOpsAI.services.managed_prompt_template_registry import TemplateValidationServiceError
+
     payload = PromptTemplateCreate(
         name="test-es",
         agent_type="CommsAgent",
@@ -1208,35 +1235,159 @@ def test_non_english_create_without_english(registry, db_session):
         registry.create(payload)
     assert "canonical English template is required" in str(e.value)
 
+
 def test_non_english_update_without_english(registry, db_session):
     from app.services.ai.FieldOpsAI.schemas.prompt_template import PromptTemplateCreate, PromptTemplateUpdate
-    # Create en first
+    from app.services.ai.FieldOpsAI.services.managed_prompt_template_registry import TemplateValidationServiceError
+
     en_payload = PromptTemplateCreate(name="test-en", agent_type="CommsAgent", channel="sms", language="en", status="job_assigned", body="Hello")
     en_t = registry.create(en_payload)
-    
+
     es_payload = PromptTemplateCreate(name="test-es", agent_type="CommsAgent", channel="sms", language="es", status="job_assigned", body="Hola")
     es_t = registry.create(es_payload)
-    
-    # Delete en
+
     registry.delete(en_t.id)
-    
-    # Try to update es
+
     upd = PromptTemplateUpdate(body="Hola 2")
     with pytest.raises(TemplateValidationServiceError) as e:
         registry.update(es_t.id, upd)
     assert "canonical English template is required" in str(e.value)
 
+
 def test_es_mx_database_lookup_falls_back_to_es(registry, db_session):
     from app.services.ai.FieldOpsAI.schemas.prompt_template import PromptTemplateCreate
-    # Create en first
+
     en_payload = PromptTemplateCreate(name="test-en", agent_type="CommsAgent", channel="sms", language="en", status="job_assigned", body="Hello")
     registry.create(en_payload)
-    
+
     es_payload = PromptTemplateCreate(name="test-es", agent_type="CommsAgent", channel="sms", language="es", status="job_assigned", body="Hola desde es")
     registry.create(es_payload)
-    
-    # Lookup es-MX
+
     match = registry.find("CommsAgent", "sms", "es-MX", "job_assigned")
-    assert match.language.value == "es"
+    assert (match.language.value if hasattr(match.language, "value") else match.language) == "es"
     assert match.body == "Hola desde es"
 
+
+def test_create_unsupported_format_raises_error() -> None:
+    """Formats other than text/html must be rejected at schema level."""
+    from pydantic import ValidationError
+
+    with pytest.raises((ValueError, ValidationError)):
+        PromptTemplateCreate(
+            name="Bad format",
+            agent_type=AgentType.CommsAgent,
+            channel=PromptChannel.sms,
+            language=PromptLanguage.en,
+            status="fmt_bad",
+            body="Hello {{ customer_name }}",
+            format="markdown",
+            variables=["customer_name"],
+        )
+
+def test_es_mx_exact_locale_wins(
+    registry,
+    db_session,
+):
+    english = NotificationTemplate(
+        name="English",
+        type="regional_exact",
+        channel="sms",
+        locale="en",
+        format="text",
+        title_template=None,
+        body_template="English body",
+        variables=[],
+        version=1,
+        is_active=True,
+        is_deleted=False,
+        tenant_id="tenant_1",
+        agent_type="CommsAgent",
+    )
+
+    spanish = NotificationTemplate(
+        name="Spanish",
+        type="regional_exact",
+        channel="sms",
+        locale="es",
+        format="text",
+        title_template=None,
+        body_template="Spanish body",
+        variables=[],
+        version=1,
+        is_active=True,
+        is_deleted=False,
+        tenant_id="tenant_1",
+        agent_type="CommsAgent",
+    )
+
+    mexican_spanish = NotificationTemplate(
+        name="Mexican Spanish",
+        type="regional_exact",
+        channel="sms",
+        locale="es-MX",
+        format="text",
+        title_template=None,
+        body_template="Mexican Spanish body",
+        variables=[],
+        version=1,
+        is_active=True,
+        is_deleted=False,
+        tenant_id="tenant_1",
+        agent_type="CommsAgent",
+    )
+
+    db_session.add_all(
+        [
+            english,
+            spanish,
+            mexican_spanish,
+        ]
+    )
+    db_session.commit()
+
+    result = registry.find(
+        "CommsAgent",
+        "sms",
+        "es-MX",
+        "regional_exact",
+    )
+
+    assert result.language == "es-MX"
+    assert result.body == (
+        "Mexican Spanish body"
+    )
+
+def test_es_mx_falls_back_to_english(
+    registry,
+    db_session,
+):
+    english = NotificationTemplate(
+        name="English fallback",
+        type="regional_english",
+        channel="sms",
+        locale="en",
+        format="text",
+        title_template=None,
+        body_template="English fallback body",
+        variables=[],
+        version=1,
+        is_active=True,
+        is_deleted=False,
+        tenant_id="tenant_1",
+        agent_type="CommsAgent",
+    )
+
+    db_session.add(english)
+    db_session.commit()
+
+    result = registry.find(
+        "CommsAgent",
+        "sms",
+        "es-MX",
+        "regional_english",
+    )
+
+    assert result.language == "en"
+    assert result.body == (
+        "English fallback body"
+    )

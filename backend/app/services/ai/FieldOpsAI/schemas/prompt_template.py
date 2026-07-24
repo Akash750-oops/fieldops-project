@@ -17,12 +17,40 @@ from app.services.ai.FieldOpsAI.services.prompt_variable_injector import (
     PromptVariableInjector,
     PromptVariableInjectionError,
 )
-
+from app.services.ai.FieldOpsAI.services.prompt_locale_service import (
+    normalize_locale,
+    InvalidLocaleError,
+)
 
 
 # ==========================================================
 # Supported values
 # ==========================================================
+
+
+TemplateFormat = Literal["text", "html"]
+
+_VALID_FORMATS: frozenset[str] = frozenset({"text", "html"})
+
+
+def _validate_format_value(value: str) -> str:
+    """
+    Normalize and validate a template format.
+
+    Accepts surrounding whitespace and uppercase, then
+    rejects any value that is not ``text`` or ``html``.
+    """
+    if not isinstance(value, str):
+        raise ValueError("Format must be a string.")
+
+    normalized = value.strip().lower()
+
+    if normalized not in _VALID_FORMATS:
+        raise ValueError(
+            "Format must be 'text' or 'html'."
+        )
+
+    return normalized
 
 
 class AgentType(str, Enum):
@@ -93,8 +121,8 @@ def _validate_jinja_variables(
 ) -> None:
     try:
         PromptVariableInjector().validate(body, variables, title)
-    except PromptVariableInjectionError as e:
-        raise ValueError(str(e)) from None
+    except PromptVariableInjectionError:
+        raise ValueError("Template validation failed.") from None
 
 # ==========================================================
 # Base model
@@ -115,7 +143,15 @@ class PromptTemplateBase(BaseModel):
 
     channel: PromptChannel
 
-    language: PromptLanguage
+    language: str
+
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, value: str) -> str:
+        try:
+            return normalize_locale(value)
+        except InvalidLocaleError:
+            raise ValueError("Template validation failed.") from None
 
     status: str = Field(
         ...,
@@ -126,6 +162,21 @@ class PromptTemplateBase(BaseModel):
         ...,
         min_length=1,
     )
+
+    format: TemplateFormat = Field(
+        default="text",
+    )
+
+    @field_validator(
+        "format",
+        mode="before",
+    )
+    @classmethod
+    def validate_format(
+        cls,
+        value: str,
+    ) -> str:
+        return _validate_format_value(value)
 
     title: Optional[str] = None
 
@@ -163,17 +214,7 @@ class PromptTemplateBase(BaseModel):
             value
         )
 
-    @model_validator(mode="after")
-    def validate_template_content(
-        self,
-    ) -> "PromptTemplateBase":
-        _validate_jinja_variables(
-            body=self.body,
-            variables=self.variables,
-            title=self.title,
-        )
 
-        return self
 
 
 # ==========================================================
@@ -184,10 +225,17 @@ class PromptTemplateBase(BaseModel):
 class PromptTemplateCreate(
     PromptTemplateBase
 ):
-    version: int = Field(
-        default=1,
-        ge=1,
-    )
+    @model_validator(mode="after")
+    def validate_create_content(
+        self,
+    ) -> "PromptTemplateCreate":
+        _validate_jinja_variables(
+            body=self.body,
+            variables=self.variables,
+            title=self.title,
+        )
+
+        return self
 
 
 # ==========================================================
@@ -213,9 +261,17 @@ class PromptTemplateUpdate(BaseModel):
         PromptChannel
     ] = None
 
-    language: Optional[
-        PromptLanguage
-    ] = None
+    language: Optional[str] = None
+
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return normalize_locale(value)
+        except InvalidLocaleError:
+            raise ValueError("Template validation failed.") from None
 
     status: Optional[str] = Field(
         default=None,
@@ -233,14 +289,38 @@ class PromptTemplateUpdate(BaseModel):
         List[PromptVariableDeclaration]
     ] = None
 
+    format: Optional[TemplateFormat] = None
+
     is_active: Optional[bool] = None
 
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: Optional[str]) -> Optional[str]:
-        if value is not None:
-            return value.strip()
-        return value
+        if value is None:
+            return None
+
+        normalized = value.strip()
+
+        if not normalized:
+            raise ValueError(
+                "Name cannot be blank."
+            )
+
+        return normalized
+
+    @field_validator(
+        "format",
+        mode="before",
+    )
+    @classmethod
+    def validate_format(
+        cls,
+        value: Optional[str],
+    ) -> Optional[str]:
+        if value is None:
+            return None
+
+        return _validate_format_value(value)
 
     @field_validator("status")
     @classmethod
@@ -293,7 +373,15 @@ class PromptTemplateLookupResponse(
 
     channel: PromptChannel
 
-    language: PromptLanguage
+    language: str
+
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, value: str) -> str:
+        try:
+            return normalize_locale(value)
+        except InvalidLocaleError:
+            raise ValueError("Template validation failed.") from None
 
     status: str = Field(
         min_length=1
@@ -302,6 +390,21 @@ class PromptTemplateLookupResponse(
     body: str = Field(
         min_length=1
     )
+
+    format: TemplateFormat = Field(
+        default="text",
+    )
+
+    @field_validator(
+        "format",
+        mode="before",
+    )
+    @classmethod
+    def validate_format(
+        cls,
+        value: str,
+    ) -> str:
+        return _validate_format_value(value)
 
     title: Optional[str] = None
 
@@ -336,29 +439,3 @@ class PromptTemplateLookupResponse(
         return _validate_status_value(
             value
         )
-
-    @model_validator(mode="after")
-    def validate_lookup_template(
-        self,
-    ) -> "PromptTemplateLookupResponse":
-        _validate_jinja_variables(
-            body=self.body,
-            variables=self.variables,
-            title=self.title,
-        )
-
-        return self
-
-def test_whitespace_only_name_returns_400(
-    api_client,
-):
-    payload = prompt_payload()
-    payload["name"] = "   "
-
-    response = api_client.post(
-        "/admin/prompts",
-        json=payload,
-        headers=get_headers(),
-    )
-
-    assert response.status_code == 400

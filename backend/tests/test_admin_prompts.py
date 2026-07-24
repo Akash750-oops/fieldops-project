@@ -16,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import get_db
 from app.main import app
-from app.models import Base
+from app.models import Base, NotificationTemplate, TemplateVersion
 from app.redis_client import get_redis_client
 from app.services.ai.FieldOpsAI.repositories.prompt_template_repository import (
     PromptTemplateRepository,
@@ -280,7 +280,6 @@ def prompt_payload(
     agent_type: str = "CommsAgent",
     channel: str = "sms",
     language: str = "en",
-    version: int = 1,
 ) -> dict[str, Any]:
     if variables is None:
         variables = ["name"]
@@ -293,7 +292,6 @@ def prompt_payload(
         "status": prompt_status,
         "body": body,
         "variables": variables,
-        "version": version,
     }
 
 
@@ -1022,4 +1020,302 @@ def test_tenant_cannot_select_platform_completeness(
     # It must not return platform families.
     assert data["total_families"] == 0
     assert data["items"] == []
+
+
+# ==========================================================
+# Story 8.1 HTTP Contract & Mutation Safety Tests (§6)
+# ==========================================================
+
+
+def test_http_post_with_client_version_returns_400(
+    api_client: TestClient,
+) -> None:
+    """
+    POST /admin/prompts including a version field must return HTTP 400,
+    creating no database prompt row or version history row.
+    """
+    payload = prompt_payload(prompt_status="http_version_test")
+    payload["version"] = 99
+
+    response = api_client.post(
+        "/admin/prompts",
+        json=payload,
+        headers=get_headers(),
+    )
+
+    assert response.status_code == 400
+
+    # Verify no template row created
+    list_resp = api_client.get(
+        "/admin/prompts",
+        params={"status": "http_version_test"},
+        headers=get_headers(),
+    )
+    assert list_resp.status_code == 200
+    assert len(list_resp.json()) == 0
+
+
+def test_http_patch_whitespace_only_name_returns_400(
+    api_client: TestClient,
+) -> None:
+    """
+    PATCH /admin/prompts/{id} with whitespace-only name returns HTTP 400.
+    Live row name, version, and TemplateVersion count remain unchanged.
+    """
+    create_resp = api_client.post(
+        "/admin/prompts",
+        json=prompt_payload(name="Original Name", prompt_status="ws_patch_http"),
+        headers=get_headers(),
+    )
+    assert create_resp.status_code == 201
+    prompt_id = create_resp.json()["id"]
+
+    db_session = TestingSessionLocal()
+    try:
+        versions_before = (
+            db_session.query(TemplateVersion)
+            .filter(TemplateVersion.template_id == prompt_id)
+            .count()
+        )
+    finally:
+        db_session.close()
+
+    patch_resp = api_client.patch(
+        f"/admin/prompts/{prompt_id}",
+        json={"name": "   "},
+        headers=get_headers(),
+    )
+    assert patch_resp.status_code == 400
+
+    # Verify live row & version count unchanged
+    get_resp = api_client.get(
+        f"/admin/prompts/{prompt_id}",
+        headers=get_headers(),
+    )
+    assert get_resp.status_code == 200
+    assert get_resp.json()["name"] == "Original Name"
+    assert get_resp.json()["version"] == 1
+
+    db_session = TestingSessionLocal()
+    try:
+        versions_after = (
+            db_session.query(TemplateVersion)
+            .filter(TemplateVersion.template_id == prompt_id)
+            .count()
+        )
+    finally:
+        db_session.close()
+    assert versions_after == versions_before
+
+
+def test_http_post_unsupported_format_returns_400(
+    api_client: TestClient,
+) -> None:
+    """
+    POST /admin/prompts with unsupported format returns HTTP 400 and causes no DB mutation.
+    """
+    payload = prompt_payload(prompt_status="unsupported_fmt_post")
+    payload["format"] = "markdown"
+
+    response = api_client.post(
+        "/admin/prompts",
+        json=payload,
+        headers=get_headers(),
+    )
+    assert response.status_code == 400
+
+    list_resp = api_client.get(
+        "/admin/prompts",
+        params={"status": "unsupported_fmt_post"},
+        headers=get_headers(),
+    )
+    assert list_resp.status_code == 200
+    assert len(list_resp.json()) == 0
+
+
+def test_http_patch_unsupported_format_returns_400(
+    api_client: TestClient,
+) -> None:
+    """
+    PATCH /admin/prompts/{id} with unsupported format returns HTTP 400.
+    Live row format, version, and TemplateVersion count remain unchanged.
+    """
+    create_resp = api_client.post(
+        "/admin/prompts",
+        json=prompt_payload(prompt_status="unsupported_fmt_patch"),
+        headers=get_headers(),
+    )
+    assert create_resp.status_code == 201
+    prompt_id = create_resp.json()["id"]
+
+    db_session = TestingSessionLocal()
+    try:
+        versions_before = (
+            db_session.query(TemplateVersion)
+            .filter(TemplateVersion.template_id == prompt_id)
+            .count()
+        )
+    finally:
+        db_session.close()
+
+    patch_resp = api_client.patch(
+        f"/admin/prompts/{prompt_id}",
+        json={"format": "xml"},
+        headers=get_headers(),
+    )
+    assert patch_resp.status_code == 400
+
+    get_resp = api_client.get(
+        f"/admin/prompts/{prompt_id}",
+        headers=get_headers(),
+    )
+    assert get_resp.status_code == 200
+    assert get_resp.json()["format"] == "text"
+    assert get_resp.json()["version"] == 1
+
+    db_session = TestingSessionLocal()
+    try:
+        versions_after = (
+            db_session.query(TemplateVersion)
+            .filter(TemplateVersion.template_id == prompt_id)
+            .count()
+        )
+    finally:
+        db_session.close()
+    assert versions_after == versions_before
+
+
+def test_http_patch_invalid_source_returns_400(
+    api_client: TestClient,
+) -> None:
+    """
+    PATCH /admin/prompts/{id} with invalid Jinja body returns HTTP 400.
+    Live row body, version, and TemplateVersion count remain unchanged.
+    """
+    create_resp = api_client.post(
+        "/admin/prompts",
+        json=prompt_payload(prompt_status="invalid_source_patch"),
+        headers=get_headers(),
+    )
+    assert create_resp.status_code == 201
+    prompt_id = create_resp.json()["id"]
+
+    db_session = TestingSessionLocal()
+    try:
+        versions_before = (
+            db_session.query(TemplateVersion)
+            .filter(TemplateVersion.template_id == prompt_id)
+            .count()
+        )
+    finally:
+        db_session.close()
+
+    patch_resp = api_client.patch(
+        f"/admin/prompts/{prompt_id}",
+        json={"body": "{% if %}"},
+        headers=get_headers(),
+    )
+    assert patch_resp.status_code == 400
+
+    get_resp = api_client.get(
+        f"/admin/prompts/{prompt_id}",
+        headers=get_headers(),
+    )
+    assert get_resp.status_code == 200
+    assert get_resp.json()["body"] == "Hello {{ name }}"
+    assert get_resp.json()["version"] == 1
+
+    db_session = TestingSessionLocal()
+    try:
+        versions_after = (
+            db_session.query(TemplateVersion)
+            .filter(TemplateVersion.template_id == prompt_id)
+            .count()
+        )
+    finally:
+        db_session.close()
+    assert versions_after == versions_before
+
+
+def test_http_patch_text_to_html_succeeds(
+    api_client: TestClient,
+) -> None:
+    """
+    PATCH /admin/prompts/{id} from text to html succeeds (HTTP 200).
+    Live format becomes html, version is incremented once, and new TemplateVersion snapshot is created with html format.
+    """
+    create_resp = api_client.post(
+        "/admin/prompts",
+        json=prompt_payload(prompt_status="patch_text_html", channel="email"),
+        headers=get_headers(),
+    )
+    assert create_resp.status_code == 201
+    prompt_id = create_resp.json()["id"]
+    assert create_resp.json()["format"] == "text"
+
+    db_session = TestingSessionLocal()
+    try:
+        versions_before = (
+            db_session.query(TemplateVersion)
+            .filter(TemplateVersion.template_id == prompt_id)
+            .count()
+        )
+    finally:
+        db_session.close()
+
+    patch_resp = api_client.patch(
+        f"/admin/prompts/{prompt_id}",
+        json={"format": "html"},
+        headers=get_headers(),
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["format"] == "html"
+    assert patch_resp.json()["version"] == 2
+
+    db_session = TestingSessionLocal()
+    try:
+        versions_after = (
+            db_session.query(TemplateVersion)
+            .filter(TemplateVersion.template_id == prompt_id)
+            .count()
+        )
+        latest_version = (
+            db_session.query(TemplateVersion)
+            .filter(TemplateVersion.template_id == prompt_id)
+            .order_by(TemplateVersion.version_number.desc())
+            .first()
+        )
+        assert latest_version is not None
+        assert latest_version.format == "html"
+    finally:
+        db_session.close()
+    assert versions_after == versions_before + 1
+
+
+def test_sanitized_exceptions_do_not_leak_sensitive_markers(
+    api_client: TestClient,
+    capsys,
+) -> None:
+    """
+    Ensures sensitive error markers do not leak to HTTP responses, stdout, or stderr.
+    """
+    SENSITIVE_MARKER = "SENSITIVE_SECRET_MARKER_999"
+
+    # Injecting invalid syntax body
+    payload = prompt_payload(
+        prompt_status="sensitive_leak_test",
+        body=f"Hello {{{{ {SENSITIVE_MARKER} | invalid_filter }}}}",
+    )
+
+    response = api_client.post(
+        "/admin/prompts",
+        json=payload,
+        headers=get_headers(),
+    )
+
+    captured = capsys.readouterr()
+
+    assert SENSITIVE_MARKER not in response.text
+    assert SENSITIVE_MARKER not in captured.out
+    assert SENSITIVE_MARKER not in captured.err
 
