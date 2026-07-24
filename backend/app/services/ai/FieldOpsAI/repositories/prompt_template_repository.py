@@ -36,7 +36,7 @@ class PromptTemplateRepository:
                 type=template_data["status"],
                 channel=template_data["channel"],
                 locale=template_data["language"],
-                format="text",  # default
+                format=template_data.get("format", "text"),
                 title_template=template_data.get("title"),
                 body_template=template_data["body"],
                 variables=template_data.get("variables", []),
@@ -86,6 +86,8 @@ class PromptTemplateRepository:
                 template.variables = update_data["variables"]
             if "is_active" in update_data:
                 template.is_active = update_data["is_active"]
+            if "format" in update_data:
+                template.format = update_data["format"]
                 
             self.db.flush()
             return template

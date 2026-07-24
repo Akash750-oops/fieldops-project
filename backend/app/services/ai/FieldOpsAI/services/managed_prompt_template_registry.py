@@ -134,7 +134,8 @@ class ManagedPromptTemplateRegistry:
             return False
 
     def create(self, payload: PromptTemplateCreate) -> PromptTemplateResponse:
-        # Check for conflicts
+        # Check for conflicts using natural key identity only.
+        # Clients must not be able to choose a version number.
         existing = self.repo.list_templates(
             agent_type=payload.agent_type,
             channel=payload.channel,
@@ -142,13 +143,11 @@ class ManagedPromptTemplateRegistry:
             status=payload.status,
             is_active=True
         )
-        if any(
-            item.version == payload.version
-            for item in existing
-        ):
-            raise ConflictError("Active template with same attributes and version already exists.")
+        if existing:
+            raise ConflictError("Active template with same attributes already exists.")
 
-        if payload.language.value != "en":
+        lang_str = payload.language if isinstance(payload.language, str) else payload.language.value
+        if lang_str != "en":
             en_templates = self.repo.list_templates(
                 agent_type=payload.agent_type,
                 channel=payload.channel,
@@ -162,7 +161,7 @@ class ManagedPromptTemplateRegistry:
                 en_template = en_templates[0]
                 from app.models import NotificationTemplate
                 temp = NotificationTemplate(
-                    locale=payload.language.value,
+                    locale=lang_str,
                     variables=payload.variables or [],
                     body_template=payload.body,
                     title_template=payload.title
@@ -173,9 +172,11 @@ class ManagedPromptTemplateRegistry:
                     raise TemplateValidationServiceError("Variable contract does not match the canonical English template.")
 
         try:
-            model = self.repo.create(
-                payload.model_dump(mode="json")
-            )
+            create_data = payload.model_dump(mode="json")
+            # Server always assigns version=1 for a new live template.
+            # Clients must not be able to control the version number.
+            create_data["version"] = 1
+            model = self.repo.create(create_data)
             create_initial_version(self.db, model, self.actor_id)
             self.db.commit()
             self._invalidate_cache()
@@ -243,7 +244,7 @@ class ManagedPromptTemplateRegistry:
                 "title": model.title_template,
                 "variables": model.variables,
                 "is_active": model.is_active,
-                "version": model.version
+                "format": model.format,
             }
 
             merged_data = {
@@ -399,21 +400,21 @@ class ManagedPromptTemplateRegistry:
                 self._write_to_cache(cache_key, resp.model_dump(mode='json'))
                 return resp
                 
-            # Built-in fallback
-            fallback = PromptTemplateLookupResponse(
+            return PromptTemplateLookupResponse(
                 id=None,
-                name="Built-in Fallback",
-                agent_type=AgentType(agent_type),
-                channel=PromptChannel(channel),
-                language=PromptLanguage("en"),
+                name="builtin_default",
+                agent_type=agent_type,
+                channel=channel,
                 status=status,
-                body="You have a new update regarding your service.",
+                body="builtin_default",
+                title="builtin_default",
                 variables=[],
+                language=language,
                 version=None,
-                is_active=True,
-                source="builtin_default"
+                format="text",
+                source="builtin_default",
+                is_active=True
             )
-            return fallback
             
         except RepositoryError:
             raise RegistryServiceError("Database error")
@@ -424,9 +425,10 @@ class ManagedPromptTemplateRegistry:
             name=model.name,
             agent_type=AgentType(model.agent_type),
             channel=PromptChannel(model.channel),
-            language=PromptLanguage(model.locale),
+            language=model.locale,
             status=model.type,
             body=model.body_template,
+            format=model.format,
             title=model.title_template,
             variables=model.variables,
             version=model.version,
@@ -440,9 +442,10 @@ class ManagedPromptTemplateRegistry:
             name=model.name,
             agent_type=AgentType(model.agent_type),
             channel=PromptChannel(model.channel),
-            language=PromptLanguage(model.locale),
+            language=model.locale,
             status=model.type,
             body=model.body_template,
+            format=model.format,
             title=model.title_template,
             variables=model.variables,
             version=model.version,

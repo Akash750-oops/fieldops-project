@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
+import re
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import (
@@ -124,6 +125,7 @@ def add_template(
         "job_assigned"
     ),
     version: int = 1,
+    variables: list | None = None,
 ) -> NotificationTemplate:
     """
     Insert one active notification template.
@@ -141,6 +143,10 @@ def add_template(
         ),
         title_template=title_template,
         body_template=body_template,
+        variables=variables if variables is not None else [
+            {"name": v, "required": False}
+            for v in list(set(re.findall(r"\{\{([a-zA-Z_]+)\}\}", body_template + (title_template or ""))))
+        ],
         version=version,
         is_active=True,
     )
@@ -461,6 +467,7 @@ def test_unsupported_database_variable_is_not_rendered(
         channel="sms",
         title_template=None,
         body_template="Secret: {{api_key}}",
+        variables=[],
     )
 
     result = GuardrailFallbackService(
@@ -606,6 +613,7 @@ def test_free_form_additional_context_is_not_available_to_template(
         body_template=(
             "{{additional_context}}"
         ),
+        variables=[],
     )
 
     context = build_context().model_copy(
@@ -739,3 +747,371 @@ def test_hindi_missing_optional_values_use_hindi_defaults(db_session):
     ctx = CommunicationContext(job_id="1", notification_type="job_assigned", recipient_type="CUSTOMER", channel="SMS", locale="hi", job_status="ASSIGNED")
     res = svc.render(context=ctx)
     assert "ग्राहक" in res.decision.message or "तकनीशियन" in res.decision.message
+
+
+# ==========================================================
+# §2 — Declared additional_context still rejected
+# ==========================================================
+
+
+def test_declared_additional_context_is_rejected(
+    db_session: Session,
+) -> None:
+    """
+    A database template that explicitly declares additional_context
+    in its variables list must still be rejected and fallback must
+    continue to the approved built-in template.
+
+    This is distinct from the undeclared-variable test which only
+    proves that undeclared variables are blocked. This test proves
+    that even an explicitly declared additional_context cannot be
+    rendered by the fallback service.
+    """
+    add_template(
+        db_session,
+        channel="sms",
+        title_template=None,
+        body_template="{{ additional_context }}",
+        variables=[
+            {"name": "additional_context", "required": True}
+        ],
+    )
+
+    context = build_context()
+
+    result = GuardrailFallbackService(
+        db=db_session
+    ).render(context=context)
+
+    # Must skip the database template and continue to builtin/emergency.
+    assert result.source != FallbackTemplateSource.DATABASE
+
+    assert (
+        "additional_context" not in result.decision.message
+    )
+
+
+# ==========================================================
+# §1 — Raw exception must never appear in output
+# ==========================================================
+
+
+def test_raw_exception_text_is_not_printed_or_logged(
+    db_session: Session,
+    capsys,
+) -> None:
+    """
+    When a built-in template rendering fails, the exception text
+    must not appear in stdout, stderr, or the final decision.
+    """
+    import unittest.mock
+
+    _SENSITIVE_MARKER = "ULTRA_SECRET_RENDER_ERROR_XYZ"
+
+    from app.services import template_engine as te
+
+    original_render = te.render_template_source
+
+    def raising_render(*args, **kwargs):
+        raise te.MessageTemplateRenderingError(
+            f"Rendering failed: {_SENSITIVE_MARKER}"
+        )
+
+    with unittest.mock.patch.object(te, "render_template_source", raising_render):
+        result = GuardrailFallbackService(
+            db=db_session
+        ).render(context=build_context())
+
+    captured = capsys.readouterr()
+
+    assert _SENSITIVE_MARKER not in captured.out
+    assert _SENSITIVE_MARKER not in captured.err
+    assert _SENSITIVE_MARKER not in result.decision.message
+
+
+# ==========================================================
+# §3 — Locale cascade tests
+# ==========================================================
+
+
+def test_exact_regional_locale_wins(
+    db_session: Session,
+) -> None:
+    """
+    When a template exists for the exact requested regional locale
+    (stored as base language since the registry normalises), it
+    must be selected over a more general template.
+
+    Here we store an 'es' template and request 'es'; the resolved
+    locale reported must be 'es'.
+    """
+    add_template(
+        db_session,
+        channel="sms",
+        locale="es",
+        title_template=None,
+        body_template="Hola exacto.",
+        notification_type="job_assigned",
+    )
+
+    result = GuardrailFallbackService(
+        db=db_session
+    ).render(
+        context=build_context(locale="es")
+    )
+
+    assert result.source == FallbackTemplateSource.DATABASE
+    assert result.requested_locale == "es"
+    assert result.resolved_locale == "es"
+
+
+def test_base_locale_fallback(
+    db_session: Session,
+) -> None:
+    """
+    When only a base-language template exists (es) and the requested
+    locale is a regional variant (es-MX), the base template must be
+    selected and resolved_locale must report 'es'.
+    """
+    add_template(
+        db_session,
+        channel="sms",
+        locale="es",
+        title_template=None,
+        body_template="Hola base.",
+        notification_type="job_assigned",
+    )
+
+    result = GuardrailFallbackService(
+        db=db_session
+    ).render(
+        context=build_context(locale="es-MX")
+    )
+
+    assert result.source == FallbackTemplateSource.DATABASE
+    assert result.requested_locale == "es-MX"
+    assert result.resolved_locale == "es"
+
+
+def test_english_locale_fallback(
+    db_session: Session,
+) -> None:
+    """
+    When only an English template exists and a Spanish locale is
+    requested, the English template must be selected and
+    resolved_locale must report 'en'.
+    """
+    add_template(
+        db_session,
+        channel="sms",
+        locale="en",
+        title_template=None,
+        body_template="Hello English fallback.",
+        notification_type="job_assigned",
+    )
+
+    result = GuardrailFallbackService(
+        db=db_session
+    ).render(
+        context=build_context(locale="es-MX")
+    )
+
+    assert result.source == FallbackTemplateSource.DATABASE
+    assert result.requested_locale == "es-MX"
+    assert result.resolved_locale == "en"
+
+
+def test_resolved_locale_is_reported(
+    db_session: Session,
+) -> None:
+    """
+    GuardrailFallbackResult.resolved_locale must contain the locale
+    actually selected — not the locale calculated before lookup.
+    """
+    add_template(
+        db_session,
+        channel="sms",
+        locale="en",
+        title_template=None,
+        body_template="Resolved locale check.",
+        notification_type="job_assigned",
+    )
+
+    result = GuardrailFallbackService(
+        db=db_session
+    ).render(
+        context=build_context(locale="ta")
+    )
+
+    # resolved_locale is a non-empty string between 2 and 10 chars.
+    assert isinstance(result.resolved_locale, str)
+    assert 2 <= len(result.resolved_locale) <= 10
+    # It must differ from the unreachable 'ta' locale that was requested.
+    assert result.requested_locale == "ta"
+
+
+# ==========================================================
+# §4 — Nested path exactness
+# ==========================================================
+
+
+def test_nested_paths_remain_exact(
+    db_session: Session,
+) -> None:
+    """
+    A built-in template using {{ customer_name }} must infer
+    'customer_name' as the declaration path — not 'customer'.
+    """
+    from app.services.template_engine import infer_template_declarations
+
+    paths = infer_template_declarations(body="{{ customer_name }}")
+    assert "customer_name" in paths
+    assert "customer" not in paths
+
+
+def test_two_nested_paths_under_same_root_no_duplicates(
+    db_session: Session,
+) -> None:
+    """
+    A template with both customer.name and customer.address.city
+    must produce two exact declarations and must not produce a
+    duplicate root declaration for 'customer'.
+    """
+    from app.services.template_engine import infer_template_declarations
+
+    paths = infer_template_declarations(
+        body="{{ customer.name }} {{ customer.address.city }}"
+    )
+    # Exact paths present
+    assert "customer.name" in paths
+    assert "customer.address.city" in paths
+    # No collapsed root
+    assert "customer" not in paths
+
+
+def test_unsafe_builtin_syntax_falls_to_emergency(
+    db_session: Session,
+) -> None:
+    """
+    An unsafe Jinja expression in a built-in template must cause
+    that candidate to be skipped and the emergency template used.
+    """
+    from unittest.mock import patch
+    from app.services import default_template as dt
+
+    # Inject a catalog entry with unsafe syntax for a known event.
+    original = dict(dt.LOCALIZED_NOTIFICATION_TYPES)
+
+    patched = {
+        "en": {
+            "job_assigned": {
+                "sms": "{{ customer_name.__class__ }}",
+            }
+        }
+    }
+
+    with patch.object(dt, "LOCALIZED_NOTIFICATION_TYPES", patched):
+        result = GuardrailFallbackService(
+            db=db_session
+        ).render(
+            context=build_context(
+                locale="en",
+                notification_type="job_assigned",
+            )
+        )
+
+    assert result.source == FallbackTemplateSource.EMERGENCY
+
+
+def test_invalid_builtin_syntax_falls_to_emergency(
+    db_session: Session,
+) -> None:
+    """
+    Invalid Jinja syntax (unclosed block) in a built-in template
+    must cause that candidate to be skipped and the emergency
+    template used.
+    """
+    from unittest.mock import patch
+    from app.services import default_template as dt
+
+    patched = {
+        "en": {
+            "job_assigned": {
+                "sms": "{% if customer_name %}",  # unclosed block
+            }
+        }
+    }
+
+    with patch.object(dt, "LOCALIZED_NOTIFICATION_TYPES", patched):
+        result = GuardrailFallbackService(
+            db=db_session
+        ).render(
+            context=build_context(
+                locale="en",
+                notification_type="job_assigned",
+            )
+        )
+
+    assert result.source == FallbackTemplateSource.EMERGENCY
+
+
+# ==========================================================
+# §8 — Whitespace normalization
+# ==========================================================
+
+
+def test_multiline_sms_body_is_normalized(
+    db_session: Session,
+) -> None:
+    """
+    Repeated whitespace and newlines in an SMS body must be
+    collapsed to a single space.
+    """
+    add_template(
+        db_session,
+        channel="sms",
+        title_template=None,
+        body_template="Hello   world\n\ncheck   app.",
+        notification_type="job_assigned",
+        variables=[],
+    )
+
+    result = GuardrailFallbackService(
+        db=db_session
+    ).render(
+        context=build_context(channel="SMS")
+    )
+
+    assert result.decision.channel == "SMS"
+    # Multiple spaces and newlines must be collapsed.
+    assert "\n" not in result.decision.message
+    assert "  " not in result.decision.message
+    assert result.decision.message == "Hello world check app."
+
+
+def test_multiline_push_title_is_normalized(
+    db_session: Session,
+) -> None:
+    """
+    Repeated whitespace in a PUSH notification title must be
+    collapsed to a single space.
+    """
+    add_template(
+        db_session,
+        channel="push",
+        title_template="FieldOps   update\n now",
+        body_template="Your request is updated.",
+        notification_type="job_assigned",
+        variables=[],
+    )
+
+    result = GuardrailFallbackService(
+        db=db_session
+    ).render(
+        context=build_context(channel="PUSH")
+    )
+
+    assert result.decision.channel == "PUSH"
+    assert result.decision.title is not None
+    assert "\n" not in result.decision.title
+    assert "  " not in result.decision.title

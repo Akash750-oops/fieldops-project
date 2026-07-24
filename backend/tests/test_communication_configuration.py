@@ -524,50 +524,7 @@ class _FakeCommIntegration:
             audit_record_count=0,
         )
 
-
-class _TrackingEmailService:
-    """Records calls to send_email without touching SendGrid."""
-
-    def __init__(self):
-        self.calls = []
-
-    async def send_email(self, to_email: str, subject: str, html_content: str) -> bool:
-        self.calls.append({"to": to_email, "subject": subject})
-        return True
-
-
-def _build_completed_event() -> JobStatusEvent:
-    return JobStatusEvent(
-        job_id="99",
-        tenant_id="tenant-test",
-        from_status="IN_PROGRESS",
-        to_status="COMPLETED",
-        actor_id="actor-1",
-        actor_role="technician",
-        reason=None,
-        timestamp=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
-        job_title="Pipe Fix",
-        job_location="1 Test St",
-        technician_id="tech-99",
-        technician_name="Bob",
-        customer_id="cust-1",
-        customer_name="Alice",
-        customer_phone="+15555550101",
-        customer_email="alice@example.com",
-        eta=None,
-        notification_channels=[],
-    )
-
-
-def _make_router(email_service, db_session) -> NotificationRouter:
-    return NotificationRouter(
-        fcm_service=AsyncMock(return_value={"sent": 0, "failed": 0, "delivery_ids": []}),
-        sms_service=AsyncMock(return_value={"sent": 0, "failed": 0, "blocked": 0, "blocked_reasons": {}}),
-        email_service=email_service,
-        ws_manager=MagicMock(),
-        redis_client=MagicMock(),
-        communication_integration=_FakeCommIntegration(),
-    )
+from tests.conftest import _TrackingEmailService, _make_router, _build_completed_event
 
 
 def _set_email_state(db_session, state: str):
@@ -774,74 +731,7 @@ from app.services.ai.FieldOpsAI.services.communication_configuration_service imp
 from app.services.ai.FieldOpsAI.schemas.communication_configuration import (
     CommunicationConfigurationCachePayload,
 )
-
-class SimTimer:
-    def __init__(self):
-        self.now = 0.0
-
-    def tick(self, seconds: float):
-        self.now += seconds
-
-    def time(self) -> float:
-        return self.now
-
-
-class FakeRedisClient:
-    """
-    Fake Redis supporting get, setex, delete, TTL recording, expiration without sleeping,
-    failure modes, and call tracking.
-    """
-    def __init__(self, timer: SimTimer):
-        self.store: dict[str, tuple[str, float]] = {}  # key -> (value, expires_at)
-        self.timer = timer
-        self.calls: list[str] = []
-        self.fail_get = False
-        self.fail_setex = False
-        self.timeout_get = False
-        self.fail_delete = False
-
-    def _track(self, op: str, key: str):
-        self.calls.append(f"{op}:{key}")
-
-    def get(self, key: str) -> str | None:
-        self._track("get", key)
-        if self.timeout_get:
-            raise TimeoutError("Simulated Redis timeout")
-        if self.fail_get:
-            raise ConnectionError("Simulated Redis get failure")
-        
-        if key in self.store:
-            val, expires_at = self.store[key]
-            if self.timer.time() >= expires_at:
-                del self.store[key]
-                return None
-            return val
-        return None
-
-    def setex(self, key: str, time_seconds: int, value: str) -> bool:
-        self._track("setex", key)
-        if self.fail_setex:
-            raise ConnectionError("Simulated Redis setex failure")
-        self.store[key] = (value, self.timer.time() + time_seconds)
-        return True
-
-    def delete(self, key: str) -> int:
-        self._track("delete", key)
-        if self.fail_delete:
-            raise ConnectionError("Simulated Redis delete failure")
-        if key in self.store:
-            del self.store[key]
-            return 1
-        return 0
-
-
-@pytest.fixture
-def sim_timer():
-    return SimTimer()
-
-@pytest.fixture
-def fake_redis(sim_timer):
-    return FakeRedisClient(sim_timer)
+from tests.conftest import SimTimer, FakeRedisClient
 
 @pytest.fixture
 def config_service(db_session, fake_redis):

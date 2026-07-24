@@ -260,9 +260,24 @@ class TemplateCreate(BaseModel):
     type: str
     channel: str
     locale: Optional[str] = "en"
-    format: Optional[str] = "text"
+    format: Optional[Literal["text", "html"]] = "text"
     title_template: Optional[str] = None
     body_template: str
+
+    @field_validator(
+        "format",
+        mode="before",
+    )
+    @classmethod
+    def validate_format(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return "text"
+        if not isinstance(value, str):
+            raise ValueError("Format must be 'text' or 'html'.")
+        val = value.strip().lower()
+        if val not in ("text", "html"):
+            raise ValueError("Format must be 'text' or 'html'.")
+        return val
 
 class TemplateResponse(TemplateCreate):
     id: int
@@ -273,12 +288,44 @@ class TemplateResponse(TemplateCreate):
     model_config = ConfigDict(from_attributes=True)
 
 class TemplatePreviewRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+
     title_template: Optional[str] = None
     body_template: str
     mock_context: dict
-    variables: Optional[list[PromptVariableDeclaration]] = None
+    variables: Optional[
+        list[PromptVariableDeclaration]
+    ] = None
 
+    format: Literal["text", "html"] = "text"
+
+    @field_validator(
+        "format",
+        mode="before",
+    )
+    @classmethod
+    def validate_format(
+        cls,
+        value,
+    ) -> str:
+        if not isinstance(value, str):
+            raise ValueError(
+                "Format must be 'text' or 'html'."
+            )
+
+        normalized = value.strip().lower()
+
+        if normalized not in {
+            "text",
+            "html",
+        }:
+            raise ValueError(
+                "Format must be 'text' or 'html'."
+            )
+
+        return normalized
 class TemplatePreviewResponse(BaseModel):
     rendered_title: Optional[str] = None
     rendered_body: str

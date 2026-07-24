@@ -954,9 +954,9 @@ LOCALIZED_NOTIFICATION_TYPES = {
 
 
 def validate_catalog():
-    from app.services.ai.FieldOpsAI.services.prompt_variable_injector import PromptVariableInjector
+    from app.services.template_engine import _shared_injector
     base_catalog = LOCALIZED_NOTIFICATION_TYPES["en"]
-    injector = PromptVariableInjector()
+    injector = _shared_injector
     
     for loc in ["es", "ta", "hi"]:
         target_catalog = LOCALIZED_NOTIFICATION_TYPES[loc]
@@ -999,8 +999,8 @@ def generate_default_templates():
             for template_type, template in catalog.items():
                 body = template[channel]
                 
-                from app.services.ai.FieldOpsAI.services.prompt_variable_injector import PromptVariableInjector
-                injector = PromptVariableInjector()
+                from app.services.template_engine import _shared_injector
+                injector = _shared_injector
                 
                 try:
                     paths = injector.infer_declarations(body=body, title=template["title"])
