@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import logo from "./assets/logo.png";
-import { ChevronsLeft, ChevronsRight, LayoutDashboard, Briefcase, Users, Calendar, FlaskConical, Info, User, ChevronDown, Activity, BellRing, LogOut } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, LayoutDashboard, Briefcase, Users, Calendar, FlaskConical, Info, User, ChevronDown, Activity, BellRing, LogOut, History, Settings, PlusCircle, FileText, Navigation } from "lucide-react";
 import useAuthStore from "./store/authStore";
 
 // Import notification modules
@@ -23,6 +23,7 @@ import {
 } from "./services/notificationService";
 import { startHeartbeatLoop, stopHeartbeatLoop } from "./services/heartbeatService";
 import { getAllTechnicians } from "./services/technicianService";
+import { getTechnicianNotifications } from "./services/technicianPortalService";
 import { ToastProvider, useToast } from "./hooks/useToast";
 import LoadingSpinner from "./components/ui/LoadingSpinner";
 
@@ -34,6 +35,23 @@ const TechDashboardPage = lazy(() => import("./pages/TechDashboardPage"));
 const PlanningPage = lazy(() => import("./pages/PlanningPage"));
 const TrackingDashboardPage = lazy(() => import("./pages/TrackingDashboardPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+
+// Lazy load Technician Portal pages
+const TechnicianPortalDashboard = lazy(() => import("./pages/technician/TechnicianPortalDashboard"));
+const TechnicianProfilePage = lazy(() => import("./pages/technician/TechnicianProfilePage"));
+const TechnicianJobsPage = lazy(() => import("./pages/technician/TechnicianJobsPage"));
+const TechnicianJobHistoryPage = lazy(() => import("./pages/technician/TechnicianJobHistoryPage"));
+const TechnicianNotificationsPage = lazy(() => import("./pages/technician/TechnicianNotificationsPage"));
+const TechnicianSettingsPage = lazy(() => import("./pages/technician/TechnicianSettingsPage"));
+
+// Lazy load Customer Portal pages
+const CustomerPortalDashboard = lazy(() => import("./pages/customer/CustomerPortalDashboard"));
+const CustomerProfilePage = lazy(() => import("./pages/customer/CustomerProfilePage"));
+const CustomerServiceRequestsPage = lazy(() => import("./pages/customer/CustomerServiceRequestsPage"));
+const CustomerJobTrackingPage = lazy(() => import("./pages/customer/CustomerJobTrackingPage"));
+const CustomerNotificationsPage = lazy(() => import("./pages/customer/CustomerNotificationsPage"));
+const CustomerServiceHistoryPage = lazy(() => import("./pages/customer/CustomerServiceHistoryPage"));
+const CustomerSettingsPage = lazy(() => import("./pages/customer/CustomerSettingsPage"));
 
 interface NotificationItem {
   id: string | number;
@@ -545,7 +563,17 @@ const localCss = `
 function AppInner() {
   const { user, logout } = useAuthStore();
   const { addToast } = useToast();
-  const [activeTab, setActiveTab] = useState("dashboard");
+
+  const userRole = (user?.role || "").toLowerCase();
+  const isTechnician = userRole === "technician";
+  const isCustomer = userRole === "customer";
+  const isAdminOrDispatcher = !isTechnician && !isCustomer;
+
+  const [activeTab, setActiveTab] = useState(() => {
+    if (isTechnician) return "tech_jobs";
+    if (isCustomer) return "cust_dashboard";
+    return "dashboard";
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
 
@@ -555,7 +583,7 @@ function AppInner() {
     setActiveTab(tab);
     setTimeout(() => {
       setIsNavigating(false);
-    }, 1000);
+    }, 400);
   };
 
   const getLoadingMessage = (tab: string) => {
@@ -570,6 +598,19 @@ function AppInner() {
         return "Loading Planning Board...";
       case "profile":
         return "Loading Account & Organization Control...";
+      case "tech_dashboard":
+      case "cust_dashboard":
+        return "Loading Dashboard...";
+      case "tech_profile":
+      case "cust_profile":
+        return "Loading Profile...";
+      case "tech_jobs":
+        return "Loading Assigned Jobs...";
+      case "cust_requests":
+      case "cust_create_request":
+        return "Loading Service Requests...";
+      case "cust_tracking":
+        return "Loading Real-Time Job Tracking...";
       default:
         return "Loading page...";
     }
@@ -592,6 +633,34 @@ function AppInner() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // Real-time technician toast notification pop-up
+  const seenNotifIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isTechnician) return;
+
+    const checkNewJobNotifications = async () => {
+      try {
+        const res = await getTechnicianNotifications();
+        const list = res.data.notifications || [];
+        list.forEach((n: any) => {
+          if (!n.isRead && !seenNotifIdsRef.current.has(n.id)) {
+            seenNotifIdsRef.current.add(n.id);
+            addToast({
+              title: n.title || "New Job Assigned",
+              message: n.message || "A new job has been assigned to you.",
+              type: "info",
+              autoDismiss: 7000,
+            });
+          }
+        });
+      } catch (e) {}
+    };
+
+    checkNewJobNotifications();
+    const interval = setInterval(checkNewJobNotifications, 4000);
+    return () => clearInterval(interval);
+  }, [isTechnician, addToast]);
 
   const isMobileLayout = windowWidth <= 500;
 
@@ -909,126 +978,177 @@ function AppInner() {
             </div>
           </div>
 
-          <nav style={isMobileLayout ? styles.sidebarNavMobile : styles.sidebarNav}>
-            <span style={isMobileLayout || sidebarCollapsed ? { display: "none" } : styles.navGroupLabel}>MAIN MENU</span>
+          {isTechnician ? (
+            <nav style={isMobileLayout ? styles.sidebarNavMobile : styles.sidebarNav}>
+              <span style={isMobileLayout || sidebarCollapsed ? { display: "none" } : styles.navGroupLabel}>TECHNICIAN</span>
+              <button className="nav-item-style" style={getItemStyle("tech_jobs")} onClick={() => handleTabChange("tech_jobs")}>
+                <Briefcase size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Assigned Jobs</span>
+              </button>
+              <button className="nav-item-style" style={getItemStyle("tech_history")} onClick={() => handleTabChange("tech_history")}>
+                <History size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Job History</span>
+              </button>
+              <button className="nav-item-style" style={getItemStyle("tech_notifications")} onClick={() => handleTabChange("tech_notifications")}>
+                <BellRing size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Notifications</span>
+              </button>
+            </nav>
+          ) : isCustomer ? (
+            <nav style={isMobileLayout ? styles.sidebarNavMobile : styles.sidebarNav}>
+              <span style={isMobileLayout || sidebarCollapsed ? { display: "none" } : styles.navGroupLabel}>CUSTOMER PORTAL</span>
+              <button className="nav-item-style" style={getItemStyle("cust_dashboard")} onClick={() => handleTabChange("cust_dashboard")}>
+                <LayoutDashboard size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Dashboard</span>
+              </button>
+              <button className="nav-item-style" style={getItemStyle("cust_profile")} onClick={() => handleTabChange("cust_profile")}>
+                <User size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>My Profile</span>
+              </button>
+              <button className="nav-item-style" style={getItemStyle("cust_create_request")} onClick={() => handleTabChange("cust_create_request")}>
+                <PlusCircle size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>New Request</span>
+              </button>
+              <button className="nav-item-style" style={getItemStyle("cust_requests")} onClick={() => handleTabChange("cust_requests")}>
+                <FileText size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>My Requests</span>
+              </button>
+              <button className="nav-item-style" style={getItemStyle("cust_tracking")} onClick={() => handleTabChange("cust_tracking")}>
+                <Navigation size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Job Tracking</span>
+              </button>
+              <button className="nav-item-style" style={getItemStyle("cust_notifications")} onClick={() => handleTabChange("cust_notifications")}>
+                <BellRing size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Notifications</span>
+              </button>
+              <button className="nav-item-style" style={getItemStyle("cust_history")} onClick={() => handleTabChange("cust_history")}>
+                <History size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Service History</span>
+              </button>
+              <button className="nav-item-style" style={getItemStyle("cust_settings")} onClick={() => handleTabChange("cust_settings")}>
+                <Settings size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Settings</span>
+              </button>
+            </nav>
+          ) : (
+            <nav style={isMobileLayout ? styles.sidebarNavMobile : styles.sidebarNav}>
+              <span style={isMobileLayout || sidebarCollapsed ? { display: "none" } : styles.navGroupLabel}>MAIN MENU</span>
 
-            <button
-              className="nav-item-style"
-              style={getItemStyle("dashboard")}
-              onClick={() => handleTabChange("dashboard")}
+              <button
+                className="nav-item-style"
+                style={getItemStyle("dashboard")}
+                onClick={() => handleTabChange("dashboard")}
+              >
+                <LayoutDashboard size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Dashboard</span>
+              </button>
+
+              <button
+                className="nav-item-style"
+                style={getItemStyle("jobs")}
+                onClick={() => handleTabChange("jobs")}
+              >
+                <Briefcase size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Jobs</span>
+              </button>
+
+              <button
+                className="nav-item-style"
+                style={getItemStyle("techboard")}
+                onClick={() => handleTabChange("techboard")}
+              >
+                <Users size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Technicians</span>
+              </button>
+
+              <button
+                className="nav-item-style"
+                style={getItemStyle("planning")}
+                onClick={() => handleTabChange("planning")}
+              >
+                <Calendar size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Planning</span>
+              </button>
+
+              <button
+                className="nav-item-style"
+                style={getItemStyle("tracking")}
+                onClick={() => handleTabChange("tracking")}
+              >
+                <Activity size={18} style={{ flexShrink: 0 }} />
+                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Live Tracking</span>
+              </button>
+            </nav>
+          )}
+
+          {/* Active tech switcher and demo controls for Admin/Dispatcher */}
+          {isAdminOrDispatcher && (
+            <div
+              style={isMobileLayout || sidebarCollapsed ? { display: "none" } : styles.sidebarSimulationControls}
+              onMouseEnter={ensureActiveTechLoaded}
             >
-              <LayoutDashboard size={18} style={{ flexShrink: 0 }} />
-              <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Dashboard</span>
-            </button>
-
-            <button
-              className="nav-item-style"
-              style={getItemStyle("jobs")}
-              onClick={() => handleTabChange("jobs")}
-            >
-              <Briefcase size={18} style={{ flexShrink: 0 }} />
-              <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Jobs</span>
-            </button>
-
-            <button
-              className="nav-item-style"
-              style={getItemStyle("techboard")}
-              onClick={() => handleTabChange("techboard")}
-            >
-              <Users size={18} style={{ flexShrink: 0 }} />
-              <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Technicians</span>
-            </button>
-
-            <button
-              className="nav-item-style"
-              style={getItemStyle("planning")}
-              onClick={() => handleTabChange("planning")}
-            >
-              <Calendar size={18} style={{ flexShrink: 0 }} />
-              <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Planning</span>
-            </button>
-
-            <button
-              className="nav-item-style"
-              style={getItemStyle("tracking")}
-              onClick={() => handleTabChange("tracking")}
-            >
-              <Activity size={18} style={{ flexShrink: 0 }} />
-              <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Live Tracking</span>
-            </button>
-          </nav>
-
-          {/* Active tech switcher and demo controls */}
-          <div
-            style={isMobileLayout || sidebarCollapsed ? { display: "none" } : styles.sidebarSimulationControls}
-            onMouseEnter={ensureActiveTechLoaded}
-          >
-            <div style={styles.simulationCard}>
-              {/* Header */}
-              <div style={styles.simulationHeader}>
-                <div style={styles.simulationTitleWrap}>
-                  <FlaskConical size={14} color="#0F9D58" style={{ flexShrink: 0 }} />
-                  <span style={styles.simulationTitle}>Simulation Lab</span>
+              <div style={styles.simulationCard}>
+                <div style={styles.simulationHeader}>
+                  <div style={styles.simulationTitleWrap}>
+                    <FlaskConical size={14} color="#0F9D58" style={{ flexShrink: 0 }} />
+                    <span style={styles.simulationTitle}>Simulation Lab</span>
+                  </div>
                 </div>
 
-              </div>
-
-              {/* Simulated Technician Dropdown */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <span style={styles.simulationLabel}>Simulated Technician</span>
-                <div style={styles.dropdownWrapper}>
-                  <div style={styles.userCircle}>
-                    <User size={12} color="#0F9D58" />
-                  </div>
-                  {techList.length === 0 ? (
-                    <select
-                      style={styles.simulationSelect}
-                      onClick={ensureActiveTechLoaded}
-                      onFocus={ensureActiveTechLoaded}
-                      readOnly
-                    >
-                      <option>Click to load techs...</option>
-                    </select>
-                  ) : (
-                    activeTechId !== null && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <span style={styles.simulationLabel}>Simulated Technician</span>
+                  <div style={styles.dropdownWrapper}>
+                    <div style={styles.userCircle}>
+                      <User size={12} color="#0F9D58" />
+                    </div>
+                    {techList.length === 0 ? (
                       <select
                         style={styles.simulationSelect}
-                        value={activeTechId}
-                        onChange={(e) => setActiveTechId(e.target.value)}
+                        onClick={ensureActiveTechLoaded}
+                        onFocus={ensureActiveTechLoaded}
+                        readOnly
                       >
-                        {techList.map((t) => {
-                          const val = t.tech_id || t.technician_id || t.id;
-                          return (
-                            <option key={val} value={val}>
-                              {t.technician_name || t.name}
-                            </option>
-                          );
-                        })}
+                        <option>Click to load techs...</option>
                       </select>
-                    )
-                  )}
-                  <ChevronDown size={14} color="#64748B" style={styles.dropdownChevron} />
+                    ) : (
+                      activeTechId !== null && (
+                        <select
+                          style={styles.simulationSelect}
+                          value={activeTechId}
+                          onChange={(e) => setActiveTechId(e.target.value)}
+                        >
+                          {techList.map((t) => {
+                            const val = t.tech_id || t.technician_id || t.id;
+                            return (
+                              <option key={val} value={val}>
+                                {t.technician_name || t.name}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      )
+                    )}
+                    <ChevronDown size={14} color="#64748B" style={styles.dropdownChevron} />
+                  </div>
                 </div>
+
+                <button
+                  type="button"
+                  className="simulate-alert-btn-style"
+                  style={styles.simulateAlertBtn}
+                  onClick={() => {
+                    ensureActiveTechLoaded().then(() => {
+                      triggerMockNotification();
+                    });
+                  }}
+                  title="Test Notification UI"
+                >
+                  <BellRing size={16} color="#FFFFFF" style={{ flexShrink: 0 }} />
+                  <span>Simulate Alert</span>
+                </button>
               </div>
-
-
-              {/* Simulate Alert Button */}
-              <button
-                type="button"
-                className="simulate-alert-btn-style"
-                style={styles.simulateAlertBtn}
-                onClick={() => {
-                  ensureActiveTechLoaded().then(() => {
-                    triggerMockNotification();
-                  });
-                }}
-                title="Test Notification UI"
-              >
-                <BellRing size={16} color="#FFFFFF" style={{ flexShrink: 0 }} />
-                <span>Simulate Alert</span>
-              </button>
             </div>
-          </div>
+          )}
 
           <div
             style={
@@ -1040,7 +1160,7 @@ function AppInner() {
             }
           >
             <div
-              onClick={() => handleTabChange("profile")}
+              onClick={() => handleTabChange(isTechnician ? "tech_settings" : isCustomer ? "cust_profile" : "profile")}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1049,7 +1169,7 @@ function AppInner() {
                 flex: 1,
                 minWidth: 0,
               }}
-              title="Click to view Account & Organizations"
+              title="Click to open Profile & Settings"
             >
               <div style={styles.miniAvatar}>{user?.first_name ? user.first_name[0].toUpperCase() : "U"}</div>
 
@@ -1109,7 +1229,7 @@ function AppInner() {
             <LoadingSpinner message={getLoadingMessage(activeTab)} fullPage={true} />
           ) : (
             <Suspense fallback={<LoadingSpinner message="Loading page..." fullPage={true} />}>
-              {/* Tab Pages */}
+              {/* Admin / Dispatcher Tabs */}
               {activeTab === "dashboard" && (
                 <DashboardPage
                   onViewTab={(tab) => handleTabChange(tab)}
@@ -1123,15 +1243,27 @@ function AppInner() {
               )}
               {activeTab === "jobs" && <JobsPage />}
               {activeTab === "techboard" && <TechDashboardPage />}
-              {activeTab === "planning" && (
-                <PlanningPage />
-              )}
-              {activeTab === "tracking" && (
-                <TrackingDashboardPage />
-              )}
-              {activeTab === "profile" && (
-                <ProfilePage />
-              )}
+              {activeTab === "planning" && <PlanningPage />}
+              {activeTab === "tracking" && <TrackingDashboardPage />}
+              {activeTab === "profile" && <ProfilePage />}
+
+              {/* Technician Portal Tabs */}
+              {activeTab === "tech_dashboard" && <TechnicianPortalDashboard onNavigate={handleTabChange} />}
+              {activeTab === "tech_profile" && <TechnicianProfilePage />}
+              {activeTab === "tech_jobs" && <TechnicianJobsPage />}
+              {activeTab === "tech_history" && <TechnicianJobHistoryPage />}
+              {activeTab === "tech_notifications" && <TechnicianNotificationsPage />}
+              {activeTab === "tech_settings" && <TechnicianSettingsPage />}
+
+              {/* Customer Portal Tabs */}
+              {activeTab === "cust_dashboard" && <CustomerPortalDashboard onNavigate={handleTabChange} />}
+              {activeTab === "cust_profile" && <CustomerProfilePage />}
+              {activeTab === "cust_create_request" && <CustomerServiceRequestsPage />}
+              {activeTab === "cust_requests" && <CustomerServiceRequestsPage />}
+              {activeTab === "cust_tracking" && <CustomerJobTrackingPage />}
+              {activeTab === "cust_notifications" && <CustomerNotificationsPage />}
+              {activeTab === "cust_history" && <CustomerServiceHistoryPage />}
+              {activeTab === "cust_settings" && <CustomerSettingsPage />}
             </Suspense>
           )}
         </main>

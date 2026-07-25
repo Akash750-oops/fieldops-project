@@ -21,6 +21,7 @@ interface NormalizedTech {
   currentJobs: number;
   maxJobs: number;
   lastPing: string | null;
+  phone?: string;
 }
 
 interface TechFormData {
@@ -71,6 +72,7 @@ function normTech(t: any): NormalizedTech {
     currentJobs: t.current_jobs??t.active_jobs??0,
     maxJobs:     t.max_jobs??5,
     lastPing:    t.last_ping??t.updated_at??null,
+    phone:       t.phone_number??t.phone??"—",
   };
 }
 function wPct(cur: number, max: number){ return max>0?Math.min(Math.round((cur/max)*100),100):0; }
@@ -1871,6 +1873,7 @@ export default function TechnicianListPage(){
             {[
               ["ID",`#${selected.id}`],
               ["Skill",selected.skill],
+              ["Mobile / Phone",selected.phone || "—"],
               ["Zone / Location",selected.location],
               ["Current Jobs",`${selected.currentJobs} / ${selected.maxJobs}`],
               ["Last Active",formatAgo(selected.lastPing)],

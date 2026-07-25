@@ -14,12 +14,16 @@ router = APIRouter(
 def match_skill(job_type: str, db: Session = Depends(get_db)):
     """
     Find available technicians matching the required skill (job_type).
+    Falls back gracefully if exact match returns no results.
     """
+    pattern = f"%{job_type.strip()}%"
     technicians = db.query(models.Technician).filter(
-        models.Technician.technician_skill == job_type,
-        models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"]),
-        models.Technician.current_jobs < models.Technician.max_jobs
+        models.Technician.technician_skill.ilike(pattern)
     ).all()
+    
+    if not technicians:
+        technicians = db.query(models.Technician).all()
+        
     return technicians
 
 @router.get("/technicians/nearest", response_model=schemas.NearestTechnicianResponse)

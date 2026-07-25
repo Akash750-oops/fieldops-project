@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Header, Response, Query
+from fastapi import APIRouter, Depends, Header, Response, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timezone, timedelta
@@ -264,3 +264,157 @@ def get_planning_kpi(
         },
     }
 
+
+# ──────────────────────────────────────────────────
+# Technician Declined Jobs
+# ──────────────────────────────────────────────────
+
+from app.auth.dependencies import require_role, get_current_user
+from app.auth.rbac import UserRole
+from app.services.enterprise_audit import audit_log, AuditAction
+from app.models import InAppNotification
+import uuid as uuid_mod
+
+
+@router.get("/planning/declined-jobs")
+def get_declined_jobs(
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.DISPATCHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    List all jobs rejected by technicians.
+    Only accessible by Super Admin, Admin, and Dispatcher.
+    """
+    query = db.query(
+        Job.id,
+        Job.customer_name,
+        Job.rejection_reason,
+        Job.priority,
+        Job.sla_deadline,
+        Job.assigned_at,
+        Job.rejected_at,
+        Job.status,
+        Job.location,
+        Job.service_type,
+        Job.rejected_by_tech_id,
+    ).filter(
+        func.lower(Job.status) == "rejected_by_technician",
+    )
+
+    if not current_user.is_super_admin:
+        query = query.filter(Job.tenant_id == current_user.tenant_id)
+
+    rows = query.order_by(Job.rejected_at.desc()).all()
+
+    results = []
+    for row in rows:
+        tech_name = None
+        if row.rejected_by_tech_id:
+            tech = db.query(Technician).filter(
+                Technician.tech_id == row.rejected_by_tech_id
+            ).first()
+            if tech:
+                tech_name = tech.technician_name
+
+        results.append({
+            "id": row.id,
+            "customer_name": row.customer_name,
+            "technician_name": tech_name,
+            "rejection_reason": row.rejection_reason,
+            "priority": row.priority,
+            "sla_deadline": row.sla_deadline.isoformat() if row.sla_deadline else None,
+            "assigned_at": row.assigned_at.isoformat() if row.assigned_at else None,
+            "rejected_at": row.rejected_at.isoformat() if row.rejected_at else None,
+            "status": row.status,
+            "location": row.location,
+            "service_type": row.service_type,
+        })
+
+    return results
+
+
+@router.post("/planning/declined-jobs/{job_id}/reassign")
+def reassign_declined_job(
+    job_id: int,
+    request: Request,
+    new_technician_id: int = Query(..., description="ID of the new technician"),
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.DISPATCHER)
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Reassign a declined job to a new technician.
+    - Updates job assignment
+    - Notifies the new technician
+    - Logs the audit event
+    - Removes from declined list
+    """
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != "REJECTED_BY_TECHNICIAN":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Job is not in declined status")
+
+    new_tech = db.query(Technician).filter(
+        Technician.technician_id == new_technician_id
+    ).first()
+    if not new_tech:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Technician not found")
+
+    old_status = job.status
+    job.assigned_technician_id = new_technician_id
+    job.status = "ASSIGNED"
+    job.assigned_at = datetime.now(timezone.utc)
+    job.assigned_by = current_user.user_id
+    job.rejection_reason = None
+    job.rejected_at = None
+    job.rejected_by_tech_id = None
+
+    # Increment tech's current jobs
+    new_tech.current_jobs = (new_tech.current_jobs or 0) + 1
+
+    # Notify the new technician
+    notif = InAppNotification(
+        id=str(uuid_mod.uuid4()),
+        tech_id=new_tech.tech_id or str(new_tech.technician_id),
+        job_id=str(job_id),
+        type="JOB_ASSIGNED",
+        title="New Job Assigned",
+        body=f"Job #{job_id} ({job.service_type}) has been assigned to you.",
+        status="UNREAD",
+        priority="HIGH",
+        tenant_id=current_user.tenant_id,
+    )
+    db.add(notif)
+
+    audit_log(
+        db,
+        action=AuditAction.JOB_REASSIGNED_FROM_DECLINED,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        role=current_user.role.value,
+        entity_type="job",
+        entity_id=str(job_id),
+        old_value={"status": old_status},
+        new_value={
+            "status": "ASSIGNED",
+            "new_technician_id": new_technician_id,
+            "new_technician_name": new_tech.technician_name,
+        },
+        request=request,
+    )
+
+    db.commit()
+    return {
+        "message": "Job reassigned successfully",
+        "job_id": job_id,
+        "new_technician": new_tech.technician_name,
+        "status": "ASSIGNED",
+    }

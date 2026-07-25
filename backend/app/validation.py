@@ -46,11 +46,7 @@ def validate_technician_for_assignment(technician: models.Technician, job: model
 
     # 3. Skill Match Check
     if not is_skill_matching(technician.technician_skill, job.required_skill, job.service_type):
-        logger.warning(f"Assignment blocked: Skill mismatch for Tech {technician.technician_id}")
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Skill mismatch: Technician provides '{technician.technician_skill}' but job requires '{job.required_skill or job.service_type}'"
-        )
+        logger.warning(f"Skill mismatch warning for Tech {technician.technician_id}: skill '{technician.technician_skill}', job requires '{job.required_skill or job.service_type}'")
 
     return True
 

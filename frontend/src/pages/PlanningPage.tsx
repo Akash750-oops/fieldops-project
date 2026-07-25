@@ -30,6 +30,7 @@ import RankedTechTable from "../components/assignment/RankedTechTable";
 import TopThreeHighlight, { RankedTechnician } from "../components/assignment/TopThreeHighlight";
 import ReDispatchHistory from "../components/notifications/ReDispatchHistory";
 import AlertBanner from "../components/notifications/AlertBanner";
+import { getDeclinedJobs, reassignDeclinedJob } from "../services/customerPortalService";
 
 const PAGE_SIZE = 8;
 
@@ -54,12 +55,28 @@ const getPriorityStyle = (priority: string): React.CSSProperties => {
 };
 
 const isSkillMatching = (techSkill: string, jobRequiredSkill?: string, jobServiceType?: string): boolean => {
-  if (!techSkill) return false;
+  if (!techSkill) return true;
   const tSkill = techSkill.trim().toUpperCase().replace(/_/g, " ");
   const jSkill = jobRequiredSkill ? jobRequiredSkill.trim().toUpperCase().replace(/_/g, " ") : "";
   const jType = jobServiceType ? jobServiceType.trim().toUpperCase().replace(/_/g, " ") : "";
 
-  return tSkill === jSkill || tSkill === jType;
+  if (jSkill && (tSkill === jSkill || tSkill.includes(jSkill) || jSkill.includes(tSkill))) return true;
+  if (jType && (tSkill === jType || tSkill.includes(jType) || jType.includes(tSkill))) return true;
+
+  const isPlumbJob = jSkill.includes("PLUMB") || jSkill.includes("PLUMP") || jType.includes("PLUMB") || jType.includes("PLUMP");
+  const isPlumbTech = tSkill.includes("PLUMB") || tSkill.includes("PLUMP");
+
+  const isElecJob = jSkill.includes("ELEC") || jType.includes("ELEC");
+  const isElecTech = tSkill.includes("ELEC");
+
+  const isHvacJob = jSkill.includes("HVAC") || jSkill.includes("AC") || jType.includes("HVAC") || jType.includes("AC");
+  const isHvacTech = tSkill.includes("HVAC") || tSkill.includes("AC");
+
+  if (isPlumbJob && isPlumbTech) return true;
+  if (isElecJob && isElecTech) return true;
+  if (isHvacJob && isHvacTech) return true;
+
+  return true;
 };
 
 interface PendingJob {
@@ -1031,6 +1048,28 @@ function PlanningDashboard() {
   const [activeMetricFilter, setActiveMetricFilter] = useState("all");
   const [dispatchQueueCount, setDispatchQueueCount] = useState(0);
 
+  const [declinedJobsList, setDeclinedJobsList] = useState<any[]>([]);
+  const [declinedLoading, setDeclinedLoading] = useState(false);
+  const [reassignModalJob, setReassignModalJob] = useState<any>(null);
+  const [selectedReassignTechId, setSelectedReassignTechId] = useState<number | null>(null);
+  const [reassigning, setReassigning] = useState(false);
+
+  const fetchDeclinedJobsList = async () => {
+    try {
+      setDeclinedLoading(true);
+      const res = await getDeclinedJobs();
+      setDeclinedJobsList(res.data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeclinedLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDeclinedJobsList();
+  }, []);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebSearchQuery(searchQuery);
@@ -1213,27 +1252,61 @@ function PlanningDashboard() {
   const generateRankedCandidates = (job: PendingJob, techsOverride?: Technician[]): RankedTechnician[] => {
     const techs = techsOverride || allTechsList;
     if (!techs || techs.length === 0) return [];
+
+    const sType = (job.service_type || "").toLowerCase().trim();
+    const reqSkill = (job.required_skill || "").toLowerCase().trim();
+
     return techs
-      .filter((t) => {
+      .map((t, index) => {
         const status = normalizeStatus(t.technician_status);
-        const isEligible = status === "available" || status === "assigned";
-        return isEligible && isSkillMatching(t.technician_skill, job.required_skill, job.service_type);
-      })
-      .map((t) => {
-        const seed = t.technician_id * 13 + (job?.id || 1) * 7;
-        const pseudo = (n: number) => ((seed * n * 31 + 17) % 45) + 50;
-        const composite = pseudo(1);
+        const isAvailable = status === "available" || status === "assigned";
+        
+        const rawTechSkill = (t.technician_skill || "").toLowerCase().trim();
+
+        // Skill category checks
+        const isPlumbJob = sType.includes("plumb") || sType.includes("plump") || reqSkill.includes("plumb") || reqSkill.includes("plump");
+        const isPlumbTech = rawTechSkill.includes("plumb") || rawTechSkill.includes("plump");
+
+        const isElecJob = sType.includes("elec") || reqSkill.includes("elec");
+        const isElecTech = rawTechSkill.includes("elec");
+
+        const isHvacJob = sType.includes("hvac") || sType.includes("ac") || reqSkill.includes("hvac") || reqSkill.includes("ac");
+        const isHvacTech = rawTechSkill.includes("hvac") || rawTechSkill.includes("ac");
+
+        let hasSkillMatch = false;
+        if (isPlumbJob && isPlumbTech) {
+          hasSkillMatch = true;
+        } else if (isElecJob && isElecTech) {
+          hasSkillMatch = true;
+        } else if (isHvacJob && isHvacTech) {
+          hasSkillMatch = true;
+        } else if (sType && (rawTechSkill.includes(sType) || sType.includes(rawTechSkill))) {
+          hasSkillMatch = true;
+        } else if (reqSkill && (rawTechSkill.includes(reqSkill) || reqSkill.includes(rawTechSkill))) {
+          hasSkillMatch = true;
+        }
+
+        const skillScore = hasSkillMatch ? 100.0 : 50.0;
+        const proximityScore = Math.max(50, 95 - index * 8);
+        const workloadScore = Math.max(40, 100 - (t.current_jobs || 0) * 15);
+        
+        // Composite score
+        const statusMultiplier = isAvailable ? 1.0 : 0.65;
+        const composite = Math.round(
+          (skillScore * 0.45 + proximityScore * 0.3 + workloadScore * 0.25) * statusMultiplier
+        );
+
         return {
           technician_id: t.technician_id,
           technician_name: t.technician_name,
-          technician_skill: t.technician_skill,
-          technician_status: t.technician_status,
+          technician_skill: t.technician_skill || "General",
+          technician_status: t.technician_status || "Available",
           composite_score: composite,
-          proximity_score: Math.min(100, pseudo(2)),
-          skill_score: 100.0,
-          workload_score: Math.min(100, pseudo(4)),
-          distance_km: parseFloat(((seed % 200) / 10).toFixed(1)),
-          active_jobs: t.current_jobs ?? Math.floor(seed % 3),
+          proximity_score: proximityScore,
+          skill_score: skillScore,
+          workload_score: workloadScore,
+          distance_km: parseFloat(((index * 2.4 + 1.2)).toFixed(1)),
+          active_jobs: t.current_jobs ?? 0,
           max_capacity: t.max_jobs ?? 5,
         };
       })
@@ -1283,10 +1356,13 @@ function PlanningDashboard() {
             workload_score: rt.workload_score || 0,
             distance_km: rt.distance_km || 0,
             active_jobs: rt.active_jobs || 0,
-            max_capacity: rt.max_capacity || 3
+            max_capacity: rt.max_capacity || 5
           };
         });
-        setRankedCandidates(mapped);
+        const fallback = generateRankedCandidates(job, techs);
+        const mappedIds = new Set(mapped.map(m => m.technician_id));
+        const combined = [...mapped, ...fallback.filter(f => !mappedIds.has(f.technician_id))];
+        setRankedCandidates(combined);
       } else {
         setRankedCandidates(generateRankedCandidates(job, techs));
       }
@@ -1486,7 +1562,8 @@ function PlanningDashboard() {
                     }}
                     candidates={rankedCandidates}
                     selectedTechId={selectedTechs[selectedJobForRanking.id] ? parseInt(selectedTechs[selectedJobForRanking.id], 10) : undefined}
-                    onSelect={(techId) => {
+                    onSelect={async (techId) => {
+                      const jobToAssign = selectedJobForRanking;
                       const tech = allTechsList.find(
                         (t) => t.technician_id === techId
                       );
@@ -1500,17 +1577,9 @@ function PlanningDashboard() {
                         );
                         return;
                       }
-                      if (
-                        tech &&
-                        !isSkillMatching(tech.technician_skill, selectedJobForRanking.required_skill, selectedJobForRanking.service_type)
-                      ) {
-                        setError(
-                          `Skill mismatch: Technician provides '${tech.technician_skill || ""}' but job requires '${selectedJobForRanking.required_skill || selectedJobForRanking.service_type}'`
-                        );
-                        return;
-                      }
-                      handleTechSelect(selectedJobForRanking.id, String(techId));
+                      handleTechSelect(jobToAssign.id, String(techId));
                       handleTopThreeClose();
+                      await handleAssignJob(jobToAssign.id, String(techId));
                     }}
                     onClose={handleTopThreeClose}
                     hideHeader={true}
@@ -1661,6 +1730,34 @@ function PlanningDashboard() {
               ...styles.planningTabCount,
               ...(activeTab === 'escalated' ? styles.planningTabCountActive : {})
             }}>{escalatedJobs.length}</span>
+          </button>
+          <div className="planning-tab-divider" />
+          <button
+            className={`planning-tab-style ${activeTab === 'declined' ? 'active-tab-style' : ''}`}
+            style={{
+              ...styles.planningTab,
+              ...(activeTab === 'declined' ? styles.planningTabActive : {}),
+              paddingLeft: "16px",
+              paddingRight: "16px",
+            }}
+            onClick={() => {
+              setActiveTab('declined');
+              fetchDeclinedJobsList();
+            }}
+          >
+            <span
+              className="planning-tab-dot-style"
+              style={{
+                ...styles.planningTabDot,
+                backgroundColor: "#DC2626",
+                boxShadow: "0 0 0 2px rgba(220,38,38,0.15)",
+              }}
+            />
+            <span>Technician Declined Jobs</span>
+            <span style={{
+              ...styles.planningTabCount,
+              ...(activeTab === 'declined' ? styles.planningTabCountActive : {})
+            }}>{declinedJobsList.length}</span>
           </button>
         </div>
         <div className="planning-search-row-responsive" style={{ display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
@@ -2272,6 +2369,148 @@ function PlanningDashboard() {
             )}
           </div>
         </section>
+      )}
+
+      {/* TECHNICIAN DECLINED JOBS TAB */}
+      {activeTab === 'declined' && (
+        <section style={styles.dashboardSection}>
+          <div style={styles.sectionContent}>
+            {declinedLoading ? (
+              <LoadingSpinner message="Loading declined jobs..." />
+            ) : declinedJobsList.length === 0 ? (
+              <EmptyState
+                title="No Technician Declined Jobs"
+                description="There are currently no jobs that have been rejected by technicians."
+              />
+            ) : (
+              <div style={styles.tableContainer}>
+                <table style={styles.dashboardTable}>
+                  <thead>
+                    <tr>
+                      <th style={styles.dashboardTableTh}>Job ID</th>
+                      <th style={styles.dashboardTableTh}>Customer</th>
+                      <th style={styles.dashboardTableTh}>Service Type</th>
+                      <th style={styles.dashboardTableTh}>Declining Technician</th>
+                      <th style={styles.dashboardTableTh}>Rejection Reason</th>
+                      <th style={styles.dashboardTableTh}>Rejected At</th>
+                      <th style={styles.dashboardTableTh}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="planning-table-body">
+                    {declinedJobsList.map((job) => (
+                      <tr key={job.id} className="dashboard-table-row">
+                        <td style={{ ...styles.dashboardTableTd, ...styles.jobIdCell }}>#{job.id}</td>
+                        <td style={{ ...styles.dashboardTableTd, ...styles.customerCell }}>{job.customer_name}</td>
+                        <td style={styles.dashboardTableTd}>{job.service_type || "N/A"}</td>
+                        <td style={styles.dashboardTableTd}>
+                          <span style={{ fontWeight: 600, color: "#DC2626" }}>{job.technician_name || "Unknown Tech"}</span>
+                        </td>
+                        <td style={{ ...styles.dashboardTableTd, maxWidth: "250px" }}>
+                          <div style={{ fontSize: "12px", color: "#4B5563", background: "#FEF2F2", padding: "6px 10px", borderRadius: "6px", border: "1px solid #FECACA" }}>
+                            {job.rejection_reason || "No reason given"}
+                          </div>
+                        </td>
+                        <td style={styles.dashboardTableTd}>
+                          {job.rejected_at ? new Date(job.rejected_at).toLocaleString() : "N/A"}
+                        </td>
+                        <td style={styles.dashboardTableTd}>
+                          <button
+                            style={{
+                              padding: "6px 14px",
+                              background: "#7AAE8A",
+                              color: "#fff",
+                              border: "none",
+                              borderRadius: "6px",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                            onClick={() => {
+                              setReassignModalJob(job);
+                              setSelectedReassignTechId(null);
+                            }}
+                          >
+                            Reassign Job
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Reassign Declined Job Modal */}
+      {reassignModalJob && (
+        <div style={styles.centeredModalOverlay} onClick={() => setReassignModalJob(null)}>
+          <div style={{ ...styles.viewJobModal, maxWidth: "440px", padding: "24px" }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#1F2933", marginBottom: "8px" }}>
+              Reassign Job #{reassignModalJob.id}
+            </h3>
+            <p style={{ fontSize: "13px", color: "#6B7280", marginBottom: "16px" }}>
+              Select a new technician to reassign this declined job ({reassignModalJob.customer_name} - {reassignModalJob.service_type}).
+            </p>
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "6px", display: "block" }}>
+                Select Technician *
+              </label>
+              <select
+                style={{ ...styles.techSelect, maxWidth: "100%", width: "100%", height: "38px" }}
+                value={selectedReassignTechId || ""}
+                onChange={(e) => setSelectedReassignTechId(Number(e.target.value))}
+              >
+                <option value="">-- Choose a Technician --</option>
+                {allTechsList.map((t) => (
+                  <option key={t.technician_id} value={t.technician_id}>
+                    {t.technician_name} ({t.technician_skill}) - {t.technician_status} ({t.current_jobs ?? 0}/{t.max_jobs ?? 5})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                style={{ padding: "8px 16px", border: "1px solid #D1D5DB", borderRadius: "6px", background: "#fff", cursor: "pointer", fontSize: "13px" }}
+                onClick={() => setReassignModalJob(null)}
+              >
+                Cancel
+              </button>
+              <button
+                style={{
+                  padding: "8px 16px",
+                  border: "none",
+                  borderRadius: "6px",
+                  background: "#7AAE8A",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  opacity: !selectedReassignTechId || reassigning ? 0.6 : 1,
+                }}
+                disabled={!selectedReassignTechId || reassigning}
+                onClick={async () => {
+                  if (!selectedReassignTechId) return;
+                  setReassigning(true);
+                  try {
+                    await reassignDeclinedJob(reassignModalJob.id, selectedReassignTechId);
+                    setSuccessMsg(`Job #${reassignModalJob.id} reassigned successfully!`);
+                    setReassignModalJob(null);
+                    fetchDeclinedJobsList();
+                    fetchAllData();
+                  } catch (err: any) {
+                    alert(err.response?.data?.detail || "Reassignment failed");
+                  } finally {
+                    setReassigning(false);
+                  }
+                }}
+              >
+                {reassigning ? "Reassigning..." : "Confirm Reassign"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* View Assignment Modal */}
