@@ -12,7 +12,9 @@ import redis.asyncio as aioredis
 logger = logging.getLogger(__name__)
 
 from .database import SessionLocal
-from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking,brand_safety_admin,admin_prompts,admin_communication_configuration
+from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking, brand_safety_admin, admin_prompts, admin_communication_configuration
+from .routes import auth as auth_routes
+from .routes.organizations import org_router, platform_router
 from . import models
 from .services.justification_validator import JustificationValidationError
 from .worker import start_scheduler, stop_scheduler
@@ -59,13 +61,17 @@ async def lifespan(app: FastAPI):
         listener_task = None
         scheduler = None
         
-    # Seed default notification templates
+    # Seed default notification templates, organizations, and users
     db = SessionLocal()
     try:
         seed_default_templates(db)
         print("Default notification templates seeded successfully.")
+        
+        from .seed_users import seed_organizations_and_users
+        seed_organizations_and_users(db)
+        print("Default organizations and users seeded successfully.")
     except Exception as e:
-        print(f"Failed to seed default templates: {e}")
+        print(f"Failed to seed default data: {e}")
     finally:
         db.close()
 
@@ -109,13 +115,20 @@ app = FastAPI(
 )
 
 
+# CORS — locked down to configured origins (no more wildcard)
+cors_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[origin.strip() for origin in cors_origins],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Security headers middleware
+from .middleware.tenant import SecurityHeadersMiddleware, RateLimitMiddleware
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware)
 
 from .context import correlation_id_ctx
 import uuid
@@ -200,6 +213,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 
+# ──── Multi-Tenant Auth Routes ────
+app.include_router(auth_routes.router)
+app.include_router(org_router)
+app.include_router(platform_router)
+
+# ──── Existing Routes ────
 app.include_router(jobs.router)
 app.include_router(jobs.api_v1_router)
 app.include_router(assignment.router)

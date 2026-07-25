@@ -8,6 +8,8 @@ from ..database import get_db
 from .. import models, schemas
 import uuid
 
+from app.auth.dependencies import get_current_user_or_tenant, AuthenticatedUser
+
 router = APIRouter(
     prefix="/technicians",
     tags=["Technicians"]
@@ -16,13 +18,14 @@ router = APIRouter(
 @router.post("", response_model=Union[schemas.TechnicianResponse, List[schemas.TechnicianResponse]], status_code=status.HTTP_200_OK)
 def create_technician(
     technician: Union[schemas.TechnicianCreate, List[schemas.TechnicianCreate]],
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
     db: Session = Depends(get_db)
 ):
     """
     Register one or more new technicians.
     Prevents duplicate entries based on name and skill.
     """
+    user, tenant_id = user_tenant
     try:
         # Normalize to list for uniform processing
         tech_list = technician if isinstance(technician, list) else [technician]
@@ -32,7 +35,8 @@ def create_technician(
             # Check for duplicate
             existing = db.query(models.Technician).filter(
                 models.Technician.technician_name == tech_data.technician_name,
-                models.Technician.technician_skill == tech_data.technician_skill
+                models.Technician.technician_skill == tech_data.technician_skill,
+                models.Technician.tenant_id == tenant_id
             ).first()
             
             if existing:
@@ -50,7 +54,7 @@ def create_technician(
                 technician_skill=tech_data.technician_skill,
                 technician_location=tech_data.technician_location,
                 technician_status=tech_data.technician_status,
-                tenant_id=x_tenant_id or "tenant-1"
+                tenant_id=tenant_id
             )
             db.add(new_tech)
             created_techs.append(new_tech)
@@ -92,16 +96,17 @@ def get_all_technicians(
     skill: Optional[str] = None,
     page: Optional[int] = Query(None, ge=1),
     limit: Optional[int] = Query(None, ge=1),
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
     db: Session = Depends(get_db)
 ):
     """
     Retrieve all registered technicians, optionally filtered.
     """
+    user, tenant_id = user_tenant
     try:
         query = db.query(models.Technician)
-        if x_tenant_id:
-            query = query.filter(models.Technician.tenant_id == x_tenant_id)
+        if not user or not user.is_super_admin:
+            query = query.filter(models.Technician.tenant_id == tenant_id)
         
         if search:
             search_pattern = f"%{search}%"

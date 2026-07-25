@@ -291,6 +291,36 @@ def create_monthly_partitions():
         bind_engine = db.get_bind()
         is_postgres = bind_engine.url.drivername.startswith("postgresql")
         if is_postgres:
+            db.execute(text("""
+                CREATE OR REPLACE FUNCTION create_gps_ping_partition(target_date TIMESTAMPTZ)
+                RETURNS VOID AS $$
+                DECLARE
+                    partition_start DATE;
+                    partition_end DATE;
+                    partition_name TEXT;
+                    sql TEXT;
+                BEGIN
+                    partition_start := DATE_TRUNC('month', target_date)::DATE;
+                    partition_end := (partition_start + INTERVAL '1 month')::DATE;
+                    partition_name := 'gps_pings_' || TO_CHAR(partition_start, 'YYYY_MM');
+                    
+                    IF NOT EXISTS (
+                        SELECT 1 
+                        FROM pg_class c 
+                        JOIN pg_namespace n ON n.oid = c.relnamespace 
+                        WHERE c.relname = partition_name
+                    ) THEN
+                        BEGIN
+                            sql := 'CREATE TABLE ' || partition_name || ' PARTITION OF gps_pings ' ||
+                                   'FOR VALUES FROM (' || quote_literal(partition_start) || ') TO (' || quote_literal(partition_end) || ')';
+                            EXECUTE sql;
+                        EXCEPTION WHEN OTHERS THEN
+                            NULL;
+                        END;
+                    END IF;
+                END;
+                $$ LANGUAGE plpgsql;
+            """))
             db.execute(text("SELECT create_gps_ping_partition(NOW());"))
             db.execute(text("SELECT create_gps_ping_partition(NOW() + INTERVAL '1 month');"))
             db.commit()
