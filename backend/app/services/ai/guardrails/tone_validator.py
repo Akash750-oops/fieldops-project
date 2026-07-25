@@ -334,23 +334,19 @@ class ToneValidator:
         4. Return one structured GuardrailCheckResult
         """
 
+        from app.services.ai.FieldOpsAI.schemas.communication import output_text_for_validation
+
         started_at = perf_counter()
 
         violations: list[GuardrailViolation] = []
 
         scannable_fields: list[str] = []
 
-        for field in self.OUTPUT_FIELDS:
-            value = getattr(
-                decision,
-                field,
-            )
+        validation_text = output_text_for_validation(decision.output)
 
-            if value is None:
-                continue
-
+        if validation_text:
             scannable_text = self._prepare_text(
-                value
+                validation_text
             )
 
             scannable_fields.append(
@@ -372,7 +368,7 @@ class ToneValidator:
                             "Generated communication contains "
                             "aggressive language."
                         ),
-                        field=field,
+                        field="output",
                         safe_metadata={
                             "match_count": aggressive_count,
                             "detection_source": "LOCAL",
@@ -395,7 +391,7 @@ class ToneValidator:
                             "Generated communication contains "
                             "sarcastic language."
                         ),
-                        field=field,
+                        field="output",
                         safe_metadata={
                             "match_count": sarcastic_count,
                             "detection_source": "LOCAL",
@@ -422,7 +418,7 @@ class ToneValidator:
                             "Generated communication does not "
                             "meet professional tone standards."
                         ),
-                        field=field,
+                        field="output",
                         safe_metadata={
                             "match_count": (
                                 unprofessional_count

@@ -23,7 +23,7 @@ It never:
 
 from __future__ import annotations
 
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, Annotated
 from enum import Enum
 
 from pydantic import (
@@ -32,6 +32,7 @@ from pydantic import (
     Field,
     model_validator,
     field_validator,
+    model_serializer,
 )
 from app.services.ai.FieldOpsAI.services.prompt_locale_service import normalize_locale, InvalidLocaleError
 
@@ -227,6 +228,61 @@ class CommunicationContext(BaseModel):
 
 
 # ==========================================================
+# Communication Output Schemas
+# ==========================================================
+
+class SMSMessageOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    channel: Literal["SMS"] = "SMS"
+    text: str
+
+class EmailMessageOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    channel: Literal["EMAIL"] = "EMAIL"
+    subject: str
+    text_body: str
+    html_body: str | None = None
+
+class PushMessageOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    channel: Literal["PUSH"] = "PUSH"
+    title: str
+    body: str
+
+class PortalMessageOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    channel: Literal["PORTAL"] = "PORTAL"
+    title: str | None = None
+    body: str
+    content_format: Literal["text", "html"] = "text"
+
+FormattedCommunicationOutput = Annotated[
+    SMSMessageOutput
+    | EmailMessageOutput
+    | PushMessageOutput
+    | PortalMessageOutput,
+    Field(discriminator="channel"),
+]
+
+
+def output_text_for_validation(output: FormattedCommunicationOutput) -> str:
+    """Deterministic projection of the channel output for guardrail validation."""
+    if output.channel == "SMS":
+        return output.text
+    elif output.channel == "EMAIL":
+        return f"{output.subject}\n{output.text_body}".strip()
+    elif output.channel == "PUSH":
+        return f"{output.title}\n{output.body}".strip()
+    elif output.channel == "PORTAL":
+        parts = []
+        if getattr(output, "title", None):
+            parts.append(output.title) # type: ignore
+        parts.append(output.body)
+        return "\n".join(parts).strip()
+    return ""
+
+
+# ==========================================================
 # Communication Decision
 # ==========================================================
 
@@ -253,30 +309,9 @@ class CommunicationDecision(BaseModel):
         ),
     )
 
-    title: str | None = Field(
-        default=None,
-        min_length=1,
-        description=(
-            "Required for PUSH. Optional for IN_APP. "
-            "Not allowed for SMS or EMAIL."
-        ),
-    )
-
-    subject: str | None = Field(
-        default=None,
-        min_length=1,
-        description=(
-            "Required for EMAIL. "
-            "Not allowed for SMS, PUSH, or IN_APP."
-        ),
-    )
-
-    message: str = Field(
+    output: FormattedCommunicationOutput = Field(
         ...,
-        min_length=1,
-        description=(
-            "Generated communication body or message."
-        ),
+        description="The strict canonical formatted output for the channel.",
     )
 
     tone: CommunicationTone = Field(
@@ -291,59 +326,102 @@ class CommunicationDecision(BaseModel):
         description="AI confidence score.",
     )
 
+    @property
+    def message(self) -> str:
+        """Legacy accessor for message body."""
+        if self.channel == "SMS":
+            return self.output.text
+        elif self.channel == "EMAIL":
+            return self.output.html_body if self.output.html_body else self.output.text_body
+        else:
+            return self.output.body
+
+    @property
+    def title(self) -> str | None:
+        """Legacy accessor for message title."""
+        if self.channel == "PUSH":
+            return self.output.title
+        elif self.channel in ("IN_APP", "PORTAL"):
+            return getattr(self.output, "title", None)
+        return None
+
+    @property
+    def subject(self) -> str | None:
+        """Legacy accessor for message subject."""
+        if self.channel == "EMAIL":
+            return getattr(self.output, "subject", None)
+        return None
+
     # ------------------------------------------------------
 
-    @model_validator(
-        mode="after"
-    )
-    def validate_channel_fields(
-        self,
-    ) -> Self:
+    @model_validator(mode="before")
+    @classmethod
+    def validate_legacy_fields_and_format(cls, data: Any) -> Any:
         """
-        Enforce the output structure required by each channel.
-
-        Length rules are not handled here. They belong to the
-        LengthValidator so an oversized AI response
-        can trigger an auditable Jinja2 fallback.
+        AI compatibility boundary. Validates legacy fields and formats output
+        if the canonical output field is missing.
         """
+        if not isinstance(data, dict):
+            return data
 
-        if self.channel == "EMAIL":
-            if self.subject is None:
-                raise ValueError(
-                    "EMAIL communication requires subject."
-                )
+        if "output" in data:
+            return data
+            
+        channel = data.get("channel")
+        if not channel:
+            return data
+            
+        title = data.get("title")
+        subject = data.get("subject")
+        message = data.get("message")
+        
+        # Enforce legacy channel bounds to pass existing tests
+        if channel == "EMAIL":
+            if not subject:
+                raise ValueError("EMAIL communication requires subject")
+            if title is not None:
+                raise ValueError("EMAIL communication must not include title")
+        elif channel == "SMS":
+            if title is not None:
+                raise ValueError("SMS communication must not include title")
+            if subject is not None:
+                raise ValueError("SMS communication must not include subject")
+        elif channel == "PUSH":
+            if not title:
+                raise ValueError("PUSH communication requires title")
+            if subject is not None:
+                raise ValueError("PUSH communication must not include subject")
+        elif channel == "IN_APP":
+            if subject is not None:
+                raise ValueError("IN_APP communication must not include subject")
+        
+        # Determine rendered_title from legacy subject or title
+        rendered_title = subject if channel == "EMAIL" else title
+        rendered_body = message
+        
+        # Remove legacy fields so Pydantic doesn't see them as extra forbidden inputs
+        data.pop("title", None)
+        data.pop("subject", None)
+        data.pop("message", None)
 
-            if self.title is not None:
-                raise ValueError(
-                    "EMAIL communication must not include title."
-                )
+        if rendered_body is None:
+            # Let the standard pydantic validation catch missing required fields
+            return data
 
-        elif self.channel == "SMS":
-            if self.subject is not None:
-                raise ValueError(
-                    "SMS communication must not include subject."
-                )
+        # Avoid circular import by importing here
+        from app.services.ai.FieldOpsAI.services.message_output_formatter import MessageOutputFormatter
+        
+        # Map IN_APP to PORTAL for output formatting
+        format_channel = "PORTAL" if channel == "IN_APP" else channel
 
-            if self.title is not None:
-                raise ValueError(
-                    "SMS communication must not include title."
-                )
-
-        elif self.channel == "PUSH":
-            if self.title is None:
-                raise ValueError(
-                    "PUSH communication requires title."
-                )
-
-            if self.subject is not None:
-                raise ValueError(
-                    "PUSH communication must not include subject."
-                )
-
-        elif self.channel == "IN_APP":
-            if self.subject is not None:
-                raise ValueError(
-                    "IN_APP communication must not include subject."
-                )
-
-        return self
+        try:
+            data["output"] = MessageOutputFormatter.format(
+                channel=format_channel,
+                rendered_title=rendered_title,
+                rendered_body=rendered_body,
+                template_format="text" # AI outputs are text right now unless specified
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to format message output: {str(e)}")
+            
+        return data

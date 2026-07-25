@@ -297,7 +297,7 @@ def test_managed_lookup_inputs(mock_registry_class):
     mock_registry = Mock()
     mock_registry_class.return_value = mock_registry
     mock_registry.find.return_value = PromptTemplateLookupResponse(
-        id=1, name="t", agent_type="CommsAgent", channel="sms", language="en", status="active",
+        id=1, name="t", agent_type="CommsAgent", channel="sms", language="en", status="assigned",
         body="Body", title="Title", variables=[], version=1, is_active=True, source="tenant"
     )
     
@@ -307,11 +307,11 @@ def test_managed_lookup_inputs(mock_registry_class):
         agent_type="CommsAgent",
         channel="sms",
         language="en",
-        status="active",
+        status="assigned",
         context={}
     )
     
-    mock_registry.find.assert_called_with("CommsAgent", "sms", "en", "active")
+    mock_registry.find.assert_called_with("CommsAgent", "sms", "en", "assigned")
     mock_registry_class.assert_called_once_with(db=mock_registry_class.call_args[1]["db"], tenant_id="tenant1", actor_id="system_renderer", redis_client=None)
 
 def test_unsupported_format_raises_typed_error():
@@ -379,13 +379,13 @@ def test_managed_html_template(mock_registry_class):
     mock_registry_class.return_value = mock_registry
     
     dto = PromptTemplateLookupResponse(
-        id=1, name="t", agent_type="CommsAgent", channel="email", language="en", status="active",
+        id=1, name="t", agent_type="CommsAgent", channel="email", language="en", status="assigned",
         body="<b>{{ val }}</b>", title="Title", variables=[PromptVariableDefinition(name="val")], version=1, is_active=True, source="tenant", format="html"
     )
     mock_registry.find.return_value = dto
     
     res = render_managed_template(
-        db=Mock(), tenant_id="tenant1", agent_type="CommsAgent", channel="email", language="en", status="active", context={"val": "<script>"}
+        db=Mock(), tenant_id="tenant1", agent_type="CommsAgent", channel="email", language="en", status="assigned", context={"val": "<script>"}
     )
     assert res.body == "<b>&lt;script&gt;</b>"
 
@@ -395,13 +395,13 @@ def test_managed_text_template(mock_registry_class):
     mock_registry_class.return_value = mock_registry
     
     dto = PromptTemplateLookupResponse(
-        id=1, name="t", agent_type="CommsAgent", channel="sms", language="en", status="active",
+        id=1, name="t", agent_type="CommsAgent", channel="sms", language="en", status="assigned",
         body="{{ val }}", title="Title", variables=[PromptVariableDefinition(name="val")], version=1, is_active=True, source="tenant", format="text"
     )
     mock_registry.find.return_value = dto
     
     res = render_managed_template(
-        db=Mock(), tenant_id="tenant1", agent_type="CommsAgent", channel="sms", language="en", status="active", context={"val": "<script>"}
+        db=Mock(), tenant_id="tenant1", agent_type="CommsAgent", channel="sms", language="en", status="assigned", context={"val": "<script>"}
     )
     assert res.body == "<script>"
 

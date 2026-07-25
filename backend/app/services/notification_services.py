@@ -557,10 +557,25 @@ class NotificationRouter:
         """
         Route one job-status event.
         """
+        from app.services.ai.FieldOpsAI.schemas.prompt_template import (
+            normalize_template_status,
+            UnsupportedTemplateStatusError,
+        )
 
-        routing = self.STATUS_NOTIFICATIONS.get(
-            event.to_status,
-            {},
+        try:
+            canon_enum = normalize_template_status(event.to_status)
+            canon_status_name = canon_enum.name
+            if canon_status_name == "ENROUTE":
+                canon_status_name = "EN_ROUTE"
+            elif canon_status_name == "ONSITE":
+                canon_status_name = "ON_SITE"
+        except UnsupportedTemplateStatusError:
+            canon_status_name = str(event.to_status).upper()
+
+        routing = (
+            self.STATUS_NOTIFICATIONS.get(event.to_status)
+            or self.STATUS_NOTIFICATIONS.get(canon_status_name)
+            or {}
         )
 
         for recipient_type, config in routing.items():
@@ -657,6 +672,10 @@ class NotificationRouter:
         Convert a legacy template name into a canonical
         CommunicationContext notification type.
         """
+        from app.services.ai.FieldOpsAI.schemas.prompt_template import (
+            normalize_template_status,
+            UnsupportedTemplateStatusError,
+        )
 
         normalized = str(
             template_name
@@ -1074,9 +1093,9 @@ class NotificationRouter:
 
                 return False
 
-            title = communication.decision.title
+            title = communication.decision.output.title
 
-            if title is None:
+            if not title:
                 logger.error(
                     "Safe push communication did not contain "
                     "a title. Delivery was skipped. job_id=%s",
@@ -1105,7 +1124,7 @@ class NotificationRouter:
                 correlation_id_ctx.get(),
                 notification_title=title,
                 notification_body=(
-                    communication.decision.message
+                    communication.decision.output.body
                 ),
                 notification_type=(
                     notification_type
@@ -1190,7 +1209,7 @@ class NotificationRouter:
             return False
 
         message_body = (
-            communication.decision.message
+            communication.decision.output.text
         )
 
         # Final length check after real names and other values have
@@ -1400,12 +1419,12 @@ class NotificationRouter:
             return False
 
         subject = (
-            communication.decision.subject
+            communication.decision.output.subject
         )
 
-        body_html = (
-            communication.decision.message
-        )
+        # Preserve text alternative for Story 10
+        text_body = communication.decision.output.text_body
+        body_html = communication.decision.output.html_body or text_body
 
         if not isinstance(subject, str):
             logger.error(
@@ -1540,11 +1559,11 @@ class NotificationRouter:
                 notification_type
             ),
             "title": (
-                communication.decision.title
+                communication.decision.output.title
                 or "FieldOps Update"
             ),
             "message": (
-                communication.decision.message
+                communication.decision.output.body
             ),
             "channel": "IN_APP",
         }

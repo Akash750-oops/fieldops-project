@@ -163,12 +163,22 @@ class _FakeCommIntegration:
             def __init__(self):
                 self.body = "test body"
                 self.html = "test html"
+        class FakeOutput:
+            def __init__(self):
+                self.text = "test message"
+                self.subject = "test subject"
+                self.title = "test title"
+                self.body = "test message"
+                self.html_body = "test message"
+                self.text_body = "test message"
+        
         class FakeDecision:
             def __init__(self, c):
                 self.channel = c
                 self.message = "test message"
                 self.subject = "test subject"
                 self.title = "test title"
+                self.output = FakeOutput()
         class FakeResult:
             def __init__(self, c):
                 self.decision = FakeDecision(c)

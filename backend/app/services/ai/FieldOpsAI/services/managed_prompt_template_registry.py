@@ -16,7 +16,11 @@ from app.services.ai.FieldOpsAI.schemas.prompt_template import (
     AgentType,
     PromptChannel,
     PromptLanguage,
-    _validate_jinja_variables
+    _validate_jinja_variables,
+    normalize_template_status,
+    UnsupportedTemplateStatusError,
+    STATUS_LOOKUP_CANDIDATES,
+    MessageTemplateStatus,
 )
 from app.services.ai.FieldOpsAI.services.prompt_locale_service import (
     normalize_locale,
@@ -355,14 +359,20 @@ class ManagedPromptTemplateRegistry:
             norm_language = normalize_locale(language)
         except InvalidLocaleError:
             raise TemplateValidationServiceError("Invalid locale")
-        cache_key = self._build_cache_key("prompt_find", agent_type=agent_type, channel=channel, language=norm_language, status=status)
+
+        try:
+            norm_status_enum = normalize_template_status(status, allow_default=True)
+            norm_status = norm_status_enum.value if hasattr(norm_status_enum, "value") else str(norm_status_enum)
+        except UnsupportedTemplateStatusError:
+            raise TemplateValidationServiceError("Unsupported template status")
+
+        cache_key = self._build_cache_key("prompt_find", agent_type=agent_type, channel=channel, language=norm_language, status=norm_status)
         cached = self._read_from_cache(cache_key)
         if cached:
             try:
                 return PromptTemplateLookupResponse.model_validate(
                     cached
                 )
-
             except (
                 ValidationError,
                 ValueError,
@@ -371,22 +381,23 @@ class ManagedPromptTemplateRegistry:
                 self._delete_cache_key(
                     cache_key
                 )
+
         try:
             cands = locale_candidates(norm_language)
-            candidates = self.repo.find_active_candidates(agent_type, channel, cands, status)
+            if isinstance(norm_status_enum, MessageTemplateStatus) and norm_status_enum in STATUS_LOOKUP_CANDIDATES:
+                status_candidates = STATUS_LOOKUP_CANDIDATES[norm_status_enum] + ("default",)
+            else:
+                status_candidates = ("default",)
+
+            candidates = self.repo.find_active_candidates(agent_type, channel, cands, status_candidates)
             
             match = None
             rules = []
-            cands = locale_candidates(norm_language)
-            for lang_cand in cands:
-                rules.append((self.tenant_id, lang_cand, status))
-            for lang_cand in cands:
-                rules.append((self.tenant_id, lang_cand, "default"))
-            for lang_cand in cands:
-                rules.append(("**platform**", lang_cand, status))
-            for lang_cand in cands:
-                rules.append(("**platform**", lang_cand, "default"))
-            
+            for t_id in (self.tenant_id, "**platform**"):
+                for lang_cand in cands:
+                    for stat_cand in status_candidates:
+                        rules.append((t_id, lang_cand, stat_cand))
+
             for t_id, lang, stat in rules:
                 for c in candidates:
                     if c.tenant_id == t_id and c.locale == lang and c.type == stat:
@@ -394,18 +405,18 @@ class ManagedPromptTemplateRegistry:
                         break
                 if match:
                     break
-                    
+
             if match:
                 resp = self._to_lookup_response(match)
                 self._write_to_cache(cache_key, resp.model_dump(mode='json'))
                 return resp
-                
+
             return PromptTemplateLookupResponse(
                 id=None,
                 name="builtin_default",
                 agent_type=agent_type,
                 channel=channel,
-                status=status,
+                status=norm_status,
                 body="builtin_default",
                 title="builtin_default",
                 variables=[],
@@ -415,7 +426,7 @@ class ManagedPromptTemplateRegistry:
                 source="builtin_default",
                 is_active=True
             )
-            
+
         except RepositoryError:
             raise RegistryServiceError("Database error")
 

@@ -84,6 +84,162 @@ class PromptLanguage(str, Enum):
     hi = "hi"
 
 
+DEFAULT_TEMPLATE_STATUS = "default"
+
+
+class MessageTemplateStatus(str, Enum):
+    CREATED = "created"
+    ASSIGNED = "assigned"
+    ENROUTE = "enroute"
+    ONSITE = "onsite"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class UnsupportedTemplateStatusError(ValueError):
+    """Raised when a template status cannot be normalized to a canonical status."""
+    pass
+
+
+LEGACY_TEMPLATE_STATUS_ALIASES: dict[str, MessageTemplateStatus] = {
+    # CREATED
+    "created": MessageTemplateStatus.CREATED,
+    "job_created": MessageTemplateStatus.CREATED,
+    
+    # ASSIGNED
+    "assigned": MessageTemplateStatus.ASSIGNED,
+    "job_assigned": MessageTemplateStatus.ASSIGNED,
+    "technician_job_assigned": MessageTemplateStatus.ASSIGNED,
+    "dispatcher_job_assigned": MessageTemplateStatus.ASSIGNED,
+
+    # ENROUTE
+    "enroute": MessageTemplateStatus.ENROUTE,
+    "en_route": MessageTemplateStatus.ENROUTE,
+    "technician_journey_started": MessageTemplateStatus.ENROUTE,
+    "journey_started": MessageTemplateStatus.ENROUTE,
+    "technician_en_route": MessageTemplateStatus.ENROUTE,
+    "dispatcher_en_route": MessageTemplateStatus.ENROUTE,
+    "job_en_route": MessageTemplateStatus.ENROUTE,
+
+    # ONSITE
+    "onsite": MessageTemplateStatus.ONSITE,
+    "on_site": MessageTemplateStatus.ONSITE,
+    "technician_arrived_on_site": MessageTemplateStatus.ONSITE,
+    "technician_arrived": MessageTemplateStatus.ONSITE,
+    "arrived_on_site": MessageTemplateStatus.ONSITE,
+    "dispatcher_on_site": MessageTemplateStatus.ONSITE,
+    "job_on_site": MessageTemplateStatus.ONSITE,
+
+    # COMPLETED
+    "completed": MessageTemplateStatus.COMPLETED,
+    "complete": MessageTemplateStatus.COMPLETED,
+    "job_completed": MessageTemplateStatus.COMPLETED,
+    "technician_job_completed": MessageTemplateStatus.COMPLETED,
+    "dispatcher_completed": MessageTemplateStatus.COMPLETED,
+    "job_done_survey": MessageTemplateStatus.COMPLETED,
+    "customer_job_completed": MessageTemplateStatus.COMPLETED,
+
+    # CANCELLED
+    "cancelled": MessageTemplateStatus.CANCELLED,
+    "canceled": MessageTemplateStatus.CANCELLED,
+    "job_cancelled": MessageTemplateStatus.CANCELLED,
+    "job_canceled": MessageTemplateStatus.CANCELLED,
+    "technician_job_cancelled": MessageTemplateStatus.CANCELLED,
+    "dispatcher_job_cancelled": MessageTemplateStatus.CANCELLED,
+    "job_cancelled_customer": MessageTemplateStatus.CANCELLED,
+    "customer_job_cancelled": MessageTemplateStatus.CANCELLED,
+}
+
+
+STATUS_LOOKUP_CANDIDATES: dict[MessageTemplateStatus, tuple[str, ...]] = {
+    MessageTemplateStatus.CREATED: (
+        "created",
+        "job_created",
+    ),
+    MessageTemplateStatus.ASSIGNED: (
+        "assigned",
+        "job_assigned",
+        "technician_job_assigned",
+        "dispatcher_job_assigned",
+    ),
+    MessageTemplateStatus.ENROUTE: (
+        "enroute",
+        "en_route",
+        "job_en_route",
+        "technician_en_route",
+        "technician_journey_started",
+        "journey_started",
+        "dispatcher_en_route",
+    ),
+    MessageTemplateStatus.ONSITE: (
+        "onsite",
+        "on_site",
+        "job_on_site",
+        "technician_arrived_on_site",
+        "technician_arrived",
+        "arrived_on_site",
+        "dispatcher_on_site",
+    ),
+    MessageTemplateStatus.COMPLETED: (
+        "completed",
+        "complete",
+        "job_completed",
+        "technician_job_completed",
+        "dispatcher_completed",
+        "job_done_survey",
+        "customer_job_completed",
+    ),
+    MessageTemplateStatus.CANCELLED: (
+        "cancelled",
+        "canceled",
+        "job_cancelled",
+        "job_canceled",
+        "technician_job_cancelled",
+        "dispatcher_job_cancelled",
+        "job_cancelled_customer",
+        "customer_job_cancelled",
+    ),
+}
+
+
+def normalize_template_status(
+    value: str,
+    *,
+    allow_default: bool = False,
+) -> MessageTemplateStatus | str:
+    """
+    Normalize and validate a template status string into a canonical MessageTemplateStatus enum or DEFAULT_TEMPLATE_STATUS.
+
+    Requires a string, strips whitespace, converts case/separators, and maps approved aliases.
+    If allow_default is True, "default" is accepted and returned as DEFAULT_TEMPLATE_STATUS.
+    Rejects unsupported values with UnsupportedTemplateStatusError.
+    """
+    if not isinstance(value, str):
+        raise UnsupportedTemplateStatusError("Status must be a string.")
+
+    stripped = value.strip()
+    if not stripped:
+        raise UnsupportedTemplateStatusError("Status cannot be blank.")
+
+    if len(stripped) > 50 or re.search(r"[\x00-\x1f\x7f-\x9f]", stripped):
+        raise UnsupportedTemplateStatusError("Unsupported message template status.")
+
+    normalized = stripped.lower().replace("-", "_")
+
+    if allow_default and normalized == DEFAULT_TEMPLATE_STATUS:
+        return DEFAULT_TEMPLATE_STATUS
+
+    try:
+        return MessageTemplateStatus(normalized)
+    except ValueError:
+        pass
+
+    if normalized in LEGACY_TEMPLATE_STATUS_ALIASES:
+        return LEGACY_TEMPLATE_STATUS_ALIASES[normalized]
+
+    raise UnsupportedTemplateStatusError(f"Unsupported message template status '{value}'.")
+
+
 # ==========================================================
 # Shared validation helpers
 # ==========================================================
@@ -91,27 +247,17 @@ class PromptLanguage(str, Enum):
 
 def _validate_status_value(
     value: str,
+    *,
+    allow_default: bool = True,
 ) -> str:
     """
     Normalize and validate a prompt status.
     """
-
-    normalized = value.strip().lower()
-
-    if not normalized:
-        raise ValueError(
-            "Status cannot be blank."
-        )
-
-    if not re.fullmatch(
-        r"[a-z0-9_]+",
-        normalized,
-    ):
-        raise ValueError(
-            "Status must use lowercase snake_case."
-        )
-
-    return normalized
+    try:
+        res = normalize_template_status(value, allow_default=allow_default)
+        return res.value if hasattr(res, "value") else str(res)
+    except UnsupportedTemplateStatusError as err:
+        raise ValueError(str(err)) from None
 
 
 def _validate_jinja_variables(

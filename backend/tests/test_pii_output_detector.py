@@ -148,7 +148,7 @@ def test_generated_email_fails() -> None:
     assert violation.code == "PII_EMAIL_DETECTED"
     assert violation.category == GuardrailCategory.PII
     assert violation.severity == GuardrailSeverity.CRITICAL
-    assert violation.field == "message"
+    assert violation.field == "output"
     assert violation.safe_metadata == {
         "pii_type": "EMAIL",
         "match_count": 1,
@@ -193,7 +193,7 @@ def test_generated_phone_number_fails(
     violation = result.violations[0]
 
     assert violation.code == "PII_PHONE_DETECTED"
-    assert violation.field == "message"
+    assert violation.field == "output"
     assert violation.safe_metadata == {
         "pii_type": "PHONE",
         "match_count": 1,
@@ -430,7 +430,7 @@ def test_detector_scans_email_subject() -> None:
     )
 
     assert result.passed is False
-    assert result.violations[0].field == "subject"
+    assert result.violations[0].field == "output"
     assert result.violations[0].code == "PII_EMAIL_DETECTED"
 
 

@@ -203,17 +203,16 @@ class PIIOutputDetector:
             detected.
         """
 
+        from app.services.ai.FieldOpsAI.schemas.communication import output_text_for_validation
+
         started_at = perf_counter()
 
         violations: list[GuardrailViolation] = []
 
-        for field in self.OUTPUT_FIELDS:
-            value = getattr(decision, field)
-
-            if value is None:
-                continue
-
-            detections = self._detect_pii(value)
+        validation_text = output_text_for_validation(decision.output)
+        
+        if validation_text:
+            detections = self._detect_pii(validation_text)
 
             for pii_type, match_count in detections.items():
                 if match_count == 0:
@@ -225,7 +224,7 @@ class PIIOutputDetector:
                         category=GuardrailCategory.PII,
                         severity=GuardrailSeverity.CRITICAL,
                         message=self.SAFE_MESSAGES[pii_type],
-                        field=field,
+                        field="output",  # Generic field for combined output
                         safe_metadata={
                             "pii_type": pii_type.value,
                             "match_count": match_count,

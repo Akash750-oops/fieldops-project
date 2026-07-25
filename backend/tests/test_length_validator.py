@@ -137,7 +137,7 @@ def test_sms_message_over_limit_fails() -> None:
         == GuardrailSeverity.ERROR
     )
 
-    assert violation.field == "message"
+    assert violation.field == "output"
 
     assert violation.safe_metadata == {
         "channel": "SMS",
@@ -210,7 +210,7 @@ def test_email_subject_over_limit_fails() -> None:
         == "EMAIL_SUBJECT_TOO_LONG"
     )
 
-    assert violation.field == "subject"
+    assert violation.field == "output"
 
     assert violation.safe_metadata == {
         "channel": "EMAIL",
@@ -283,7 +283,7 @@ def test_push_title_over_limit_fails() -> None:
         == "PUSH_TITLE_TOO_LONG"
     )
 
-    assert violation.field == "title"
+    assert violation.field == "output"
 
     assert violation.safe_metadata == {
         "channel": "PUSH",

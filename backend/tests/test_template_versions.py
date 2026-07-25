@@ -288,7 +288,16 @@ def test_redis_failure_fail_open(client, fake_redis, db):
 def test_platform_prompt_super_admin(client, db):
     # Setup a platform prompt manually since API rejects tenant_id in request body
     token = create_test_token(tenant_id="**platform**", roles=["super_admin"])
-    res = create_prompt(client, token) # Create as super_admin, tenant=**platform** defaults to **platform**
+    payload = {
+        "name": "Super Admin Custom Platform Prompt",
+        "agent_type": "SentimentAgent",
+        "channel": "sms",
+        "language": "en",
+        "status": "assigned",
+        "body": "Body {{ var }}",
+        "variables": ["var"],
+    }
+    res = create_prompt(client, token, payload=payload) # Create as super_admin, tenant=**platform** defaults to **platform**
     t_id = res.json()["id"]
     
     # Attempt to manage as tenant_admin

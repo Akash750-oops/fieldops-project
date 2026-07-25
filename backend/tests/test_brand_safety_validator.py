@@ -189,7 +189,7 @@ def test_configured_competitor_mention_fails() -> None:
         == GuardrailSeverity.ERROR
     )
 
-    assert violation.field == "message"
+    assert violation.field == "output"
 
     assert violation.safe_metadata == {
         "rule_id": "COMPETITOR_ACME_SERVICES",
@@ -423,7 +423,7 @@ def test_validator_scans_email_subject() -> None:
     )
 
     assert result.passed is False
-    assert result.violations[0].field == "subject"
+    assert result.violations[0].field == "output"
 
     assert (
         result.violations[0].code

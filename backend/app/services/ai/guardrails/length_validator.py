@@ -83,12 +83,12 @@ class LengthValidator:
 
         if decision.channel == "SMS":
             violation = self._check_max_length(
-                value=decision.message,
+                value=decision.output.text,
                 maximum_length=(
                     self.SMS_MESSAGE_MAX_LENGTH
                 ),
                 code="SMS_MESSAGE_TOO_LONG",
-                field="message",
+                field="output",
                 channel=decision.channel,
                 safe_message=(
                     "SMS message exceeds the configured "
@@ -102,14 +102,14 @@ class LengthValidator:
                 )
 
         elif decision.channel == "EMAIL":
-            if decision.subject is not None:
+            if decision.output.subject is not None:
                 violation = self._check_max_length(
-                    value=decision.subject,
+                    value=decision.output.subject,
                     maximum_length=(
                         self.EMAIL_SUBJECT_MAX_LENGTH
                     ),
                     code="EMAIL_SUBJECT_TOO_LONG",
-                    field="subject",
+                    field="output",
                     channel=decision.channel,
                     safe_message=(
                         "Email subject exceeds the configured "
@@ -123,14 +123,14 @@ class LengthValidator:
                     )
 
         elif decision.channel == "PUSH":
-            if decision.title is not None:
+            if decision.output.title is not None:
                 violation = self._check_max_length(
-                    value=decision.title,
+                    value=decision.output.title,
                     maximum_length=(
                         self.PUSH_TITLE_MAX_LENGTH
                     ),
                     code="PUSH_TITLE_TOO_LONG",
-                    field="title",
+                    field="output",
                     channel=decision.channel,
                     safe_message=(
                         "Push title exceeds the configured "

@@ -231,21 +231,44 @@ class CommunicationIntegration:
             )
         )
 
-        normalized_notification_type = (
-            self._normalize_required_text(
-                notification_type,
-                field_name="notification_type",
-            )
-            .lower()
+        from app.services.ai.FieldOpsAI.schemas.prompt_template import (
+            normalize_template_status,
+            UnsupportedTemplateStatusError,
+            MessageTemplateStatus,
         )
 
-        normalized_status = (
-            self._normalize_required_text(
-                event.to_status,
-                field_name="job_status",
-            )
-            .upper()
+        raw_event_status = self._normalize_required_text(
+            event.to_status,
+            field_name="job_status",
         )
+
+        try:
+            status_enum = normalize_template_status(raw_event_status, allow_default=False)
+            canon_status = status_enum.value if hasattr(status_enum, "value") else str(status_enum)
+        except UnsupportedTemplateStatusError:
+            raise CommunicationIntegrationError("Could not create a valid communication context.") from None
+
+        raw_notif_type = self._normalize_required_text(
+            notification_type,
+            field_name="notification_type",
+        ).lower()
+
+        try:
+            notif_enum = normalize_template_status(raw_notif_type, allow_default=False)
+            if isinstance(notif_enum, MessageTemplateStatus) and isinstance(status_enum, MessageTemplateStatus):
+                if notif_enum != status_enum:
+                    raise CommunicationIntegrationError("TEMPLATE_STATUS_CONFLICT")
+        except UnsupportedTemplateStatusError:
+            pass
+
+        effective_notif_type = raw_notif_type
+
+        # Map enum name to CommunicationContext JobStatus Literal
+        status_map = {
+            "enroute": "EN_ROUTE",
+            "onsite": "ON_SITE",
+        }
+        normalized_status = status_map.get(canon_status, canon_status.upper())
 
         normalized_locale = (
             self._normalize_required_text(
@@ -266,7 +289,7 @@ class CommunicationIntegration:
                     correlation_id_ctx.get()
                 ),
                 notification_type=(
-                    normalized_notification_type
+                    effective_notif_type
                 ),
                 recipient_type=(
                     normalized_recipient
