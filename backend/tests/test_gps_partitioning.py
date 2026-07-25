@@ -1,7 +1,10 @@
+
+
 import os
 import pytest
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker
+from app.models import Job, Technician
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone
 import uuid
@@ -35,6 +38,58 @@ def pg_engine():
     # Run alembic migrations to prepare partition tables
     try:
         alembic_cfg = Config("alembic.ini")
+        try:
+            command.downgrade(alembic_cfg, "base")
+        except Exception as e:
+            print(f"Failed to downgrade: {e}")
+
+        # Drop all alembic-managed tables first to start clean and prevent create_all schema conflicts
+        tables_to_drop = [
+            "gps_pings",
+            "tenants",
+            "tenant_gps_configurations",
+            "gps_purge_audit_logs",
+            "gps_rejected_ping_logs",
+            "eta_history",
+            "ai_guardrail_violations",
+            "ai_brand_safety_rules",
+            "agent_state_records",
+            "communication_channel_configurations",
+            "communication_configuration_audits",
+            "alembic_version"
+        ]
+        with engine.connect() as conn:
+            for table in tables_to_drop:
+                conn.execute(text(f"DROP TABLE IF EXISTS {table} CASCADE;"))
+            # Clean up columns added to baseline tables by later migrations
+            conn.execute(text("ALTER TABLE notification_templates DROP COLUMN IF EXISTS variables CASCADE;"))
+            conn.execute(text("ALTER TABLE notification_templates DROP COLUMN IF EXISTS tenant_id CASCADE;"))
+            conn.execute(text("ALTER TABLE notification_templates DROP COLUMN IF EXISTS agent_type CASCADE;"))
+            conn.execute(text("ALTER TABLE notification_templates DROP COLUMN IF EXISTS is_deleted CASCADE;"))
+            conn.execute(text("ALTER TABLE notification_templates DROP COLUMN IF EXISTS deleted_at CASCADE;"))
+            conn.execute(text("ALTER TABLE notification_templates DROP COLUMN IF EXISTS deleted_by CASCADE;"))
+            conn.execute(text("ALTER TABLE template_versions DROP COLUMN IF EXISTS name CASCADE;"))
+            conn.execute(text("ALTER TABLE template_versions DROP COLUMN IF EXISTS type CASCADE;"))
+            conn.execute(text("ALTER TABLE template_versions DROP COLUMN IF EXISTS channel CASCADE;"))
+            conn.execute(text("ALTER TABLE template_versions DROP COLUMN IF EXISTS locale CASCADE;"))
+            conn.execute(text("ALTER TABLE template_versions DROP COLUMN IF EXISTS format CASCADE;"))
+            conn.execute(text("ALTER TABLE template_versions DROP COLUMN IF EXISTS agent_type CASCADE;"))
+            conn.execute(text("ALTER TABLE template_versions DROP COLUMN IF EXISTS variables CASCADE;"))
+            conn.execute(text("ALTER TABLE template_versions DROP COLUMN IF EXISTS template_is_active CASCADE;"))
+            conn.execute(text("ALTER TABLE template_versions DROP COLUMN IF EXISTS restored_from_version CASCADE;"))
+            conn.execute(text("ALTER TABLE template_versions DROP COLUMN IF EXISTS is_deleted CASCADE;"))
+            conn.execute(text("ALTER TABLE template_versions DROP COLUMN IF EXISTS deleted_at CASCADE;"))
+            conn.execute(text("ALTER TABLE template_versions DROP COLUMN IF EXISTS deleted_by CASCADE;"))
+            # Clean up constraints/indexes added by migrations
+            conn.execute(text("ALTER TABLE template_versions DROP CONSTRAINT IF EXISTS uq_template_version CASCADE;"))
+            conn.execute(text("DROP INDEX IF EXISTS idx_active_template_version CASCADE;"))
+            conn.execute(text("DROP INDEX IF EXISTS ix_notification_templates_is_deleted CASCADE;"))
+            conn.execute(text("DROP INDEX IF EXISTS idx_managed_prompt_lookup CASCADE;"))
+            conn.execute(text("DROP INDEX IF EXISTS ix_notification_templates_agent_type CASCADE;"))
+            conn.execute(text("DROP INDEX IF EXISTS ix_notification_templates_tenant_id CASCADE;"))
+            conn.execute(text("ALTER TABLE notification_templates DROP CONSTRAINT IF EXISTS uq_notification_templates_lookup CASCADE;"))
+            conn.commit()
+
         command.upgrade(alembic_cfg, "head")
         # Ensure June and July 2026 partitions are created for time-independent testing
         with engine.connect() as conn:
@@ -51,6 +106,35 @@ def pg_engine():
 def pg_session(pg_engine):
     Session = sessionmaker(bind=pg_engine)
     session = Session()
+    
+    # Seed dummy technician and job if empty to prevent SELECT LIMIT 1 returning None
+    tech_count = session.execute(text("SELECT COUNT(*) FROM technicians;")).scalar()
+    if tech_count == 0:
+        tech = Technician(
+            tech_id='tech-dummy-part',
+            technician_name='Part Tech',
+            technician_skill='HVAC',
+            technician_location='0,0'
+        )
+        session.add(tech)
+        session.commit()
+    
+    job_count = session.execute(text("SELECT COUNT(*) FROM jobs;")).scalar()
+    if job_count == 0:
+        job = Job(
+            id=99991,
+            customer_name='Cust',
+            location='0,0',
+            issue_description='Desc',
+            priority='HIGH',
+            service_type='HVAC',
+            contact_number='1234567890',
+            preferred_service_date=datetime.now(timezone.utc).date(),
+            status='active'
+        )
+        session.add(job)
+        session.commit()
+    
     yield session
     session.rollback()
     session.close()
@@ -76,8 +160,25 @@ def test_default_values_and_uuid_generation(pg_session):
     
     if not tech_id or not job_id:
         # Seed dummy ones
-        pg_session.execute(text("INSERT INTO technicians (tech_id, technician_name, technician_skill, technician_location) VALUES ('tech-dummy-part', 'Part Tech', 'HVAC', '0,0') ON CONFLICT DO NOTHING;"))
-        pg_session.execute(text("INSERT INTO jobs (id, customer_name, location, issue_description, priority, service_type, contact_number, preferred_service_date, status) VALUES (99991, 'Cust', '0,0', 'Desc', 'HIGH', 'HVAC', '1234567890', NOW()::DATE, 'active') ON CONFLICT DO NOTHING;"))
+        tech = Technician(
+            tech_id='tech-dummy-part',
+            technician_name='Part Tech',
+            technician_skill='HVAC',
+            technician_location='0,0'
+        )
+        pg_session.add(tech)
+        job = Job(
+            id=99991,
+            customer_name='Cust',
+            location='0,0',
+            issue_description='Desc',
+            priority='HIGH',
+            service_type='HVAC',
+            contact_number='1234567890',
+            preferred_service_date=datetime.now(timezone.utc).date(),
+            status='active'
+        )
+        pg_session.add(job)
         pg_session.commit()
         tech_id = 'tech-dummy-part'
         job_id = 99991
