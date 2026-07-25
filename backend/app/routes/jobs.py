@@ -9,7 +9,12 @@ import logging
 
 from app.database import get_db
 from app.models import Job, Technician, AuditEvent, DispatcherNotification
-from app.schemas import JobCreate, JobResponse, PlanResponse, RankedTechnician, DisqualifiedTechnician, ScoringWeights
+from app.schemas import (
+    JobCreate, JobResponse, PlanResponse, RankedTechnician, DisqualifiedTechnician, ScoringWeights,
+    JobClosureCreate, JobClosureResponse
+)
+from app import schemas
+
 from pydantic import BaseModel, Field
 from app.services.distributed_lock_service import with_job_lock
 from app.redis_client import get_redis_client
@@ -1352,5 +1357,72 @@ def get_public_tracking_info(
         "latest_gps": latest_gps,
         "eta": eta_minutes
     }
+
+
+# ──── Job Closure Endpoints ────
+
+@router.post("/{job_id}/close", response_model=schemas.JobClosureResponse)
+def close_job_endpoint(
+    job_id: int,
+    payload: schemas.JobClosureCreate,
+    request: Request,
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
+    authorization: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Close a job with work summary, images, and costs. Restricted to Technicians.
+    """
+    user, tenant_id = user_tenant
+
+    user_role = "TECHNICIAN"
+    technician_identifier = ""
+
+    if user:
+        user_role = (user.role or "TECHNICIAN").upper()
+        technician_identifier = user.email or str(user.id)
+        # Check if there is a technician record matching user
+        tech = db.query(Technician).filter(
+            (Technician.phone_number == user.email) | (Technician.tech_id == str(user.id))
+        ).first()
+        if tech:
+            technician_identifier = str(tech.technician_id)
+    else:
+        # Check Authorization header or fallback authorization string
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token_val = auth_header.replace("Bearer ", "").strip()
+            technician_identifier = token_val
+        elif authorization:
+            technician_identifier = authorization
+
+    if not technician_identifier:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required to close job"
+        )
+
+    from app.services.job_closure_service import close_job
+    return close_job(
+        db=db,
+        job_id=job_id,
+        closure_data=payload,
+        technician_identifier=technician_identifier,
+        user_role=user_role
+    )
+
+
+@router.get("/{job_id}/closure", response_model=schemas.JobClosureResponse)
+def get_job_closure_endpoint(
+    job_id: int,
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve job closure details.
+    """
+    from app.services.job_closure_service import get_job_closure
+    return get_job_closure(db=db, job_id=job_id)
+
 
 

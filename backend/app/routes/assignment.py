@@ -94,10 +94,16 @@ def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(g
 
         # 4. Fetch/Determine Technician
         technician = None
-        if assignment.technician_id:
-            technician = db.query(models.Technician).filter(
-                models.Technician.technician_id == assignment.technician_id
-            ).first()
+        if assignment.technician_id is not None:
+            tech_val = assignment.technician_id
+            if isinstance(tech_val, int) or (isinstance(tech_val, str) and tech_val.isdigit()):
+                technician = db.query(models.Technician).filter(
+                    models.Technician.technician_id == int(tech_val)
+                ).first()
+            if not technician:
+                technician = db.query(models.Technician).filter(
+                    models.Technician.tech_id == str(tech_val)
+                ).first()
             if not technician:
                 raise HTTPException(status_code=404, detail="Technician not found")
         elif assignment.job_type:

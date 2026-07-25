@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from "react";
 import api from "../services/api";
-import { Eye, Pencil, Trash2, ExternalLink, Copy, Check, Share2, Loader2 } from "lucide-react";
+import { Eye, Pencil, Trash2, ExternalLink, Copy, Check, Share2, Loader2, CheckCircle2 } from "lucide-react";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
 import EmptyState from "../components/ui/EmptyState";
 import JobStatusTimeline from "../components/customer-tracking/JobStatusTimeline";
+import useAuthStore from "../store/authStore";
+import { getJobClosure } from "../services/planningService";
+import { JobClosureModal } from "../components/jobs/JobClosureModal";
 
 const JOBS_PAGE_SIZE = 8;
 
@@ -55,7 +58,10 @@ interface Job {
   preferred_service_date?: string;
   status: string;
   required_skill?: string;
+  completed_at?: string;
+  completed_by?: string;
 }
+
 
 const priorities = [
   { label: "Critical", value: "CRITICAL" },
@@ -219,12 +225,43 @@ function JobCreationForm() {
     return list;
   };
 
+  const { user } = useAuthStore();
+  const userRole = (user?.role || localStorage.getItem("user_role") || "").toLowerCase();
+  const isTechnician = userRole === "technician";
+
   const [isEditing, setIsEditing] = useState(false);
   const [editingJobId, setEditingJobId] = useState<string | number | null>(null);
 
   const [popup, setPopup] = useState<PopupState>({ show: false, title: "", message: "", jobId: "" });
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewJob, setViewJob] = useState<Job | null>(null);
+
+  const [isClosureModalOpen, setIsClosureModalOpen] = useState(false);
+  const [closureDetails, setClosureDetails] = useState<any>(null);
+
+  useEffect(() => {
+    if (viewJob) {
+      if (viewJob.status?.toUpperCase() === "COMPLETED") {
+        getJobClosure(viewJob.id)
+          .then((data) => setClosureDetails(data))
+          .catch(() => setClosureDetails(null));
+      } else {
+        setClosureDetails(null);
+      }
+    } else {
+      setClosureDetails(null);
+    }
+  }, [viewJob]);
+
+  const handleClosureSuccess = () => {
+    if (viewJob) {
+      const updatedJob = { ...viewJob, status: "COMPLETED" };
+      setViewJob(updatedJob);
+      getJobClosure(viewJob.id).then((data) => setClosureDetails(data)).catch(() => {});
+    }
+    fetchJobs();
+  };
+
 
   const fetchServiceTypes = async () => {
     try {
@@ -861,6 +898,73 @@ function JobCreationForm() {
                     <span style={styles.viewValue}>{viewJob.issue_description}</span>
                   </div>
                 )}
+
+                {/* Complete Job Button (Visible if status !== COMPLETED and logged user is Technician) */}
+                {viewJob.status?.toUpperCase() !== "COMPLETED" && (
+                  <button
+                    type="button"
+                    onClick={() => setIsClosureModalOpen(true)}
+                    disabled={!isTechnician}
+                    style={{
+                      marginTop: "12px",
+                      padding: "10px 16px",
+                      backgroundColor: isTechnician ? "#166534" : "#94a3b8",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: "8px",
+                      fontWeight: 600,
+                      fontSize: "14px",
+                      cursor: isTechnician ? "pointer" : "not-allowed",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px"
+                    }}
+                    title={!isTechnician ? "Only logged-in technicians can complete jobs" : "Complete Job"}
+                  >
+                    <CheckCircle2 size={16} /> Complete Job
+                  </button>
+                )}
+
+                {/* Closure Summary Details */}
+                {(viewJob.status?.toUpperCase() === "COMPLETED" || closureDetails) && (
+                  <div style={{ marginTop: "14px", padding: "12px", backgroundColor: "#f0fdf4", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
+                    <h4 style={{ fontSize: "13px", fontWeight: 700, color: "#166534", marginBottom: "6px" }}>Closure Summary</h4>
+                    <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Completed By</span><span style={styles.viewValue}>{closureDetails?.technician_id || viewJob.completed_by || "Technician"}</span></div>
+                    <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Completed Time</span><span style={styles.viewValue}>{closureDetails?.completed_at ? new Date(closureDetails.completed_at).toLocaleString() : (viewJob.completed_at ? new Date(viewJob.completed_at).toLocaleString() : "N/A")}</span></div>
+                    {closureDetails?.work_summary && (
+                      <div style={{ ...styles.viewDetailRow, flexDirection: "column", gap: "2px", marginTop: "4px" }}>
+                        <span style={styles.viewLabel}>Work Summary</span>
+                        <span style={styles.viewValue}>{closureDetails.work_summary}</span>
+                      </div>
+                    )}
+                    {closureDetails?.before_images && closureDetails.before_images.length > 0 && (
+                      <div style={{ marginTop: "6px" }}>
+                        <span style={styles.viewLabel}>Before Images</span>
+                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "2px" }}>
+                          {closureDetails.before_images.map((img: string, i: number) => (
+                            <span key={i} style={{ fontSize: "11px", background: "#e2e8f0", padding: "2px 6px", borderRadius: "4px" }}>{img}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {closureDetails?.after_images && closureDetails.after_images.length > 0 && (
+                      <div style={{ marginTop: "6px" }}>
+                        <span style={styles.viewLabel}>After Images</span>
+                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "2px" }}>
+                          {closureDetails.after_images.map((img: string, i: number) => (
+                            <span key={i} style={{ fontSize: "11px", background: "#dcfce7", color: "#166534", padding: "2px 6px", borderRadius: "4px" }}>{img}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: "8px", marginTop: "8px", paddingTop: "6px", borderTop: "1px dashed #cbd5e1", fontSize: "12px" }}>
+                      <div><span style={styles.viewLabel}>Labour: </span><strong>${closureDetails?.labour_cost ?? 0}</strong></div>
+                      <div><span style={styles.viewLabel}>Material: </span><strong>${closureDetails?.material_cost ?? 0}</strong></div>
+                      <div><span style={styles.viewLabel}>Subtotal: </span><strong style={{ color: "#166534" }}>${closureDetails?.subtotal ?? 0}</strong></div>
+                    </div>
+                  </div>
+                )}
               </div>
               
               {/* Right Column: Interactive vertical Timeline */}
@@ -868,9 +972,18 @@ function JobCreationForm() {
                 <JobStatusTimeline jobId={viewJob.id} currentStatus={viewJob.status} />
               </div>
             </div>
+
+            {/* Job Closure Modal */}
+            <JobClosureModal
+              jobId={viewJob.id}
+              isOpen={isClosureModalOpen}
+              onClose={() => setIsClosureModalOpen(false)}
+              onSuccess={handleClosureSuccess}
+            />
           </div>
         </div>
       )}
+
 
       {/* Sliding Sidebar for Job Form — rendered outside main div to avoid overflow:hidden clipping */}
       <div style={{

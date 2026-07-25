@@ -205,8 +205,8 @@ def get_planning_kpi(
 
     # --- Technician availability ---
     tech_base = db.query(Technician)
-    if x_tenant_id:
-        tech_base = tech_base.filter(Technician.tenant_id == x_tenant_id)
+    if tenant_id:
+        tech_base = tech_base.filter(Technician.tenant_id == tenant_id)
 
     total_techs = tech_base.count()
     available_techs = tech_base.filter(

@@ -44,7 +44,9 @@ from ..models_legacy import (  # noqa: F401
     CustomerPreferenceAudit,
 )
 
-# New multi-tenant models
+# New multi-tenant & job closure models
 from .user import User, RefreshToken  # noqa: F401
 from .organization import Organization  # noqa: F401
 from .enterprise_audit import EnterpriseAuditLog  # noqa: F401
+from .job_closure import JobClosure  # noqa: F401
+
