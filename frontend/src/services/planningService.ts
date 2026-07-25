@@ -220,4 +220,37 @@ export const assignJobDirect = async (
   }
 };
 
+export interface JobClosureData {
+  work_summary: string;
+  before_images?: string[];
+  after_images: string[];
+  labour_cost: number;
+  material_cost: number;
+}
+
+/**
+  Submit job closure details.
+ */
+export const closeJob = async (jobId: string | number, data: JobClosureData): Promise<any> => {
+  try {
+    const response = await api.post(`/jobs/${jobId}/close`, data);
+    return response.data;
+  } catch (error) {
+    handleApiError(error);
+  }
+};
+
+/**
+  Fetch job closure details for a completed job.
+ */
+export const getJobClosure = async (jobId: string | number): Promise<any> => {
+  try {
+    const response = await api.get(`/jobs/${jobId}/closure`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error);
+  }
+};
+
+
 

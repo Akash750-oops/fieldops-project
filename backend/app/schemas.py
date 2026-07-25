@@ -134,8 +134,9 @@ class AvailableTechnicianResponse(BaseModel):
 
 class TechnicianAssignment(BaseModel):
     job_id: Union[int, str]
-    technician_id: Optional[int] = None
+    technician_id: Optional[Union[int, str]] = None
     job_type: Optional[str] = None
+
 
 
 class NearestTechnicianResponse(BaseModel):
@@ -744,6 +745,46 @@ class GPSBatchRequest(BaseModel):
         if len(v) > 100:
             raise ValueError("Maximum 100 pings per batch")
         return v
+
+
+class JobClosureCreate(BaseModel):
+    work_summary: str
+    before_images: Optional[list[str]] = Field(default_factory=list)
+    after_images: list[str] = Field(..., min_length=1)
+    labour_cost: float = Field(default=0.0, ge=0.0)
+    material_cost: float = Field(default=0.0, ge=0.0)
+
+    @field_validator("work_summary")
+    @classmethod
+    def validate_work_summary(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Work summary cannot be empty")
+        return v.strip()
+
+    @field_validator("after_images")
+    @classmethod
+    def validate_after_images(cls, v):
+        if not v or len(v) < 1:
+            raise ValueError("Minimum one after image is required")
+        return v
+
+
+class JobClosureResponse(BaseModel):
+    id: int
+    job_id: int
+    technician_id: str
+    work_summary: str
+    before_images: list[str] = Field(default_factory=list)
+    after_images: list[str] = Field(default_factory=list)
+    labour_cost: float
+    material_cost: float
+    subtotal: float
+    completed_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 
 

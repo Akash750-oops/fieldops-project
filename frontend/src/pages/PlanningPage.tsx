@@ -1268,19 +1268,24 @@ function PlanningDashboard() {
         new Promise(resolve => setTimeout(resolve, 1000))
       ]);
       if (res && res.ranked_technicians && res.ranked_technicians.length > 0) {
-        const mapped: RankedTechnician[] = res.ranked_technicians.map((rt: any) => ({
-          technician_id: parseInt(String(rt.tech_id).replace(/\D/g, ''), 10) || 1,
-          technician_name: rt.name,
-          technician_skill: rt.skill || 'HVAC',
-          technician_status: rt.status || 'Available',
-          composite_score: rt.composite_score || 0,
-          proximity_score: rt.proximity_score || 0,
-          skill_score: rt.skill_score || 0,
-          workload_score: rt.workload_score || 0,
-          distance_km: rt.distance_km || 0,
-          active_jobs: rt.active_jobs || 0,
-          max_capacity: rt.max_capacity || 3
-        }));
+        const mapped: RankedTechnician[] = res.ranked_technicians.map((rt: any) => {
+          const matched = techs.find(
+            (t) => t.tech_id === rt.tech_id || String(t.technician_id) === String(rt.tech_id)
+          );
+          return {
+            technician_id: matched ? matched.technician_id : (parseInt(String(rt.tech_id).replace(/\D/g, ''), 10) || 1),
+            technician_name: rt.name,
+            technician_skill: rt.skill || 'HVAC',
+            technician_status: rt.status || 'Available',
+            composite_score: rt.composite_score || 0,
+            proximity_score: rt.proximity_score || 0,
+            skill_score: rt.skill_score || 0,
+            workload_score: rt.workload_score || 0,
+            distance_km: rt.distance_km || 0,
+            active_jobs: rt.active_jobs || 0,
+            max_capacity: rt.max_capacity || 3
+          };
+        });
         setRankedCandidates(mapped);
       } else {
         setRankedCandidates(generateRankedCandidates(job, techs));
