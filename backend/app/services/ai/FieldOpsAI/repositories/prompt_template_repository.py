@@ -147,7 +147,7 @@ class PromptTemplateRepository:
         agent_type: str,
         channel: str,
         locales: Tuple[str, ...],
-        status: str
+        status: str | Tuple[str, ...] | List[str]
     ) -> List[NotificationTemplate]:
         """
         Returns active candidates for both tenant and platform fallback matching criteria.
@@ -155,6 +155,12 @@ class PromptTemplateRepository:
         """
         try:
             db_channel = "in_app" if channel == "portal" else channel
+            if isinstance(status, str):
+                status_list = [status]
+            else:
+                status_list = list(status)
+            if "default" not in status_list:
+                status_list.append("default")
             
             candidates = self.db.query(NotificationTemplate).filter(
                 NotificationTemplate.tenant_id.in_([self.tenant_id, "**platform**"]),
@@ -163,7 +169,7 @@ class PromptTemplateRepository:
                 NotificationTemplate.is_active == True,
                 NotificationTemplate.is_deleted == False,
                 NotificationTemplate.locale.in_(locales),
-                NotificationTemplate.type.in_([status, "default"])
+                NotificationTemplate.type.in_(status_list)
             ).order_by(NotificationTemplate.version.desc(), NotificationTemplate.id.desc()).all()
             
             return candidates

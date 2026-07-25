@@ -309,7 +309,7 @@ def test_in_app_supports_optional_title(
     )
 
     assert result.decision.channel == "IN_APP"
-    assert result.decision.title is None
+    assert result.decision.title == "FieldOps Update"
     assert result.decision.subject is None
 
 
@@ -430,12 +430,15 @@ def test_unknown_notification_type_uses_emergency(
     Unknown event types receive a generic safe fallback.
     """
 
+    ctx = build_context(
+        notification_type="unknown_event"
+    )
+    ctx.job_status = "WORK_IN_PROGRESS"
+
     result = GuardrailFallbackService(
         db=db_session
     ).render(
-        context=build_context(
-            notification_type="unknown_event"
-        )
+        context=ctx
     )
 
     assert (

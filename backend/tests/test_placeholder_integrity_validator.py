@@ -229,7 +229,7 @@ def test_unknown_placeholder_fails() -> None:
         == GuardrailSeverity.ERROR
     )
 
-    assert violation.field == "message"
+    assert violation.field == "output"
 
     assert violation.safe_metadata == {
         "unknown_placeholder_count": 1,
@@ -269,7 +269,7 @@ def test_spaced_placeholder_fails() -> None:
         == "MALFORMED_PLACEHOLDER_DETECTED"
     )
 
-    assert violation.field == "message"
+    assert violation.field == "output"
 
     assert violation.safe_metadata == {
         "malformed_placeholder_count": 1,

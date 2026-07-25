@@ -674,26 +674,22 @@ class ProfanityValidator:
         violation.
         """
 
+        from app.services.ai.FieldOpsAI.schemas.communication import output_text_for_validation
+        
         started_at = perf_counter()
 
         violations: list[
             GuardrailViolation
         ] = []
 
-        for field in self.OUTPUT_FIELDS:
-            value = getattr(
-                decision,
-                field,
-            )
+        validation_text = output_text_for_validation(decision.output)
 
-            if value is None:
-                continue
-
+        if validation_text:
             lexicon_match_count = 0
             fuzzy_match_count = 0
 
             for token in self._tokenize(
-                value
+                validation_text
             ):
                 match_type = (
                     self._lexicon.classify(
@@ -712,36 +708,34 @@ class ProfanityValidator:
                 + fuzzy_match_count
             )
 
-            if total_match_count == 0:
-                continue
-
-            violations.append(
-                GuardrailViolation(
-                    code="PROFANITY_DETECTED",
-                    category=(
-                        GuardrailCategory.PROFANITY
-                    ),
-                    severity=(
-                        GuardrailSeverity.ERROR
-                    ),
-                    message=(
-                        "Generated communication contains "
-                        "prohibited language."
-                    ),
-                    field=field,
-                    safe_metadata={
-                        "match_count": (
-                            total_match_count
+            if total_match_count > 0:
+                violations.append(
+                    GuardrailViolation(
+                        code="PROFANITY_DETECTED",
+                        category=(
+                            GuardrailCategory.PROFANITY
                         ),
-                        "lexicon_match_count": (
-                            lexicon_match_count
+                        severity=(
+                            GuardrailSeverity.ERROR
                         ),
-                        "fuzzy_match_count": (
-                            fuzzy_match_count
+                        message=(
+                            "Generated communication contains "
+                            "prohibited language."
                         ),
-                    },
+                        field="output",
+                        safe_metadata={
+                            "match_count": (
+                                total_match_count
+                            ),
+                            "lexicon_match_count": (
+                                lexicon_match_count
+                            ),
+                            "fuzzy_match_count": (
+                                fuzzy_match_count
+                            ),
+                        },
+                    )
                 )
-            )
 
         latency_ms = (
             perf_counter()

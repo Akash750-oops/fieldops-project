@@ -59,36 +59,31 @@ def normalize_status(
     value: Optional[str],
 ) -> Optional[str]:
     """
-    Normalize a prompt status into lowercase snake_case.
+    Normalize a prompt status into a canonical status string.
 
     Examples:
         ASSIGNED -> assigned
-        en_route -> en_route
+        en_route -> enroute
+        ON-SITE -> onsite
+        canceled -> cancelled
 
-    Blank or unsafe status values are rejected.
+    Blank or unsupported status values are rejected with HTTP 400.
     """
-
     if value is None:
         return None
 
-    normalized = value.strip().lower()
-
-    if not normalized:
+    try:
+        from app.services.ai.FieldOpsAI.schemas.prompt_template import (
+            normalize_template_status,
+            UnsupportedTemplateStatusError,
+        )
+        res = normalize_template_status(value, allow_default=True)
+        return res.value if hasattr(res, "value") else str(res)
+    except UnsupportedTemplateStatusError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Status cannot be blank.",
-        )
-
-    if not re.fullmatch(
-        r"[a-z0-9_]+",
-        normalized,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Status must use lowercase snake_case.",
-        )
-
-    return normalized
+            detail="Template validation failed.",
+        ) from None
 
 
 # ==========================================================

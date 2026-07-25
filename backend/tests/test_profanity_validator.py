@@ -200,7 +200,7 @@ def test_exact_and_normalized_profanity_fails(
         == GuardrailSeverity.ERROR
     )
 
-    assert violation.field == "message"
+    assert violation.field == "output"
 
     assert (
         violation.safe_metadata[
@@ -387,7 +387,7 @@ def test_validator_scans_email_subject() -> None:
 
     assert (
         result.violations[0].field
-        == "subject"
+        == "output"
     )
 
 

@@ -300,7 +300,7 @@ class GuardrailFallbackService:
                 agent_type="CommsAgent",
                 channel=context.channel.lower(),
                 language=context.locale,
-                status=context.notification_type,
+                status=context.job_status,
                 context=ctx_dump,
                 allowed_variable_paths=self.ALLOWED_TEMPLATE_VARIABLES,
             )
@@ -385,36 +385,39 @@ class GuardrailFallbackService:
         )
 
     def _build_decision_from_res(self, result, context: CommunicationContext):
-        message = result.body.strip()
-        if context.channel != "EMAIL":
-            message = re.sub(r"\s+", " ", message).strip()
+        from app.services.ai.FieldOpsAI.services.message_output_formatter import MessageOutputFormatter
+        
+        try:
+            format_channel = "PORTAL" if context.channel == "IN_APP" else context.channel
+            template_format = getattr(result, "template_format", "text")
 
-        if not message or self.INVALID_OUTPUT_TOKEN_PATTERN.search(message):
+            output = MessageOutputFormatter.format(
+                channel=format_channel,
+                rendered_title=result.title,
+                rendered_body=result.body,
+                template_format=template_format,
+            )
+
+            decision = CommunicationDecision(
+                channel=context.channel,
+                output=output,
+                tone="PROFESSIONAL",
+                confidence=1.0,
+            )
+
+            if self.INVALID_OUTPUT_TOKEN_PATTERN.search(decision.message):
+                return None
+            if decision.title and self.INVALID_OUTPUT_TOKEN_PATTERN.search(decision.title):
+                return None
+            if decision.subject and self.INVALID_OUTPUT_TOKEN_PATTERN.search(decision.subject):
+                return None
+
+            if not self._within_channel_limits(decision):
+                return None
+            return decision
+
+        except ValueError:
             return None
-
-        rendered_title: str | None = None
-        if result.title is not None:
-            rendered_title = result.title.strip() if result.title else ""
-            rendered_title = re.sub(r"\s+", " ", rendered_title).strip()
-            if not rendered_title or self.INVALID_OUTPUT_TOKEN_PATTERN.search(rendered_title):
-                return None
-
-        if context.channel == "EMAIL":
-            if rendered_title is None:
-                return None
-            decision = CommunicationDecision(channel="EMAIL", title=None, subject=rendered_title, message=message, tone="PROFESSIONAL", confidence=1.0)
-        elif context.channel == "PUSH":
-            if rendered_title is None:
-                return None
-            decision = CommunicationDecision(channel="PUSH", title=rendered_title, subject=None, message=message, tone="PROFESSIONAL", confidence=1.0)
-        elif context.channel == "IN_APP":
-            decision = CommunicationDecision(channel="IN_APP", title=rendered_title, subject=None, message=message, tone="PROFESSIONAL", confidence=1.0)
-        else:
-            decision = CommunicationDecision(channel="SMS", title=None, subject=None, message=message, tone="PROFESSIONAL", confidence=1.0)
-
-        if not self._within_channel_limits(decision):
-            return None
-        return decision
 
     def _try_build_decision_builtin(
         self,
@@ -549,6 +552,19 @@ class GuardrailFallbackService:
 
         app/services/default_template.py
         """
+        from app.services.ai.FieldOpsAI.schemas.prompt_template import (
+            normalize_template_status,
+            UnsupportedTemplateStatusError,
+            STATUS_LOOKUP_CANDIDATES,
+        )
+
+        try:
+            canon_enum = normalize_template_status(context.job_status)
+            canon_status = canon_enum.value if hasattr(canon_enum, "value") else str(canon_enum)
+        except UnsupportedTemplateStatusError:
+            return None
+
+        status_candidates = STATUS_LOOKUP_CANDIDATES.get(canon_enum, (canon_status,))
 
         candidates = locale_candidates(context.locale)
 
@@ -558,9 +574,11 @@ class GuardrailFallbackService:
             if catalog is None:
                 continue
 
-            event_template = catalog.get(
-                context.notification_type
-            )
+            event_template = None
+            for status_cand in status_candidates:
+                if status_cand in catalog:
+                    event_template = catalog[status_cand]
+                    break
 
             if event_template is None:
                 continue

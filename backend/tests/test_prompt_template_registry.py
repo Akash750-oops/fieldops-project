@@ -226,6 +226,18 @@ def make_prompt(
 
     values.update(overrides)
 
+    from app.services.ai.FieldOpsAI.schemas.prompt_template import (
+        normalize_template_status,
+        UnsupportedTemplateStatusError,
+    )
+    st = values.get("status")
+    if isinstance(st, str):
+        try:
+            norm = normalize_template_status(st, allow_default=True)
+            values["status"] = norm.value if hasattr(norm, "value") else str(norm)
+        except UnsupportedTemplateStatusError:
+            values["status"] = "assigned"
+
     return PromptTemplateCreate(
         **values
     )
@@ -674,13 +686,13 @@ def test_list_filters_by_combined_fields(
         (
             "tenant_1",
             "es",
-            "custom_status",
+            "enroute",
             "tenant",
         ),
         (
             "tenant_1",
             "en",
-            "custom_status",
+            "enroute",
             "tenant",
         ),
         (
@@ -698,13 +710,13 @@ def test_list_filters_by_combined_fields(
         (
             "**platform**",
             "es",
-            "custom_status",
+            "enroute",
             "platform",
         ),
         (
             "**platform**",
             "en",
-            "custom_status",
+            "enroute",
             "platform",
         ),
         (
@@ -767,7 +779,7 @@ def test_each_fallback_level(
         agent_type="CommsAgent",
         channel="sms",
         language="es",
-        status="custom_status",
+        status="enroute",
     )
 
     assert result.body == "Selected fallback"
@@ -781,7 +793,7 @@ def test_builtin_default_is_returned_when_database_is_empty(
         agent_type="CommsAgent",
         channel="push",
         language="hi",
-        status="unknown_status",
+        status="assigned",
     )
 
     assert result.id is None
@@ -1306,7 +1318,7 @@ def test_es_mx_exact_locale_wins(
 
     spanish = NotificationTemplate(
         name="Spanish",
-        type="regional_exact",
+        type="created",
         channel="sms",
         locale="es",
         format="text",
@@ -1322,7 +1334,7 @@ def test_es_mx_exact_locale_wins(
 
     mexican_spanish = NotificationTemplate(
         name="Mexican Spanish",
-        type="regional_exact",
+        type="created",
         channel="sms",
         locale="es-MX",
         format="text",
@@ -1349,7 +1361,7 @@ def test_es_mx_exact_locale_wins(
         "CommsAgent",
         "sms",
         "es-MX",
-        "regional_exact",
+        "created",
     )
 
     assert result.language == "es-MX"
@@ -1363,7 +1375,7 @@ def test_es_mx_falls_back_to_english(
 ):
     english = NotificationTemplate(
         name="English fallback",
-        type="regional_english",
+        type="onsite",
         channel="sms",
         locale="en",
         format="text",
@@ -1384,7 +1396,7 @@ def test_es_mx_falls_back_to_english(
         "CommsAgent",
         "sms",
         "es-MX",
-        "regional_english",
+        "onsite",
     )
 
     assert result.language == "en"

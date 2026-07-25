@@ -34,11 +34,8 @@ def build_length_violation() -> GuardrailViolation:
         code="SMS_MESSAGE_TOO_LONG",
         category=GuardrailCategory.LENGTH,
         severity=GuardrailSeverity.ERROR,
-        message=(
-            "SMS message exceeds the configured character "
-            "limit."
-        ),
-        field="message",
+        message="The SMS message exceeds 160 characters.",
+        field="output",
         safe_metadata={
             "actual_length": 175,
             "maximum_length": 160,
@@ -68,7 +65,7 @@ def test_violation_accepts_safe_metadata() -> None:
         == GuardrailCategory.LENGTH
     )
 
-    assert violation.field == "message"
+    assert violation.field == "output"
 
     assert (
         violation.safe_metadata[

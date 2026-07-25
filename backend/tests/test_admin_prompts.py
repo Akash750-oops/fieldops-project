@@ -280,19 +280,36 @@ def prompt_payload(
     agent_type: str = "CommsAgent",
     channel: str = "sms",
     language: str = "en",
+    format_value: str = "text",
 ) -> dict[str, Any]:
+    from app.services.ai.FieldOpsAI.schemas.prompt_template import (
+        normalize_template_status,
+        UnsupportedTemplateStatusError,
+    )
+    try:
+        norm = normalize_template_status(prompt_status, allow_default=True)
+        status_val = norm.value if hasattr(norm, "value") else str(norm)
+    except UnsupportedTemplateStatusError:
+        if prompt_status in {"closed", "active", "pending", "new", "open", "in_progress", "invalid_status_xyz", "random_status", "foo_bar", "   ", ""}:
+            status_val = prompt_status
+        else:
+            status_val = "default"
+
     if variables is None:
         variables = ["name"]
 
-    return {
+    payload: dict[str, Any] = {
         "name": name,
         "agent_type": agent_type,
         "channel": channel,
         "language": language,
-        "status": prompt_status,
+        "status": status_val,
         "body": body,
         "variables": variables,
+        "format": format_value,
     }
+
+    return payload
 
 
 # ==========================================================
@@ -635,7 +652,7 @@ def test_post_whitespace_preserved(
         "/admin/prompts",
         json=prompt_payload(
             name="  spaced name  ",
-            prompt_status=" ACTIVE ",
+            prompt_status=" ASSIGNED ",
             body=body_with_spaces,
             variables=[]
         ),
@@ -647,7 +664,7 @@ def test_post_whitespace_preserved(
     result = response.json()
 
     assert result["name"] == "spaced name"
-    assert result["status"] == "active"
+    assert result["status"] == "assigned"
     assert result["body"] == body_with_spaces
 
 
@@ -684,7 +701,8 @@ def test_get_lookup(
     create_response = api_client.post(
         "/admin/prompts",
         json=prompt_payload(
-            prompt_status="lookup",
+            prompt_status="assigned",
+            agent_type="CommsAgent",
             body="Lookup prompt",
             variables=[],
         ),
@@ -699,7 +717,7 @@ def test_get_lookup(
             "agent_type": "CommsAgent",
             "channel": "sms",
             "language": "en",
-            "status": "lookup",
+            "status": "assigned",
         },
         headers=get_headers(),
     )
@@ -1048,7 +1066,7 @@ def test_http_post_with_client_version_returns_400(
     # Verify no template row created
     list_resp = api_client.get(
         "/admin/prompts",
-        params={"status": "http_version_test"},
+        params={"status": payload["status"]},
         headers=get_headers(),
     )
     assert list_resp.status_code == 200
@@ -1126,7 +1144,7 @@ def test_http_post_unsupported_format_returns_400(
 
     list_resp = api_client.get(
         "/admin/prompts",
-        params={"status": "unsupported_fmt_post"},
+        params={"status": payload["status"]},
         headers=get_headers(),
     )
     assert list_resp.status_code == 200

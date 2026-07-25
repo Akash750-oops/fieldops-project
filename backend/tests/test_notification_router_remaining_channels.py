@@ -581,7 +581,15 @@ async def test_email_rejects_invalid_subjects(invalid_subject) -> None:
                 channel="EMAIL",
                 title=None,
                 subject=invalid_subject,
-                message="Test Message"
+                message="Test Message",
+                output=types.SimpleNamespace(
+                    subject=invalid_subject,
+                    text="Test Message",
+                    title=None,
+                    body="Test Message",
+                    html_body="Test Message",
+                    text_body="Test Message"
+                )
             )
             return types.SimpleNamespace(decision=decision)
 

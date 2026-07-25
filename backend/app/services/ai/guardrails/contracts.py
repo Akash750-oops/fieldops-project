@@ -55,6 +55,7 @@ GuardrailField = Literal[
     "tone",
     "confidence",
     "response",
+    "output",
 ]
 
 

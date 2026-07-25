@@ -140,6 +140,8 @@ class PlaceholderIntegrityValidator:
             placeholders are detected.
         """
 
+        from app.services.ai.FieldOpsAI.schemas.communication import output_text_for_validation
+        
         started_at = perf_counter()
 
         allowed_placeholders = (
@@ -152,18 +154,12 @@ class PlaceholderIntegrityValidator:
             GuardrailViolation
         ] = []
 
-        for field in self.OUTPUT_FIELDS:
-            value = getattr(
-                decision,
-                field,
-            )
+        validation_text = output_text_for_validation(decision.output)
 
-            if value is None:
-                continue
-
+        if validation_text:
             unknown_count = (
                 self._count_unknown_placeholders(
-                    value=value,
+                    value=validation_text,
                     allowed_placeholders=(
                         allowed_placeholders
                     ),
@@ -188,7 +184,7 @@ class PlaceholderIntegrityValidator:
                             "a placeholder that was not "
                             "provided in the sanitized context."
                         ),
-                        field=field,
+                        field="output",
                         safe_metadata={
                             "unknown_placeholder_count": (
                                 unknown_count
@@ -204,7 +200,7 @@ class PlaceholderIntegrityValidator:
 
             malformed_count = (
                 self._count_malformed_placeholders(
-                    value
+                    validation_text
                 )
             )
 
@@ -226,7 +222,7 @@ class PlaceholderIntegrityValidator:
                             "an incorrectly formatted "
                             "placeholder."
                         ),
-                        field=field,
+                        field="output",
                         safe_metadata={
                             "malformed_placeholder_count": (
                                 malformed_count

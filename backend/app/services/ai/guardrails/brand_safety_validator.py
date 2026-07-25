@@ -470,16 +470,7 @@ class BrandSafetyValidator:
         "brand_safety_validator"
     )
 
-    OUTPUT_FIELDS: Final[
-        tuple[
-            GuardrailField,
-            ...,
-        ]
-    ] = (
-        "title",
-        "subject",
-        "message",
-    )
+
 
     PLACEHOLDER_PATTERN: Final[
         re.Pattern[str]
@@ -575,6 +566,8 @@ class BrandSafetyValidator:
         represented by one violation containing a safe count.
         """
 
+        from app.services.ai.FieldOpsAI.schemas.communication import output_text_for_validation
+
         started_at = perf_counter()
 
         rules = tuple(
@@ -589,19 +582,13 @@ class BrandSafetyValidator:
             GuardrailViolation
         ] = []
 
-        for field in self.OUTPUT_FIELDS:
-            value = getattr(
-                decision,
-                field,
-            )
-
-            if value is None:
-                continue
-
+        validation_text = output_text_for_validation(decision.output)
+        
+        if validation_text:
             safe_scannable_text = (
                 self.PLACEHOLDER_PATTERN.sub(
                     " ",
-                    value,
+                    validation_text,
                 )
             )
 
@@ -640,7 +627,7 @@ class BrandSafetyValidator:
                                 rule.category
                             ]
                         ),
-                        field=field,
+                        field="output",
                         safe_metadata={
                             "rule_id": rule.rule_id,
                             "rule_category": (

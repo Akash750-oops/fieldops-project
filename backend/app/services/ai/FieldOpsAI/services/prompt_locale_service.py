@@ -92,14 +92,29 @@ def _get_shape(val: Any) -> Any:
         return ["object", {k: _get_shape(v) for k, v in sorted(val.items())}]
     return type(val).__name__
 
-def _normalize_declaration(var: str | dict) -> dict:
+def _normalize_declaration(var: str | dict | Any) -> dict:
     if isinstance(var, str):
         return {"name": var, "required": True, "has_default": False, "type": None}
-    
+
+    if hasattr(var, "model_dump"):
+        var = var.model_dump()
+    elif hasattr(var, "dict") and callable(getattr(var, "dict")):
+        var = var.dict()
+    elif not isinstance(var, dict) and hasattr(var, "name"):
+        var_name = getattr(var, "name")
+        var_req = getattr(var, "required", True)
+        var_def = getattr(var, "default", None)
+        return {
+            "name": var_name,
+            "required": var_req,
+            "has_default": var_def is not None,
+            "type": _get_shape(var_def) if var_def is not None else None,
+        }
+
     return {
         "name": var.get("name"),
         "required": var.get("required", True),
-        "has_default": "default" in var,
+        "has_default": "default" in var and var.get("default") is not None,
         "type": _get_shape(var.get("default")) if "default" in var and var.get("default") is not None else None
     }
 

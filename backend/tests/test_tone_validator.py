@@ -394,7 +394,7 @@ def test_validator_scans_email_subject() -> None:
     )
 
     assert result.passed is False
-    assert result.violations[0].field == "subject"
+    assert result.violations[0].field == "output"
     assert (
         result.violations[0].code
         == "SARCASTIC_TONE_DETECTED"

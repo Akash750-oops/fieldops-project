@@ -26,8 +26,11 @@ class RenderedMessageResult(BaseModel):
     template_id: int | None
     template_version: int | None
     source: str
+    template_format: str = "text"
     missing_optional_paths: frozenset[str] = Field(default_factory=frozenset)
     resolved_locale: str | None = None
+    requested_status: str | None = None
+    resolved_status: str | None = None
 
 _shared_injector = PromptVariableInjector()
 
@@ -100,17 +103,26 @@ def render_managed_template(
     allowed_variable_paths: Container[str] | None = None,
 ) -> RenderedMessageResult:
     try:
+        from app.services.ai.FieldOpsAI.schemas.prompt_template import normalize_template_status, UnsupportedTemplateStatusError, MessageTemplateStatus
+        norm_res = normalize_template_status(status)
+        if not isinstance(norm_res, MessageTemplateStatus):
+            raise MessageTemplateLookupError("Unsupported message template status.")
+        canon_status = norm_res.value
+    except UnsupportedTemplateStatusError:
+        raise MessageTemplateLookupError("Unsupported message template status.") from None
+
+    try:
         registry = ManagedPromptTemplateRegistry(
             db=db,
             tenant_id=tenant_id,
             actor_id="system_renderer",
             redis_client=None
         )
-        template_dto = registry.find(agent_type, channel, language, status)
+        template_dto = registry.find(agent_type, channel, language, canon_status)
     except RegistryServiceError:
         raise MessageTemplateLookupError("Template lookup failed.") from None
 
-    if not template_dto:
+    if not template_dto or template_dto.source == "builtin_default" or template_dto.id is None:
         raise MessageTemplateLookupError("Template lookup failed.") from None
 
     # Validate stored declarations against the allowlist if specified
@@ -150,8 +162,11 @@ def render_managed_template(
         template_id=template_dto.id,
         template_version=template_dto.version,
         source=template_dto.source,
+        template_format=format_val,
         missing_optional_paths=frozenset(result.missing_optional_paths),
         resolved_locale=_resolved_locale,
+        requested_status=canon_status,
+        resolved_status=canon_status,
     )
 
 def render_template_source(
@@ -183,6 +198,7 @@ def render_template_source(
         template_id=None,
         template_version=None,
         source="preview",
+        template_format=format,
         missing_optional_paths=frozenset(result.missing_optional_paths),
         resolved_locale=None,
     )

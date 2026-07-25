@@ -278,7 +278,10 @@ def get_fake_router():
         communication_integration=MagicMock(),
     )
     router._generate_safe_communication = AsyncMock(
-        return_value=SimpleNamespace(decision=SimpleNamespace(message="Approved", subject="Approved", title="Approved"))
+        return_value=SimpleNamespace(decision=SimpleNamespace(
+            message="Approved", subject="Approved", title="Approved",
+            output=SimpleNamespace(text="Approved", subject="Approved", title="Approved", body="Approved", html_body="Approved", text_body="Approved")
+        ))
     )
     return router, sms_mock, email_mock
 
@@ -451,7 +454,10 @@ def test_53_54_execution_time_policy(monkeypatch):
     
     # Mock communication integration so we don't need real AI keys
     async def fake_generate(*args, **kwargs):
-        return SimpleNamespace(decision=SimpleNamespace(message="Test", subject="Test", title="Test", used_fallback=False, channel=kwargs.get("channel", "sms").upper()))
+        return SimpleNamespace(decision=SimpleNamespace(
+            message="Test", subject="Test", title="Test", used_fallback=False, channel=kwargs.get("channel", "sms").upper(),
+            output=SimpleNamespace(text="Test", subject="Test", title="Test", body="Test", html_body="Test", text_body="Test")
+        ))
     monkeypatch.setattr("app.services.ai.integrations.communication_integration.CommunicationIntegration.generate", fake_generate)
     
     # Patch providers

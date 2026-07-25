@@ -32,6 +32,176 @@ SUPPORTED_LOCALES = {
 # ==========================================================
 
 NOTIFICATION_TYPES = {
+    "created": {
+        "title": "Job Created",
+        "sms": "Hello {{customer_name}}, your job '{{job_title}}' has been created.",
+        "email": (
+            "<h2>Job Created</h2>\n\n"
+            "<p>Hello {{customer_name}},</p>\n\n"
+            "<p>Your service request <strong>{{job_title}}</strong> has been created.</p>\n\n"
+            "<p>Thank you,<br>FieldOps Team</p>"
+        ),
+        "push": "Job '{{job_title}}' created.",
+        "in_app": "Your job '{{job_title}}' has been created.",
+    },
+    "assigned": {
+        "title": "Job Assigned",
+        "sms": (
+            "Hello {{customer_name}}, "
+            "{{technician_name}} has been assigned to "
+            "{{job_title}}. ETA: {{eta}}."
+        ),
+        "email": (
+            """
+            <h2>Job Assigned</h2>
+
+            <p>Hello {{customer_name}},</p>
+
+            <p>
+                <strong>{{technician_name}}</strong> has been assigned
+                to your service request.
+            </p>
+
+            <p>
+                <strong>Job:</strong> {{job_title}}
+            </p>
+
+            <p>
+                <strong>ETA:</strong> {{eta}}
+            </p>
+
+            <p>
+                Thank you,<br>
+                FieldOps Team
+            </p>
+            """
+        ),
+        "push": "{{technician_name}} assigned. ETA {{eta}}",
+        "in_app": (
+            "Your job '{{job_title}}' has been assigned to "
+            "{{technician_name}}."
+        ),
+    },
+    "enroute": {
+        "title": "Technician En Route",
+        "sms": (
+            "Hello {{customer_name}}, "
+            "{{technician_name}} is on the way. "
+            "Expected arrival: {{eta}}."
+        ),
+        "email": (
+            """
+            <h2>Technician En Route</h2>
+
+            <p>Hello {{customer_name}},</p>
+
+            <p>
+                {{technician_name}} is currently travelling to your location.
+            </p>
+
+            <p>
+                ETA : <strong>{{eta}}</strong>
+            </p>
+
+            <p>
+                Thank you,<br>
+                FieldOps Team
+            </p>
+            """
+        ),
+        "push": "{{technician_name}} is on the way.",
+        "in_app": "{{technician_name}} is en route to your location."
+    },
+    "onsite": {
+        "title": "Technician Arrived",
+        "sms": (
+            "Hello {{customer_name}}, "
+            "{{technician_name}} has arrived "
+            "for {{job_title}}."
+        ),
+        "email": (
+            """
+            <h2>Technician Arrived</h2>
+
+            <p>Hello {{customer_name}},</p>
+
+            <p>
+                {{technician_name}} has arrived at your location
+                and will begin work shortly.
+            </p>
+
+            <p>
+                Job : {{job_title}}
+            </p>
+
+            <p>
+                Thank you,<br>
+                FieldOps Team
+            </p>
+            """
+        ),
+        "push": "{{technician_name}} has arrived.",
+        "in_app": "{{technician_name}} has arrived."
+    },
+    "completed": {
+        "title": "Job Completed",
+        "sms": (
+            "Hello {{customer_name}}, "
+            "{{job_title}} has been completed successfully. "
+            "Thank you for choosing us."
+        ),
+        "email": (
+            """
+            <h2>Job Completed</h2>
+
+            <p>Hello {{customer_name}},</p>
+
+            <p>
+                Your service request has been completed successfully.
+            </p>
+
+            <p>
+                Job : {{job_title}}
+            </p>
+
+            <p>
+                Thank you for choosing FieldOps.
+            </p>
+            """
+        ),
+        "push": "{{job_title}} completed successfully.",
+        "in_app": "{{job_title}} has been completed."
+    },
+    "cancelled": {
+        "title": "Job Cancelled",
+        "sms": (
+            "Hello {{customer_name}}, "
+            "your {{job_title}} has been cancelled."
+        ),
+        "email": (
+            """
+            <h2>Job Cancelled</h2>
+
+            <p>Hello {{customer_name}},</p>
+
+            <p>
+                Unfortunately your service request
+                has been cancelled.
+            </p>
+
+            <p>
+                Job : {{job_title}}
+            </p>
+
+            <p>
+                Please contact support for assistance.
+            </p>
+            """
+        ),
+        "push": "{{job_title}} cancelled.",
+        "in_app": "Your job '{{job_title}}' has been cancelled."
+    },
+
     "job_assigned": {
         "title": "Job Assigned",
         "sms": (
@@ -481,6 +651,48 @@ def build_template_name(title: str, channel: str, locale: str) -> str:
 
 LOCALIZED_NOTIFICATION_TYPES = {
     "en": {
+        "created": {
+            "title": "Job Created",
+            "sms": "Hello {{customer_name}}, your job '{{job_title}}' has been created.",
+            "email": "<h2>Job Created</h2>\n<p>Hello {{customer_name}},</p>\n<p>Your service request <strong>{{job_title}}</strong> has been created.</p>\n<p>Thank you,<br>FieldOps Team</p>",
+            "push": "Job '{{job_title}}' created.",
+            "in_app": "Your job '{{job_title}}' has been created."
+        },
+        "assigned": {
+            "title": "Job Assigned",
+            "sms": "Hello {{customer_name}}, {{technician_name}} has been assigned to {{job_title}}. ETA: {{eta}}.",
+            "email": "\n            <h2>Job Assigned</h2>\n\n            <p>Hello {{customer_name}},</p>\n\n            <p>\n                <strong>{{technician_name}}</strong> has been assigned\n                to your service request.\n            </p>\n\n            <p>\n                <strong>Job:</strong> {{job_title}}\n            </p>\n\n            <p>\n                <strong>ETA:</strong> {{eta}}\n            </p>\n\n            <p>\n                Thank you,<br>\n                FieldOps Team\n            </p>\n            ",
+            "push": "{{technician_name}} assigned. ETA {{eta}}",
+            "in_app": "Your job '{{job_title}}' has been assigned to {{technician_name}}."
+        },
+        "enroute": {
+            "title": "Technician En Route",
+            "sms": "Hello {{customer_name}}, {{technician_name}} is on the way. Expected arrival: {{eta}}.",
+            "email": "\n            <h2>Technician En Route</h2>\n\n            <p>Hello {{customer_name}},</p>\n\n            <p>\n                {{technician_name}} is currently travelling to your location.\n            </p>\n\n            <p>\n                ETA : <strong>{{eta}}</strong>\n            </p>\n\n            <p>\n                Thank you,<br>\n                FieldOps Team\n            </p>\n            ",
+            "push": "{{technician_name}} is on the way.",
+            "in_app": "{{technician_name}} is en route to your location."
+        },
+        "onsite": {
+            "title": "Technician Arrived",
+            "sms": "Hello {{customer_name}}, {{technician_name}} has arrived for {{job_title}}.",
+            "email": "\n            <h2>Technician Arrived</h2>\n\n            <p>Hello {{customer_name}},</p>\n\n            <p>\n                {{technician_name}} has arrived at your location\n                and will begin work shortly.\n            </p>\n\n            <p>\n                Job : {{job_title}}\n            </p>\n\n            <p>\n                Thank you,<br>\n                FieldOps Team\n            </p>\n            ",
+            "push": "{{technician_name}} has arrived.",
+            "in_app": "{{technician_name}} has arrived."
+        },
+        "completed": {
+            "title": "Job Completed",
+            "sms": "Hello {{customer_name}}, {{job_title}} has been completed successfully. Thank you for choosing us.",
+            "email": "\n            <h2>Job Completed</h2>\n\n            <p>Hello {{customer_name}},</p>\n\n            <p>\n                Your service request has been completed successfully.\n            </p>\n\n            <p>\n                Job : {{job_title}}\n            </p>\n\n            <p>\n                Thank you for choosing FieldOps.\n            </p>\n            ",
+            "push": "{{job_title}} completed successfully.",
+            "in_app": "{{job_title}} has been completed."
+        },
+        "cancelled": {
+            "title": "Job Cancelled",
+            "sms": "Hello {{customer_name}}, your {{job_title}} has been cancelled.",
+            "email": "\n            <h2>Job Cancelled</h2>\n\n            <p>Hello {{customer_name}},</p>\n\n            <p>\n                Unfortunately your service request\n                has been cancelled.\n            </p>\n\n            <p>\n                Job : {{job_title}}\n            </p>\n\n            <p>\n                Please contact support for assistance.\n            </p>\n            ",
+            "push": "{{job_title}} cancelled.",
+            "in_app": "Your job '{{job_title}}' has been cancelled."
+        },
         "job_assigned": {
             "title": "Job Assigned",
             "sms": "Hello {{customer_name}}, {{technician_name}} has been assigned to {{job_title}}. ETA: {{eta}}.",
@@ -595,6 +807,48 @@ LOCALIZED_NOTIFICATION_TYPES = {
         }
     },
     "es": {
+        "created": {
+            "title": "Trabajo creado",
+            "sms": "Hola {{customer_name}}, su solicitud de servicio {{job_title}} ha sido creada.",
+            "email": "<h2>Trabajo creado</h2>\n<p>Hola {{customer_name}},</p>\n<p>Su solicitud de servicio <strong>{{job_title}}</strong> ha sido creada.</p>\n<p>Gracias,<br>FieldOps Team</p>",
+            "push": "Trabajo '{{job_title}}' creado.",
+            "in_app": "Su trabajo '{{job_title}}' ha sido creado."
+        },
+        "assigned": {
+            "title": "Trabajo asignado",
+            "sms": "Hola {{customer_name}}, {{technician_name}} ha sido asignado a {{job_title}}. ETA: {{eta}}.",
+            "email": "<h2>Trabajo asignado</h2>\n\n<p>Hola {{customer_name}},</p>\n\n<p><strong>{{technician_name}}</strong> ha sido asignado a su solicitud de servicio.</p>\n\n<p><strong>Trabajo:</strong> {{job_title}}</p>\n\n<p><strong>ETA:</strong> {{eta}}</p>\n\n<p>Gracias,<br>FieldOps Team</p>",
+            "push": "{{technician_name}} asignado. ETA {{eta}}",
+            "in_app": "Su trabajo '{{job_title}}' ha sido asignado a {{technician_name}}."
+        },
+        "enroute": {
+            "title": "Técnico en camino",
+            "sms": "Hola {{customer_name}}, {{technician_name}} está en camino. Llegada esperada: {{eta}}.",
+            "email": "<h2>Técnico en camino</h2>\n\n<p>Hola {{customer_name}},</p>\n\n<p>{{technician_name}} está viajando a su ubicación.</p>\n\n<p>ETA : <strong>{{eta}}</strong></p>\n\n<p>Gracias,<br>\nFieldOps Team</p>",
+            "push": "{{technician_name}} está en camino.",
+            "in_app": "{{technician_name}} está en camino a su ubicación."
+        },
+        "onsite": {
+            "title": "Técnico llegó",
+            "sms": "Hola {{customer_name}}, {{technician_name}} ha llegado para {{job_title}}.",
+            "email": "<h2>Técnico llegó</h2>\n\n<p>Hola {{customer_name}},</p>\n\n<p>{{technician_name}} ha llegado a su ubicación y comenzará a trabajar en breve.</p>\n\n<p>Trabajo : {{job_title}}</p>\n\n<p>Gracias,<br>\nFieldOps Team</p>",
+            "push": "{{technician_name}} ha llegado.",
+            "in_app": "{{technician_name}} ha llegado."
+        },
+        "completed": {
+            "title": "Trabajo completado",
+            "sms": "Hola {{customer_name}}, {{job_title}} se ha completado con éxito. Gracias por elegirnos.",
+            "email": "<h2>Trabajo completado</h2>\n\n<p>Hola {{customer_name}},</p>\n\n<p>Su solicitud de servicio se ha completado con éxito.</p>\n\n<p>Trabajo : {{job_title}}</p>\n\n<p>Gracias por elegir FieldOps.</p>",
+            "push": "{{job_title}} completado con éxito.",
+            "in_app": "{{job_title}} se ha completado."
+        },
+        "cancelled": {
+            "title": "Trabajo cancelado",
+            "sms": "Hola {{customer_name}}, su {{job_title}} ha sido cancelado.",
+            "email": "<h2>Trabajo cancelado</h2>\n\n<p>Hola {{customer_name}},</p>\n\n<p>Lamentablemente su solicitud de servicio ha sido cancelada.</p>\n\n<p>Trabajo : {{job_title}}</p>\n\n<p>Por favor, póngase en contacto con el soporte técnico para obtener ayuda.</p>",
+            "push": "{{job_title}} cancelado.",
+            "in_app": "Su trabajo '{{job_title}}' ha sido cancelado."
+        },
         "job_assigned": {
             "title": "Trabajo asignado",
             "sms": (
@@ -723,6 +977,48 @@ LOCALIZED_NOTIFICATION_TYPES = {
         }
     },
     "ta": {
+        "created": {
+            "title": "பணி உருவாக்கப்பட்டது",
+            "sms": "வணக்கம் {{customer_name}}, உங்கள் சேவை கோரிக்கை {{job_title}} உருவாக்கப்பட்டுள்ளது.",
+            "email": "<h2>பணி உருவாக்கப்பட்டது</h2>\n<p>வணக்கம் {{customer_name}},</p>\n<p>உங்கள் சேவை கோரிக்கை <strong>{{job_title}}</strong> உருவாக்கப்பட்டுள்ளது.</p>\n<p>நன்றி,<br>FieldOps Team</p>",
+            "push": "பணி '{{job_title}}' உருவாக்கப்பட்டது.",
+            "in_app": "உங்கள் பணி '{{job_title}}' உருவாக்கப்பட்டுள்ளது."
+        },
+        "assigned": {
+            "title": "பணி நியமிக்கப்பட்டது",
+            "sms": "வணக்கம் {{customer_name}}, {{job_title}} க்கு {{technician_name}} நியமிக்கப்பட்டுள்ளார். ETA: {{eta}}.",
+            "email": "<h2>பணி நியமிக்கப்பட்டது</h2>\n\n<p>வணக்கம் {{customer_name}},</p>\n\n<p><strong>{{technician_name}}</strong> உங்கள் சேவை கோரிக்கைக்கு நியமிக்கப்பட்டுள்ளார்.</p>\n\n<p><strong>பணி:</strong> {{job_title}}</p>\n\n<p><strong>ETA:</strong> {{eta}}</p>\n\n<p>நன்றி,<br>\nFieldOps Team</p>",
+            "push": "{{technician_name}} நியமிக்கப்பட்டுள்ளார். ETA {{eta}}",
+            "in_app": "உங்கள் பணி '{{job_title}}' {{technician_name}} க்கு நியமிக்கப்பட்டுள்ளது."
+        },
+        "enroute": {
+            "title": "தொழில்நுட்ப வல்லுநர் வழியில் உள்ளார்",
+            "sms": "வணக்கம் {{customer_name}}, {{technician_name}} வழியில் உள்ளார். எதிர்பார்க்கப்படும் வருகை: {{eta}}.",
+            "email": "<h2>தொழில்நுட்ப வல்லுநர் வழியில் உள்ளார்</h2>\n\n<p>வணக்கம் {{customer_name}},</p>\n\n<p>{{technician_name}} உங்கள் இடத்திற்குப் பயணம் செய்து கொண்டிருக்கிறார்.</p>\n\n<p>ETA : <strong>{{eta}}</strong></p>\n\n<p>நன்றி,<br>\nFieldOps Team</p>",
+            "push": "{{technician_name}} வழியில் உள்ளார்.",
+            "in_app": "{{technician_name}} உங்கள் இடத்திற்கு வழியில் உள்ளார்."
+        },
+        "onsite": {
+            "title": "தொழில்நுட்ப வல்லுநர் வந்துள்ளார்",
+            "sms": "வணக்கம் {{customer_name}}, {{technician_name}} {{job_title}} க்காக வந்துள்ளார்.",
+            "email": "<h2>தொழில்நுட்ப வல்லுநர் வந்துள்ளார்</h2>\n\n<p>வணக்கம் {{customer_name}},</p>\n\n<p>{{technician_name}} உங்கள் இடத்திற்கு வந்துள்ளார், விரைவில் வேலையைத் தொடங்குவார்.</p>\n\n<p>பணி : {{job_title}}</p>\n\n<p>நன்றி,<br>\nFieldOps Team</p>",
+            "push": "{{technician_name}} வந்துள்ளார்.",
+            "in_app": "{{technician_name}} வந்துள்ளார்."
+        },
+        "completed": {
+            "title": "பணி முடிந்தது",
+            "sms": "வணக்கம் {{customer_name}}, {{job_title}} வெற்றிகரமாக முடிக்கப்பட்டுள்ளது. எங்களைத் தேர்ந்தெடுத்ததற்கு நன்றி.",
+            "email": "<h2>பணி முடிந்தது</h2>\n\n<p>வணக்கம் {{customer_name}},</p>\n\n<p>உங்கள் சேவை கோரிக்கை வெற்றிகரமாக முடிக்கப்பட்டுள்ளது.</p>\n\n<p>பணி : {{job_title}}</p>\n\n<p>FieldOps ஐத் தேர்ந்தெடுத்ததற்கு நன்றி.</p>",
+            "push": "{{job_title}} வெற்றிகரமாக முடிந்தது.",
+            "in_app": "{{job_title}} முடிக்கப்பட்டுள்ளது."
+        },
+        "cancelled": {
+            "title": "பணி ரத்து செய்யப்பட்டது",
+            "sms": "வணக்கம் {{customer_name}}, உங்கள் {{job_title}} ரத்து செய்யப்பட்டுள்ளது.",
+            "email": "<h2>பணி ரத்து செய்யப்பட்டது</h2>\n\n<p>வணக்கம் {{customer_name}},</p>\n\n<p>துரதிர்ஷ்டவசமாக உங்கள் சேவை கோரிக்கை ரத்து செய்யப்பட்டுள்ளது.</p>\n\n<p>பணி : {{job_title}}</p>\n\n<p>உதவிக்கு வாடிக்கையாளர் சேவையைத் தொடர்பு கொள்ளவும்.</p>",
+            "push": "{{job_title}} ரத்து செய்யப்பட்டது.",
+            "in_app": "உங்கள் பணி '{{job_title}}' ரத்து செய்யப்பட்டுள்ளது."
+        },
         "job_assigned": {
             "title": "பணி நியமிக்கப்பட்டது",
             "sms": "வணக்கம் {{customer_name}}, {{job_title}} க்கு {{technician_name}} நியமிக்கப்பட்டுள்ளார். ETA: {{eta}}.",
@@ -837,6 +1133,48 @@ LOCALIZED_NOTIFICATION_TYPES = {
         }
     },
     "hi": {
+        "created": {
+            "title": "काम बनाया गया",
+            "sms": "नमस्ते {{customer_name}}, आपका सेवा अनुरोध {{job_title}} बना दिया गया है।",
+            "email": "<h2>काम बनाया गया</h2>\n<p>नमस्ते {{customer_name}},</p>\n<p>आपका सेवा अनुरोध <strong>{{job_title}}</strong> बना दिया गया है।</p>\n<p>धन्यवाद,<br>FieldOps Team</p>",
+            "push": "काम '{{job_title}}' बना दिया गया है।",
+            "in_app": "आपका काम '{{job_title}}' बना दिया गया है।"
+        },
+        "assigned": {
+            "title": "काम असाइन किया गया",
+            "sms": "नमस्ते {{customer_name}}, {{technician_name}} को {{job_title}} के लिए असाइन किया गया है। ETA: {{eta}}.",
+            "email": "<h2>काम असाइन किया गया</h2>\n\n<p>नमस्ते {{customer_name}},</p>\n\n<p><strong>{{technician_name}}</strong> को आपके सेवा अनुरोध के लिए असाइन किया गया है।</p>\n\n<p><strong>काम:</strong> {{job_title}}</p>\n\n<p><strong>ETA:</strong> {{eta}}</p>\n\n<p>धन्यवाद,<br>\nFieldOps Team</p>",
+            "push": "{{technician_name}} असाइन किया गया। ETA {{eta}}",
+            "in_app": "आपका काम '{{job_title}}' {{technician_name}} को असाइन किया गया है।"
+        },
+        "enroute": {
+            "title": "तकनीशियन रास्ते में है",
+            "sms": "नमस्ते {{customer_name}}, {{technician_name}} रास्ते में है। अनुमानित आगमन: {{eta}}.",
+            "email": "<h2>तकनीशियन रास्ते में है</h2>\n\n<p>नमस्ते {{customer_name}},</p>\n\n<p>{{technician_name}} वर्तमान में आपके स्थान की यात्रा कर रहा है।</p>\n\n<p>ETA : <strong>{{eta}}</strong></p>\n\n<p>धन्यवाद,<br>\nFieldOps Team</p>",
+            "push": "{{technician_name}} रास्ते में है।",
+            "in_app": "{{technician_name}} आपके स्थान के रास्ते में है।"
+        },
+        "onsite": {
+            "title": "तकनीशियन आ गया",
+            "sms": "नमस्ते {{customer_name}}, {{technician_name}} {{job_title}} के लिए आ गया है।",
+            "email": "<h2>तकनीशियन आ गया</h2>\n\n<p>नमस्ते {{customer_name}},</p>\n\n<p>{{technician_name}} आपके स्थान पर आ गया है और जल्द ही काम शुरू करेगा।</p>\n\n<p>काम : {{job_title}}</p>\n\n<p>धन्यवाद,<br>\nFieldOps Team</p>",
+            "push": "{{technician_name}} आ गया है।",
+            "in_app": "{{technician_name}} आ गया है।"
+        },
+        "completed": {
+            "title": "काम पूरा हुआ",
+            "sms": "नमस्ते {{customer_name}}, {{job_title}} सफलतापूर्वक पूरा हो गया है। हमें चुनने के लिए धन्यवाद।",
+            "email": "<h2>काम पूरा हुआ</h2>\n\n<p>नमस्ते {{customer_name}},</p>\n\n<p>आपका सेवा अनुरोध सफलतापूर्वक पूरा हो गया है।</p>\n\n<p>काम : {{job_title}}</p>\n\n<p>FieldOps को चुनने के लिए धन्यवाद।</p>",
+            "push": "{{job_title}} सफलतापूर्वक पूरा हुआ।",
+            "in_app": "{{job_title}} पूरा हो गया है।"
+        },
+        "cancelled": {
+            "title": "काम रद्द किया गया",
+            "sms": "नमस्ते {{customer_name}}, आपका {{job_title}} रद्द कर दिया गया है।",
+            "email": "<h2>काम रद्द किया गया</h2>\n\n<p>नमस्ते {{customer_name}},</p>\n\n<p>दुर्भाग्य से आपका सेवा अनुरोध रद्द कर दिया गया है।</p>\n\n<p>काम : {{job_title}}</p>\n\n<p>सहायता के लिए कृपया समर्थन से संपर्क करें।</p>",
+            "push": "{{job_title}} रद्द कर दिया गया।",
+            "in_app": "आपका काम '{{job_title}}' रद्द कर दिया गया है।"
+        },
         "job_assigned": {
             "title": "काम असाइन किया गया",
             "sms": "नमस्ते {{customer_name}}, {{technician_name}} को {{job_title}} के लिए असाइन किया गया है। ETA: {{eta}}.",
