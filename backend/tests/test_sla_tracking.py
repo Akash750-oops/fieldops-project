@@ -36,7 +36,11 @@ def setup_db():
             job_id, old_status, new_status, actor_id, actor_role, reason, correlation_id
         )
 
-    with patch("app.tasks.process_job_status_transition_task.delay", side_effect=run_sync) as mock_delay:
+    async def fake_route(*args, **kwargs):
+        pass
+
+    with patch("app.tasks.process_job_status_transition_task.delay", side_effect=run_sync) as mock_delay, \
+         patch("app.services.notification_services.NotificationRouter.route", new=fake_route):
         yield
         fake_redis.flushall()
 

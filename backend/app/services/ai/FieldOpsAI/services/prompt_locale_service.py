@@ -470,6 +470,7 @@ def test_invalid_translation_undeclared_variable():
     issues = validate_translation_parity(
         english,
         spanish,
+        
     )
 
     assert any(

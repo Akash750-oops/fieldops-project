@@ -21,7 +21,7 @@ def require_platform_super_admin(principal: PromptAdminPrincipal = Depends(requi
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Platform super-admin access required.")
     return principal
 
-router = APIRouter(
+router = APIRouter( 
     prefix="/admin/communication-config/channels",
     tags=["communication-config"]
 )

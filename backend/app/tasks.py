@@ -4,6 +4,7 @@ from sqlalchemy import delete, text
 from sqlalchemy.orm import Session
 import time
 import uuid
+from typing import Optional
 
 from .celery_app import celery_app
 from .database import SessionLocal

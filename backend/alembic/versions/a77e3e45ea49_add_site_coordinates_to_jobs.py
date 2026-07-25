@@ -20,13 +20,25 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column('jobs', sa.Column('site_latitude', sa.Float(), nullable=True))
-    op.add_column('jobs', sa.Column('site_longitude', sa.Float(), nullable=True))
-    op.add_column('jobs', sa.Column('site_address', sa.String(length=255), nullable=True))
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    columns = [c['name'] for c in inspector.get_columns('jobs')]
+    if 'site_latitude' not in columns:
+        op.add_column('jobs', sa.Column('site_latitude', sa.Float(), nullable=True))
+    if 'site_longitude' not in columns:
+        op.add_column('jobs', sa.Column('site_longitude', sa.Float(), nullable=True))
+    if 'site_address' not in columns:
+        op.add_column('jobs', sa.Column('site_address', sa.String(length=255), nullable=True))
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column('jobs', 'site_address')
-    op.drop_column('jobs', 'site_longitude')
-    op.drop_column('jobs', 'site_latitude')
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    columns = [c['name'] for c in inspector.get_columns('jobs')]
+    if 'site_address' in columns:
+        op.drop_column('jobs', 'site_address')
+    if 'site_longitude' in columns:
+        op.drop_column('jobs', 'site_longitude')
+    if 'site_latitude' in columns:
+        op.drop_column('jobs', 'site_latitude')
