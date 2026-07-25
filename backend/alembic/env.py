@@ -26,6 +26,10 @@ load_dotenv(dotenv_path=env_path)
 config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL").replace("%", "%%"))
 
 from app.models import Base
+# Import new multi-tenant models so Alembic discovers them
+from app.models.user import User, RefreshToken  # noqa: F401
+from app.models.organization import Organization  # noqa: F401
+from app.models.enterprise_audit import EnterpriseAuditLog  # noqa: F401
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

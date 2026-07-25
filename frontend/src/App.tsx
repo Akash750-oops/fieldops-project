@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import logo from "./assets/logo.png";
-import { ChevronsLeft, ChevronsRight, LayoutDashboard, Briefcase, Users, Calendar, FlaskConical, Info, User, ChevronDown, Activity, BellRing } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, LayoutDashboard, Briefcase, Users, Calendar, FlaskConical, Info, User, ChevronDown, Activity, BellRing, LogOut } from "lucide-react";
+import useAuthStore from "./store/authStore";
 
 // Import notification modules
 import NotificationBell from "./components/notifications/NotificationBell";
@@ -26,11 +27,13 @@ import { ToastProvider, useToast } from "./hooks/useToast";
 import LoadingSpinner from "./components/ui/LoadingSpinner";
 
 // Lazy load page components
+const LoginPage = lazy(() => import("./pages/LoginPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const JobsPage = lazy(() => import("./pages/JobsPage"));
 const TechDashboardPage = lazy(() => import("./pages/TechDashboardPage"));
 const PlanningPage = lazy(() => import("./pages/PlanningPage"));
 const TrackingDashboardPage = lazy(() => import("./pages/TrackingDashboardPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 
 interface NotificationItem {
   id: string | number;
@@ -540,6 +543,7 @@ const localCss = `
 `;
 
 function AppInner() {
+  const { user, logout } = useAuthStore();
   const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -564,6 +568,8 @@ function AppInner() {
         return "Loading Technician Dashboard...";
       case "planning":
         return "Loading Planning Board...";
+      case "profile":
+        return "Loading Account & Organization Control...";
       default:
         return "Loading page...";
     }
@@ -1033,22 +1039,46 @@ function AppInner() {
                   : styles.sidebarProfileMini
             }
           >
-            <div style={styles.miniAvatar}>R</div>
+            <div
+              onClick={() => handleTabChange("profile")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                cursor: "pointer",
+                flex: 1,
+                minWidth: 0,
+              }}
+              title="Click to view Account & Organizations"
+            >
+              <div style={styles.miniAvatar}>{user?.first_name ? user.first_name[0].toUpperCase() : "U"}</div>
 
-            <div style={sidebarCollapsed ? { display: "none" } : styles.miniInfo}>
-              <span style={styles.miniName}>Rajesh</span>
-              <span style={styles.miniRole}>Admin</span>
+              <div style={sidebarCollapsed ? { display: "none" } : styles.miniInfo}>
+                <span style={styles.miniName}>{user ? `${user.first_name} ${user.last_name}` : "User"}</span>
+                <span style={styles.miniRole}>{user ? user.role.replace("_", " ").toUpperCase() : "Role"}</span>
+              </div>
             </div>
 
-            <div style={sidebarCollapsed ? { marginTop: "12px", display: "flex", justifyContent: "center" } : { marginLeft: "auto", display: "flex", alignItems: "center" }}>
-              <NotificationBell
-                unreadCount={unreadCount}
-                onClick={() => {
-                  setIsNotificationDrawerOpen(true);
-                  ensureActiveTechLoaded();
+            <div style={sidebarCollapsed ? { marginTop: "12px", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" } : { marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                title="Log out"
+                onClick={() => logout()}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#94a3b8",
+                  cursor: "pointer",
+                  padding: "6px",
+                  display: "flex",
+                  alignItems: "center",
+                  borderRadius: "6px",
+                  transition: "color 0.2s",
                 }}
-                isAnimated={isBellAnimated}
-              />
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+              >
+                <LogOut size={18} />
+              </button>
             </div>
           </div>
         </div>
@@ -1099,6 +1129,9 @@ function AppInner() {
               {activeTab === "tracking" && (
                 <TrackingDashboardPage />
               )}
+              {activeTab === "profile" && (
+                <ProfilePage />
+              )}
             </Suspense>
           )}
         </main>
@@ -1120,11 +1153,29 @@ function AppInner() {
   );
 }
 
-// Wrap with ToastProvider at the root
+// Wrap with ToastProvider & Auth check at the root
+function AppContent() {
+  const { isAuthenticated, loadFromStorage } = useAuthStore();
+
+  useEffect(() => {
+    loadFromStorage();
+  }, [loadFromStorage]);
+
+  if (!isAuthenticated) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading authentication..." fullPage />}>
+        <LoginPage />
+      </Suspense>
+    );
+  }
+
+  return <AppInner />;
+}
+
 function App() {
   return (
     <ToastProvider>
-      <AppInner />
+      <AppContent />
     </ToastProvider>
   );
 }

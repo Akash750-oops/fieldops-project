@@ -8,20 +8,24 @@ sio_app = socketio.ASGIApp(sio)
 
 @sio.event
 async def connect(sid, environ):
-    # Here you would typically authenticate the user via tokens in the query string or headers
-    # Example: tech_id = environ.get('HTTP_X_TECH_ID')
-    # For now, we will assume clients pass their tech_id in the connection handshake query string.
     query_string = environ.get('QUERY_STRING', '')
     tech_id = None
+    tenant_id = None
     for param in query_string.split('&'):
         if param.startswith('tech_id='):
             tech_id = param.split('=')[1]
+        elif param.startswith('tenant_id='):
+            tenant_id = param.split('=')[1]
     
+    if tenant_id:
+        await sio.enter_room(sid, f"tenant_{tenant_id}")
+        logger.info(f"Socket.io client connected: {sid} mapped to tenant_id tenant_{tenant_id}")
+
     if tech_id:
         await sio.enter_room(sid, str(tech_id))
         logger.info(f"Socket.io client connected: {sid} mapped to tech_id {tech_id}")
-    else:
-        logger.warning(f"Socket.io client connected without tech_id: {sid}")
+    elif not tenant_id:
+        logger.warning(f"Socket.io client connected without tech_id/tenant_id: {sid}")
 
 @sio.event
 async def disconnect(sid):
@@ -64,6 +68,18 @@ class WebSocketManager:
             logger.info(f"Broadcast eta_update to room {room}: eta={payload.get('eta')}")
         except Exception as e:
             logger.error(f"Failed to broadcast eta_update to job {job_id}: {e}")
+
+    async def broadcast_to_tenant(self, tenant_id: str, payload: dict):
+        """
+        Broadcast a message exclusively to all clients belonging to a specific tenant.
+        """
+        room = f"tenant_{tenant_id}"
+        try:
+            event_name = payload.get("type", "dispatch_event")
+            await sio.emit(event_name, payload, room=room)
+            logger.info(f"Broadcasted to tenant room {room}: event={event_name}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast to tenant {tenant_id}: {e}")
 
     async def broadcast(self, channel: str, payload: dict):
         """

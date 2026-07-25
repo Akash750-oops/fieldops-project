@@ -12,6 +12,8 @@ from ..schemas import InAppNotificationResponse, PaginatedNotificationsResponse,
 from ..logger import logger
 from ..services.socket_manager import emit_notification
 
+from app.auth.dependencies import get_current_user_or_tenant, AuthenticatedUser
+
 router = APIRouter(
     tags=["In-App Notifications"]
 )
@@ -23,11 +25,17 @@ async def get_technician_notifications(
     type: Optional[str] = None,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    authorization: str = Depends(verify_jwt_token),
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
     db: Session = Depends(get_db)
 ):
-    # Verify tech exists
-    tech = db.query(Technician).filter(Technician.tech_id == id).first()
+    user, tenant_id = user_tenant
+
+    # Verify tech exists and belongs to tenant
+    tech_query = db.query(Technician).filter(Technician.tech_id == id)
+    if not user or not user.is_super_admin:
+        tech_query = tech_query.filter(Technician.tenant_id == tenant_id)
+
+    tech = tech_query.first()
     if not tech:
         raise HTTPException(status_code=404, detail="Technician not found")
 
@@ -35,6 +43,8 @@ async def get_technician_notifications(
         InAppNotification.tech_id == id,
         InAppNotification.status != 'DISMISSED'
     )
+    if not user or not user.is_super_admin:
+        query = query.filter(InAppNotification.tenant_id == tenant_id)
 
     now = datetime.now(timezone.utc)
     # Filter out expired notifications

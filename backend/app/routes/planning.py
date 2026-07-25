@@ -8,6 +8,8 @@ from ..database import get_db
 from ..models import Job, Technician
 from .. import schemas
 
+from app.auth.dependencies import get_current_user_or_tenant, AuthenticatedUser
+
 router = APIRouter(
     tags=["Planning"]
 )
@@ -18,12 +20,13 @@ def get_planned_assignments(
     search: Optional[str] = None,
     page: Optional[int] = Query(None, ge=1),
     limit: Optional[int] = Query(None, ge=1),
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
     db: Session = Depends(get_db)
 ):
     """
     Fetch all jobs that are assigned to a technician.
     """
+    user, tenant_id = user_tenant
     query = db.query(
         Job.id.label("job_id"),
         Technician.technician_name.label("technician"),
@@ -36,8 +39,8 @@ def get_planned_assignments(
         Technician.max_jobs
     ).join(Technician, Job.assigned_technician_id == Technician.technician_id)
     
-    if x_tenant_id:
-        query = query.filter(Job.tenant_id == x_tenant_id)
+    if not user or not user.is_super_admin:
+        query = query.filter(Job.tenant_id == tenant_id)
         
     if search:
         search_pattern = f"%{search}%"
@@ -74,7 +77,7 @@ def get_planned_assignments(
 
 @router.get("/planning/kpi")
 def get_planning_kpi(
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
     db: Session = Depends(get_db)
 ):
     """
@@ -82,14 +85,15 @@ def get_planning_kpi(
     Counts are calculated from ALL jobs (not date-filtered) for always-meaningful numbers.
     Also provides yesterday-vs-today trend for jobs created today vs yesterday.
     """
+    user, tenant_id = user_tenant
     now_utc = datetime.now(timezone.utc)
     today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday_start = today_start - timedelta(days=1)
 
-    # Base query - optionally filter by tenant
+    # Base query - filter by tenant
     base = db.query(Job)
-    if x_tenant_id:
-        base = base.filter(Job.tenant_id == x_tenant_id)
+    if not user or not user.is_super_admin:
+        base = base.filter(Job.tenant_id == tenant_id)
 
     today_q = base.filter(Job.created_at >= today_start)
     yesterday_q = base.filter(

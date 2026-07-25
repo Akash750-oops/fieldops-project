@@ -23,6 +23,8 @@ from app.services.composite import CompositeScoringService
 from app.routes.dispatch import verify_jwt_token
 from app.utils import map_service_type_to_skill, is_skill_matching
 
+from app.auth.dependencies import get_current_user_or_tenant, AuthenticatedUser
+
 logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/jobs",
@@ -31,7 +33,12 @@ router = APIRouter(
 
 
 @router.get("/stats")
-def get_jobs_stats(time_range: Optional[str] = None, db: Session = Depends(get_db)):
+def get_jobs_stats(
+    time_range: Optional[str] = None,
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
+    db: Session = Depends(get_db)
+):
+    user, tenant_id = user_tenant
     try:
         # Filter by time range if provided
         start_date = None
@@ -40,8 +47,10 @@ def get_jobs_stats(time_range: Optional[str] = None, db: Session = Depends(get_d
         elif time_range == "month":
             start_date = datetime.now(timezone.utc) - timedelta(days=30)
 
-        # Base query for jobs
+        # Base query for jobs with tenant isolation
         query = db.query(Job)
+        if not user or not user.is_super_admin:
+            query = query.filter(Job.tenant_id == tenant_id)
         if start_date:
             query = query.filter(Job.created_at >= start_date)
 
@@ -54,15 +63,19 @@ def get_jobs_stats(time_range: Optional[str] = None, db: Session = Depends(get_d
         active_count = query.filter(func.lower(Job.status) == "active", Job.assigned_technician_id.isnot(None)).count()
         pending_count = query.filter(func.lower(Job.status) == "active", Job.assigned_technician_id.is_(None)).count()
 
-        # Technician availability counts
-        tech_available = db.query(Technician).filter(func.lower(Technician.technician_status) == "available").count()
-        tech_busy = db.query(Technician).filter(
+        # Technician availability counts with tenant isolation
+        tech_query = db.query(Technician)
+        if not user or not user.is_super_admin:
+            tech_query = tech_query.filter(Technician.tenant_id == tenant_id)
+
+        tech_available = tech_query.filter(func.lower(Technician.technician_status) == "available").count()
+        tech_busy = tech_query.filter(
             (func.lower(Technician.technician_status) == "busy") | 
             (func.lower(Technician.technician_status) == "on job") | 
             (func.lower(Technician.technician_status) == "on job / busy")
         ).count()
-        tech_break = db.query(Technician).filter(func.lower(Technician.technician_status) == "break").count()
-        tech_offline = db.query(Technician).filter(func.lower(Technician.technician_status) == "offline").count()
+        tech_break = tech_query.filter(func.lower(Technician.technician_status) == "break").count()
+        tech_offline = tech_query.filter(func.lower(Technician.technician_status) == "offline").count()
 
         # Category splits based on required_skill
         hvac_count = query.filter(func.lower(Job.required_skill) == "hvac").count()
@@ -103,13 +116,20 @@ def get_jobs_stats(time_range: Optional[str] = None, db: Session = Depends(get_d
 
 
 @router.get("/service-types", response_model=list[str])
-def get_service_types(db: Session = Depends(get_db)):
+def get_service_types(
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
+    db: Session = Depends(get_db)
+):
     """
-    Retrieve all unique service types.
+    Retrieve unique service types scoped by tenant.
     """
+    user, tenant_id = user_tenant
     try:
-        results = db.query(Job.service_type).distinct().all()
-        # Filter out empty/null values, trim, and sort
+        query = db.query(Job.service_type)
+        if not user or not user.is_super_admin:
+            query = query.filter(Job.tenant_id == tenant_id)
+
+        results = query.distinct().all()
         service_types = sorted(list(set(r[0].strip() for r in results if r[0] and r[0].strip())))
         return service_types
     except Exception as error:
@@ -120,11 +140,18 @@ def get_service_types(db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=JobResponse, status_code=201)
-def create_job(job: JobCreate, db: Session = Depends(get_db)):
+def create_job(
+    job: JobCreate,
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
+    db: Session = Depends(get_db)
+):
+    user, tenant_id = user_tenant
     try:
         req_skill = job.required_skill
         if not req_skill or not req_skill.strip():
             req_skill = map_service_type_to_skill(job.service_type)
+
+        effective_tenant = tenant_id if (user and not user.is_super_admin) else (job.tenant_id or tenant_id)
 
         new_job = Job(
             customer_name=job.customer_name,
@@ -136,7 +163,7 @@ def create_job(job: JobCreate, db: Session = Depends(get_db)):
             preferred_service_date=job.preferred_service_date,
             status=job.status,
             required_skill=req_skill,
-            tenant_id=job.tenant_id or "tenant-1",
+            tenant_id=effective_tenant,
             sla_deadline=job.sla_deadline,
             attempt_count=job.attempt_count or 0
         )
@@ -184,13 +211,14 @@ def get_jobs(
     service_type: Optional[str] = None,
     page: Optional[int] = Query(None, ge=1),
     limit: Optional[int] = Query(None, ge=1),
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
     db: Session = Depends(get_db)
 ):
+    user, tenant_id = user_tenant
     try:
         query = db.query(Job)
-        if x_tenant_id:
-            query = query.filter(Job.tenant_id == x_tenant_id)
+        if not user or not user.is_super_admin:
+            query = query.filter(Job.tenant_id == tenant_id)
         
         if search:
             search_pattern = f"%{search}%"
@@ -248,7 +276,7 @@ def get_pending_jobs(
     active_filter: Optional[str] = Query(None, description="Active filter key e.g., expired, redispatched"),
     page: Optional[int] = Query(None, ge=1),
     limit: Optional[int] = Query(None, ge=1),
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
     db: Session = Depends(get_db)
 ):
     """
@@ -256,6 +284,7 @@ def get_pending_jobs(
     Excludes terminal-status jobs (completed/cancelled) so the row count
     exactly matches the 'Jobs Pending' KPI card on the Planning Dashboard.
     """
+    user, tenant_id = user_tenant
     TERMINAL_STATUSES = ["completed", "cancelled", "canceled",
                          "COMPLETED", "CANCELLED", "CANCELED"]
     try:
@@ -263,8 +292,8 @@ def get_pending_jobs(
             Job.assigned_technician_id.is_(None),
             Job.status.notin_(TERMINAL_STATUSES)
         )
-        if x_tenant_id:
-            query = query.filter(Job.tenant_id == x_tenant_id)
+        if not user or not user.is_super_admin:
+            query = query.filter(Job.tenant_id == tenant_id)
         
         if search:
             search_pattern = f"%{search}%"
