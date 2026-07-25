@@ -216,24 +216,28 @@ export default function ProfilePage() {
   return (
     <div style={{
       height: "100%",
+      maxHeight: "100%",
       width: "100%",
-      overflowY: "auto",
+      overflow: "hidden",
       background: "#EEF4F1",
-      padding: "24px 32px",
+      padding: "16px 24px",
       boxSizing: "border-box",
       fontFamily: "'Inter', sans-serif",
+      display: "flex",
+      flexDirection: "column",
+      gap: "14px",
       position: "relative"
     }}>
       {/* Floating Pop-up Toast Container */}
       <div style={{
         position: "fixed",
-        top: "24px",
-        right: "24px",
+        top: "20px",
+        right: "20px",
         zIndex: 99999,
         display: "flex",
         flexDirection: "column",
-        gap: "10px",
-        maxWidth: "420px",
+        gap: "8px",
+        maxWidth: "400px",
         pointerEvents: "none"
       }}>
         {toasts.map((toast) => (
@@ -241,25 +245,25 @@ export default function ProfilePage() {
             key={toast.id}
             style={{
               pointerEvents: "auto",
-              padding: "14px 18px",
-              borderRadius: "12px",
+              padding: "12px 16px",
+              borderRadius: "10px",
               background: toast.type === "success" ? "#F0FDF4" : "#FEF2F2",
               border: `1px solid ${toast.type === "success" ? "#86EFAC" : "#FCA5A5"}`,
               color: toast.type === "success" ? "#166534" : "#991B1B",
-              boxShadow: "0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 10px rgba(0, 0, 0, 0.05)",
+              boxShadow: "0 8px 20px rgba(0, 0, 0, 0.08)",
               display: "flex",
               alignItems: "flex-start",
-              gap: "12px",
-              fontSize: "13px",
+              gap: "10px",
+              fontSize: "12px",
               lineHeight: "1.4",
               fontWeight: 500,
               animation: "slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)"
             }}
           >
             {toast.type === "success" ? (
-              <CheckCircle size={18} color="#166534" style={{ flexShrink: 0, marginTop: 1 }} />
+              <CheckCircle size={16} color="#166534" style={{ flexShrink: 0, marginTop: 1 }} />
             ) : (
-              <AlertCircle size={18} color="#991B1B" style={{ flexShrink: 0, marginTop: 1 }} />
+              <AlertCircle size={16} color="#991B1B" style={{ flexShrink: 0, marginTop: 1 }} />
             )}
             <div style={{ flex: 1 }}>{toast.message}</div>
             <button
@@ -294,81 +298,80 @@ export default function ProfilePage() {
         }
       `}</style>
 
-      {/* Header Banner */}
+      {/* 1. Top Header Banner */}
       <div style={{
         background: "#FFFFFF",
-        borderRadius: "14px",
-        padding: "24px 28px",
+        borderRadius: "12px",
+        padding: "12px 20px",
         border: "1px solid #E3ECE7",
-        boxShadow: "0 2px 6px rgba(47, 79, 62, 0.03)",
-        marginBottom: "24px",
+        boxShadow: "0 1px 4px rgba(47, 79, 62, 0.03)",
         display: "flex",
         justifyContent: "space-between",
-        alignItems: "center"
+        alignItems: "center",
+        flexShrink: 0
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
           <div style={{
-            width: "56px",
-            height: "56px",
+            width: "42px",
+            height: "42px",
             borderRadius: "50%",
             background: "#2F4F3E",
             color: "#FFFFFF",
-            fontSize: "22px",
+            fontSize: "18px",
             fontWeight: 700,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            boxShadow: "0 4px 12px rgba(47, 79, 62, 0.15)"
+            boxShadow: "0 2px 8px rgba(47, 79, 62, 0.15)"
           }}>
             {user?.first_name ? user.first_name[0].toUpperCase() : "U"}
           </div>
           <div>
-            <h1 style={{ fontSize: "22px", fontWeight: 700, margin: 0, color: "#2F4F3E" }}>
-              {user?.first_name} {user?.last_name}
-            </h1>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "4px" }}>
-              <span style={{ fontSize: "13px", color: "#5C9470", fontWeight: 500 }}>
-                {user?.email}
-              </span>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <h1 style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "#2F4F3E" }}>
+                {user?.first_name} {user?.last_name}
+              </h1>
               <span style={{
-                fontSize: "11px",
+                fontSize: "10px",
                 fontWeight: 700,
-                padding: "2px 8px",
-                borderRadius: "6px",
+                padding: "2px 6px",
+                borderRadius: "4px",
                 background: "#EAF4EE",
                 color: "#2F4F3E",
-                textTransform: "uppercase",
-                letterSpacing: "0.03em"
+                textTransform: "uppercase"
               }}>
                 {user?.role?.replace("_", " ")}
               </span>
             </div>
+            <span style={{ fontSize: "12px", color: "#5C9470", fontWeight: 500 }}>
+              {user?.email}
+            </span>
           </div>
         </div>
 
         <div style={{ textAlign: "right" }}>
-          <span style={{ fontSize: "12px", color: "#5C9470", display: "block" }}>Active Tenant ID</span>
-          <span style={{ fontSize: "14px", fontWeight: 700, color: "#2F4F3E" }}>{user?.tenant_id}</span>
+          <span style={{ fontSize: "11px", color: "#5C9470", display: "block" }}>Active Tenant ID</span>
+          <span style={{ fontSize: "13px", fontWeight: 700, color: "#2F4F3E" }}>{user?.tenant_id}</span>
         </div>
       </div>
 
-      {/* Tabs Bar */}
+      {/* 2. Compact Tabs Bar */}
       <div style={{
         display: "flex",
-        gap: "8px",
+        gap: "6px",
         background: "#FFFFFF",
-        padding: "6px",
-        borderRadius: "12px",
+        padding: "4px",
+        borderRadius: "10px",
         border: "1px solid #E3ECE7",
-        marginBottom: "24px",
-        width: "fit-content"
+        width: "fit-content",
+        flexShrink: 0
       }}>
         <button
           onClick={() => setActiveTab("profile")}
           style={{
-            padding: "9px 18px",
-            borderRadius: "8px",
-            fontSize: "13px",
+            padding: "6px 14px",
+            borderRadius: "7px",
+            fontSize: "12px",
             fontWeight: 600,
             border: "none",
             background: activeTab === "profile" ? "#2F4F3E" : "transparent",
@@ -376,20 +379,20 @@ export default function ProfilePage() {
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
-            gap: "8px",
+            gap: "6px",
             transition: "all 0.2s ease"
           }}
         >
-          <User size={15} /> Profile Details & Edit
+          <User size={14} /> Profile & Edit
         </button>
 
         {isAdmin && (
           <button
             onClick={() => setActiveTab("orgs")}
             style={{
-              padding: "9px 18px",
-              borderRadius: "8px",
-              fontSize: "13px",
+              padding: "6px 14px",
+              borderRadius: "7px",
+              fontSize: "12px",
               fontWeight: 600,
               border: "none",
               background: activeTab === "orgs" ? "#2F4F3E" : "transparent",
@@ -397,11 +400,11 @@ export default function ProfilePage() {
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
-              gap: "8px",
+              gap: "6px",
               transition: "all 0.2s ease"
             }}
           >
-            <Building2 size={15} /> Organizations ({orgs.length})
+            <Building2 size={14} /> Organizations ({orgs.length})
           </button>
         )}
 
@@ -409,9 +412,9 @@ export default function ProfilePage() {
           <button
             onClick={() => setActiveTab("users")}
             style={{
-              padding: "9px 18px",
-              borderRadius: "8px",
-              fontSize: "13px",
+              padding: "6px 14px",
+              borderRadius: "7px",
+              fontSize: "12px",
               fontWeight: 600,
               border: "none",
               background: activeTab === "users" ? "#2F4F3E" : "transparent",
@@ -419,87 +422,94 @@ export default function ProfilePage() {
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
-              gap: "8px",
+              gap: "6px",
               transition: "all 0.2s ease"
             }}
           >
-            <UserPlus size={15} /> User Provisioning
+            <UserPlus size={14} /> User Provisioning
           </button>
         )}
       </div>
 
-      {/* Tab 1: Profile Details, Edit Name & Password Change */}
+      {/* 3. Main Content View Area (Fits 100% height, No outer page scrollbar) */}
       {activeTab === "profile" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", maxWidth: "1100px" }}>
-          {/* Left Column: Details & Edit Name */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        <div style={{
+          flex: 1,
+          display: "grid",
+          gridTemplateColumns: "1.1fr 1fr",
+          gap: "16px",
+          minHeight: 0,
+          overflow: "hidden"
+        }}>
+          {/* Left Column: Account Attributes & Edit Name */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px", minHeight: 0 }}>
             {/* Account Attributes */}
             <div style={{
               background: "#FFFFFF",
-              borderRadius: "14px",
+              borderRadius: "12px",
               border: "1px solid #E3ECE7",
-              padding: "24px",
-              boxShadow: "0 2px 6px rgba(47, 79, 62, 0.03)"
+              padding: "16px 20px",
+              boxShadow: "0 1px 4px rgba(47, 79, 62, 0.02)"
             }}>
-              <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#2F4F3E", margin: "0 0 16px" }}>
+              <h2 style={{ fontSize: "14px", fontWeight: 700, color: "#2F4F3E", margin: "0 0 12px" }}>
                 Account Attributes
               </h2>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div style={{ padding: "12px 14px", background: "#F3F8F5", borderRadius: "8px", border: "1px solid #E3ECE7" }}>
-                  <span style={{ fontSize: "11px", color: "#5C9470", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Mail size={13} /> Registered Email
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div style={{ padding: "10px 12px", background: "#F3F8F5", borderRadius: "8px", border: "1px solid #E3ECE7" }}>
+                  <span style={{ fontSize: "10px", color: "#5C9470", fontWeight: 600, display: "flex", alignItems: "center", gap: "5px" }}>
+                    <Mail size={12} /> Registered Email
                   </span>
-                  <span style={{ fontSize: "13px", fontWeight: 700, color: "#2F4F3E", display: "block", marginTop: "3px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginTop: "2px", wordBreak: "break-all" }}>
                     {user?.email}
                   </span>
                 </div>
 
-                <div style={{ padding: "12px 14px", background: "#F3F8F5", borderRadius: "8px", border: "1px solid #E3ECE7" }}>
-                  <span style={{ fontSize: "11px", color: "#5C9470", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Building2 size={13} /> Organization ID
+                <div style={{ padding: "10px 12px", background: "#F3F8F5", borderRadius: "8px", border: "1px solid #E3ECE7" }}>
+                  <span style={{ fontSize: "10px", color: "#5C9470", fontWeight: 600, display: "flex", alignItems: "center", gap: "5px" }}>
+                    <Building2 size={12} /> Organization ID
                   </span>
-                  <span style={{ fontSize: "13px", fontWeight: 700, color: "#2F4F3E", display: "block", marginTop: "3px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginTop: "2px", wordBreak: "break-all" }}>
                     {user?.tenant_id}
                   </span>
                 </div>
 
-                <div style={{ padding: "12px 14px", background: "#F3F8F5", borderRadius: "8px", border: "1px solid #E3ECE7" }}>
-                  <span style={{ fontSize: "11px", color: "#5C9470", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Shield size={13} /> Assigned Role
+                <div style={{ padding: "10px 12px", background: "#F3F8F5", borderRadius: "8px", border: "1px solid #E3ECE7" }}>
+                  <span style={{ fontSize: "10px", color: "#5C9470", fontWeight: 600, display: "flex", alignItems: "center", gap: "5px" }}>
+                    <Shield size={12} /> Assigned Role
                   </span>
-                  <span style={{ fontSize: "13px", fontWeight: 700, color: "#2F4F3E", display: "block", marginTop: "3px", textTransform: "capitalize" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginTop: "2px", textTransform: "capitalize" }}>
                     {user?.role?.replace("_", " ")}
                   </span>
                 </div>
 
-                <div style={{ padding: "12px 14px", background: "#F3F8F5", borderRadius: "8px", border: "1px solid #E3ECE7" }}>
-                  <span style={{ fontSize: "11px", color: "#5C9470", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Server size={13} /> Status
+                <div style={{ padding: "10px 12px", background: "#F3F8F5", borderRadius: "8px", border: "1px solid #E3ECE7" }}>
+                  <span style={{ fontSize: "10px", color: "#5C9470", fontWeight: 600, display: "flex", alignItems: "center", gap: "5px" }}>
+                    <Server size={12} /> Status
                   </span>
-                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "flex", alignItems: "center", gap: "4px", marginTop: "3px" }}>
-                    <CheckCircle size={13} color="#2F4F3E" /> Signed in (JWT Verified)
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "flex", alignItems: "center", gap: "4px", marginTop: "2px" }}>
+                    <CheckCircle size={12} color="#2F4F3E" /> Signed in (JWT)
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Edit Name Form */}
+            {/* Edit Profile Name */}
             <div style={{
               background: "#FFFFFF",
-              borderRadius: "14px",
+              borderRadius: "12px",
               border: "1px solid #E3ECE7",
-              padding: "24px",
-              boxShadow: "0 2px 6px rgba(47, 79, 62, 0.03)"
+              padding: "16px 20px",
+              boxShadow: "0 1px 4px rgba(47, 79, 62, 0.02)"
             }}>
-              <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#2F4F3E", margin: "0 0 16px", display: "flex", alignItems: "center", gap: "8px" }}>
-                <Edit3 size={18} /> Edit Profile Name
+              <h2 style={{ fontSize: "14px", fontWeight: 700, color: "#2F4F3E", margin: "0 0 12px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <Edit3 size={15} /> Edit Profile Name
               </h2>
 
-              <form onSubmit={handleUpdateName} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <form onSubmit={handleUpdateName} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                   <div>
-                    <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+                    <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                       First Name *
                     </label>
                     <input
@@ -509,10 +519,10 @@ export default function ProfilePage() {
                       required
                       style={{
                         width: "100%",
-                        padding: "9px 12px",
+                        padding: "7px 10px",
                         border: "1px solid #E3ECE7",
-                        borderRadius: "8px",
-                        fontSize: "13px",
+                        borderRadius: "7px",
+                        fontSize: "12px",
                         background: "#F9FAF9",
                         color: "#2F4F3E",
                         outline: "none",
@@ -522,7 +532,7 @@ export default function ProfilePage() {
                   </div>
 
                   <div>
-                    <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+                    <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                       Last Name *
                     </label>
                     <input
@@ -532,10 +542,10 @@ export default function ProfilePage() {
                       required
                       style={{
                         width: "100%",
-                        padding: "9px 12px",
+                        padding: "7px 10px",
                         border: "1px solid #E3ECE7",
-                        borderRadius: "8px",
-                        fontSize: "13px",
+                        borderRadius: "7px",
+                        fontSize: "12px",
                         background: "#F9FAF9",
                         color: "#2F4F3E",
                         outline: "none",
@@ -549,45 +559,47 @@ export default function ProfilePage() {
                   type="submit"
                   disabled={isUpdatingName}
                   style={{
-                    padding: "10px 16px",
+                    padding: "8px 14px",
                     background: "#2F4F3E",
                     color: "#FFFFFF",
                     border: "none",
-                    borderRadius: "8px",
-                    fontSize: "13px",
+                    borderRadius: "7px",
+                    fontSize: "12px",
                     fontWeight: 700,
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center",
                     gap: "6px",
                     width: "fit-content",
-                    boxShadow: "0 2px 6px rgba(47, 79, 62, 0.15)"
+                    boxShadow: "0 2px 5px rgba(47, 79, 62, 0.12)",
+                    marginTop: "2px"
                   }}
                 >
-                  <Save size={14} />
+                  <Save size={13} />
                   {isUpdatingName ? "Saving..." : "Save Profile Name"}
                 </button>
               </form>
             </div>
           </div>
 
-          {/* Right Column: Password Change Form */}
+          {/* Right Column: Change Password */}
           <div style={{
             background: "#FFFFFF",
-            borderRadius: "14px",
+            borderRadius: "12px",
             border: "1px solid #E3ECE7",
-            padding: "24px",
-            boxShadow: "0 2px 6px rgba(47, 79, 62, 0.03)",
+            padding: "16px 20px",
+            boxShadow: "0 1px 4px rgba(47, 79, 62, 0.02)",
+            display: "flex",
+            flexDirection: "column",
             height: "fit-content"
           }}>
-            <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#2F4F3E", margin: "0 0 16px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <Lock size={18} /> Change Password
+            <h2 style={{ fontSize: "14px", fontWeight: 700, color: "#2F4F3E", margin: "0 0 12px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <Lock size={15} /> Change Password
             </h2>
 
-            <form onSubmit={handleChangePassword} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <form onSubmit={handleChangePassword} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               <div>
-                <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+                <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                   Current Password *
                 </label>
                 <input
@@ -598,10 +610,10 @@ export default function ProfilePage() {
                   required
                   style={{
                     width: "100%",
-                    padding: "9px 12px",
+                    padding: "7px 10px",
                     border: "1px solid #E3ECE7",
-                    borderRadius: "8px",
-                    fontSize: "13px",
+                    borderRadius: "7px",
+                    fontSize: "12px",
                     background: "#F9FAF9",
                     color: "#2F4F3E",
                     outline: "none",
@@ -611,8 +623,8 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
-                  New Password * (min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special)
+                <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
+                  New Password * (min 8 chars, 1 upper, 1 lower, 1 digit, 1 special)
                 </label>
                 <input
                   type="password"
@@ -622,10 +634,10 @@ export default function ProfilePage() {
                   required
                   style={{
                     width: "100%",
-                    padding: "9px 12px",
+                    padding: "7px 10px",
                     border: "1px solid #E3ECE7",
-                    borderRadius: "8px",
-                    fontSize: "13px",
+                    borderRadius: "7px",
+                    fontSize: "12px",
                     background: "#F9FAF9",
                     color: "#2F4F3E",
                     outline: "none",
@@ -635,7 +647,7 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+                <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                   Confirm New Password *
                 </label>
                 <input
@@ -646,10 +658,10 @@ export default function ProfilePage() {
                   required
                   style={{
                     width: "100%",
-                    padding: "9px 12px",
+                    padding: "7px 10px",
                     border: "1px solid #E3ECE7",
-                    borderRadius: "8px",
-                    fontSize: "13px",
+                    borderRadius: "7px",
+                    fontSize: "12px",
                     background: "#F9FAF9",
                     color: "#2F4F3E",
                     outline: "none",
@@ -662,12 +674,12 @@ export default function ProfilePage() {
                 type="submit"
                 disabled={isChangingPassword}
                 style={{
-                  padding: "11px 18px",
+                  padding: "9px 16px",
                   background: "#2F4F3E",
                   color: "#FFFFFF",
                   border: "none",
-                  borderRadius: "8px",
-                  fontSize: "13px",
+                  borderRadius: "7px",
+                  fontSize: "12px",
                   fontWeight: 700,
                   cursor: "pointer",
                   display: "flex",
@@ -675,10 +687,10 @@ export default function ProfilePage() {
                   justifyContent: "center",
                   gap: "6px",
                   marginTop: "4px",
-                  boxShadow: "0 2px 6px rgba(47, 79, 62, 0.15)"
+                  boxShadow: "0 2px 5px rgba(47, 79, 62, 0.12)"
                 }}
               >
-                <Key size={15} />
+                <Key size={14} />
                 {isChangingPassword ? "Updating Password..." : "Update Password"}
               </button>
             </form>
@@ -686,24 +698,33 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Tab 2: Organization Creation & List */}
+      {/* Tab 2: Organizations Creation & List */}
       {activeTab === "orgs" && isAdmin && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+        <div style={{
+          flex: 1,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "16px",
+          minHeight: 0,
+          overflow: "hidden"
+        }}>
           {/* Create Form */}
           <div style={{
             background: "#FFFFFF",
-            borderRadius: "14px",
+            borderRadius: "12px",
             border: "1px solid #E3ECE7",
-            padding: "24px 28px",
-            boxShadow: "0 2px 6px rgba(47, 79, 62, 0.03)"
+            padding: "16px 20px",
+            boxShadow: "0 1px 4px rgba(47, 79, 62, 0.02)",
+            display: "flex",
+            flexDirection: "column"
           }}>
-            <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#2F4F3E", margin: "0 0 16px" }}>
+            <h2 style={{ fontSize: "14px", fontWeight: 700, color: "#2F4F3E", margin: "0 0 12px" }}>
               Provision New Organization
             </h2>
 
-            <form onSubmit={handleCreateOrg} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <form onSubmit={handleCreateOrg} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               <div>
-                <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+                <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                   Organization Name *
                 </label>
                 <input
@@ -714,10 +735,10 @@ export default function ProfilePage() {
                   required
                   style={{
                     width: "100%",
-                    padding: "9px 12px",
+                    padding: "7px 10px",
                     border: "1px solid #E3ECE7",
-                    borderRadius: "8px",
-                    fontSize: "13px",
+                    borderRadius: "7px",
+                    fontSize: "12px",
                     background: "#F9FAF9",
                     color: "#2F4F3E",
                     outline: "none",
@@ -727,7 +748,7 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+                <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                   Contact Email
                 </label>
                 <input
@@ -737,10 +758,10 @@ export default function ProfilePage() {
                   onChange={(e) => setOrgEmail(e.target.value)}
                   style={{
                     width: "100%",
-                    padding: "9px 12px",
+                    padding: "7px 10px",
                     border: "1px solid #E3ECE7",
-                    borderRadius: "8px",
-                    fontSize: "13px",
+                    borderRadius: "7px",
+                    fontSize: "12px",
                     background: "#F9FAF9",
                     color: "#2F4F3E",
                     outline: "none",
@@ -749,9 +770,9 @@ export default function ProfilePage() {
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+                  <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                     Subscription Plan
                   </label>
                   <select
@@ -759,10 +780,10 @@ export default function ProfilePage() {
                     onChange={(e) => setOrgPlan(e.target.value)}
                     style={{
                       width: "100%",
-                      padding: "9px 12px",
+                      padding: "7px 10px",
                       border: "1px solid #E3ECE7",
-                      borderRadius: "8px",
-                      fontSize: "13px",
+                      borderRadius: "7px",
+                      fontSize: "12px",
                       background: "#F9FAF9",
                       color: "#2F4F3E",
                       outline: "none",
@@ -777,7 +798,7 @@ export default function ProfilePage() {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+                  <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                     Max Users
                   </label>
                   <input
@@ -787,10 +808,10 @@ export default function ProfilePage() {
                     min={1}
                     style={{
                       width: "100%",
-                      padding: "9px 12px",
+                      padding: "7px 10px",
                       border: "1px solid #E3ECE7",
-                      borderRadius: "8px",
-                      fontSize: "13px",
+                      borderRadius: "7px",
+                      fontSize: "12px",
                       background: "#F9FAF9",
                       color: "#2F4F3E",
                       outline: "none",
@@ -804,16 +825,16 @@ export default function ProfilePage() {
                 type="submit"
                 disabled={isSubmittingOrg}
                 style={{
-                  padding: "11px",
+                  padding: "9px",
                   background: "#2F4F3E",
                   color: "#FFFFFF",
                   border: "none",
-                  borderRadius: "8px",
-                  fontSize: "13px",
+                  borderRadius: "7px",
+                  fontSize: "12px",
                   fontWeight: 700,
                   cursor: "pointer",
-                  marginTop: "6px",
-                  boxShadow: "0 2px 6px rgba(47, 79, 62, 0.2)"
+                  marginTop: "4px",
+                  boxShadow: "0 2px 5px rgba(47, 79, 62, 0.15)"
                 }}
               >
                 {isSubmittingOrg ? "Provisioning..." : "Provision Organization"}
@@ -824,33 +845,36 @@ export default function ProfilePage() {
           {/* Org List */}
           <div style={{
             background: "#FFFFFF",
-            borderRadius: "14px",
+            borderRadius: "12px",
             border: "1px solid #E3ECE7",
-            padding: "24px 28px",
-            boxShadow: "0 2px 6px rgba(47, 79, 62, 0.03)"
+            padding: "16px 20px",
+            boxShadow: "0 1px 4px rgba(47, 79, 62, 0.02)",
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#2F4F3E", margin: 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+              <h2 style={{ fontSize: "14px", fontWeight: 700, color: "#2F4F3E", margin: 0 }}>
                 Organizations ({orgs.length})
               </h2>
               <button
                 onClick={fetchOrganizations}
-                style={{ background: "none", border: "none", color: "#5C9470", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+                style={{ background: "none", border: "none", color: "#5C9470", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "11px" }}
               >
-                <RefreshCw size={14} /> Refresh
+                <RefreshCw size={13} /> Refresh
               </button>
             </div>
 
             {isLoadingOrgs ? (
-              <p style={{ color: "#5C9470", fontSize: "13px" }}>Loading organizations...</p>
+              <p style={{ color: "#5C9470", fontSize: "12px" }}>Loading organizations...</p>
             ) : orgs.length === 0 ? (
-              <p style={{ color: "#5C9470", fontSize: "13px" }}>No organizations registered.</p>
+              <p style={{ color: "#5C9470", fontSize: "12px" }}>No organizations registered.</p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "360px", overflowY: "auto" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto", flex: 1, paddingRight: "4px" }}>
                 {orgs.map((o) => (
                   <div key={o.id} style={{
-                    padding: "12px 14px",
-                    borderRadius: "10px",
+                    padding: "10px 12px",
+                    borderRadius: "8px",
                     border: "1px solid #E3ECE7",
                     background: "#F3F8F5",
                     display: "flex",
@@ -858,15 +882,15 @@ export default function ProfilePage() {
                     alignItems: "center"
                   }}>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: "13px", color: "#2F4F3E" }}>{o.name}</div>
-                      <div style={{ fontSize: "11px", color: "#5C9470", marginTop: "2px" }}>ID: {o.id} | Slug: {o.slug}</div>
+                      <div style={{ fontWeight: 700, fontSize: "12px", color: "#2F4F3E" }}>{o.name}</div>
+                      <div style={{ fontSize: "10px", color: "#5C9470", marginTop: "1px" }}>ID: {o.id} | Slug: {o.slug}</div>
                     </div>
                     <span style={{
-                      padding: "3px 8px",
-                      borderRadius: "6px",
+                      padding: "2px 6px",
+                      borderRadius: "5px",
                       background: "#EAF4EE",
                       color: "#2F4F3E",
-                      fontSize: "11px",
+                      fontSize: "10px",
                       fontWeight: 700
                     }}>
                       {o.subscription_plan}
@@ -883,19 +907,19 @@ export default function ProfilePage() {
       {activeTab === "users" && isAdmin && (
         <div style={{
           background: "#FFFFFF",
-          borderRadius: "14px",
+          borderRadius: "12px",
           border: "1px solid #E3ECE7",
-          padding: "24px 28px",
-          boxShadow: "0 2px 6px rgba(47, 79, 62, 0.03)",
-          maxWidth: "640px"
+          padding: "16px 20px",
+          boxShadow: "0 1px 4px rgba(47, 79, 62, 0.02)",
+          maxWidth: "580px"
         }}>
-          <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#2F4F3E", margin: "0 0 16px" }}>
+          <h2 style={{ fontSize: "14px", fontWeight: 700, color: "#2F4F3E", margin: "0 0 12px" }}>
             Provision User or Admin Account
           </h2>
 
-          <form onSubmit={handleCreateUser} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <form onSubmit={handleCreateUser} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <div>
-              <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                 Target Organization *
               </label>
               <select
@@ -903,10 +927,10 @@ export default function ProfilePage() {
                 onChange={(e) => setSelectedOrgId(e.target.value)}
                 style={{
                   width: "100%",
-                  padding: "9px 12px",
+                  padding: "7px 10px",
                   border: "1px solid #E3ECE7",
-                  borderRadius: "8px",
-                  fontSize: "13px",
+                  borderRadius: "7px",
+                  fontSize: "12px",
                   background: "#F9FAF9",
                   color: "#2F4F3E",
                   outline: "none",
@@ -925,9 +949,9 @@ export default function ProfilePage() {
               </select>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               <div>
-                <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+                <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                   First Name *
                 </label>
                 <input
@@ -938,10 +962,10 @@ export default function ProfilePage() {
                   required
                   style={{
                     width: "100%",
-                    padding: "9px 12px",
+                    padding: "7px 10px",
                     border: "1px solid #E3ECE7",
-                    borderRadius: "8px",
-                    fontSize: "13px",
+                    borderRadius: "7px",
+                    fontSize: "12px",
                     background: "#F9FAF9",
                     color: "#2F4F3E",
                     outline: "none",
@@ -951,7 +975,7 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+                <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                   Last Name *
                 </label>
                 <input
@@ -962,10 +986,10 @@ export default function ProfilePage() {
                   required
                   style={{
                     width: "100%",
-                    padding: "9px 12px",
+                    padding: "7px 10px",
                     border: "1px solid #E3ECE7",
-                    borderRadius: "8px",
-                    fontSize: "13px",
+                    borderRadius: "7px",
+                    fontSize: "12px",
                     background: "#F9FAF9",
                     color: "#2F4F3E",
                     outline: "none",
@@ -976,7 +1000,7 @@ export default function ProfilePage() {
             </div>
 
             <div>
-              <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                 Email Address *
               </label>
               <input
@@ -987,10 +1011,10 @@ export default function ProfilePage() {
                 required
                 style={{
                   width: "100%",
-                  padding: "9px 12px",
+                  padding: "7px 10px",
                   border: "1px solid #E3ECE7",
-                  borderRadius: "8px",
-                  fontSize: "13px",
+                  borderRadius: "7px",
+                  fontSize: "12px",
                   background: "#F9FAF9",
                   color: "#2F4F3E",
                   outline: "none",
@@ -1000,8 +1024,8 @@ export default function ProfilePage() {
             </div>
 
             <div>
-              <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
-                Password * (min 8 chars, uppercase, lowercase, digit, special char)
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
+                Password * (min 8 chars, upper, lower, digit, special)
               </label>
               <input
                 type="password"
@@ -1011,10 +1035,10 @@ export default function ProfilePage() {
                 required
                 style={{
                   width: "100%",
-                  padding: "9px 12px",
+                  padding: "7px 10px",
                   border: "1px solid #E3ECE7",
-                  borderRadius: "8px",
-                  fontSize: "13px",
+                  borderRadius: "7px",
+                  fontSize: "12px",
                   background: "#F9FAF9",
                   color: "#2F4F3E",
                   outline: "none",
@@ -1024,7 +1048,7 @@ export default function ProfilePage() {
             </div>
 
             <div>
-              <label style={{ fontSize: "12px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "4px" }}>
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "#2F4F3E", display: "block", marginBottom: "3px" }}>
                 Assigned Role *
               </label>
               <select
@@ -1032,10 +1056,10 @@ export default function ProfilePage() {
                 onChange={(e) => setUserRole(e.target.value)}
                 style={{
                   width: "100%",
-                  padding: "9px 12px",
+                  padding: "7px 10px",
                   border: "1px solid #E3ECE7",
-                  borderRadius: "8px",
-                  fontSize: "13px",
+                  borderRadius: "7px",
+                  fontSize: "12px",
                   background: "#F9FAF9",
                   color: "#2F4F3E",
                   outline: "none",
@@ -1054,16 +1078,16 @@ export default function ProfilePage() {
               type="submit"
               disabled={isSubmittingUser}
               style={{
-                padding: "11px",
+                padding: "9px",
                 background: "#2F4F3E",
                 color: "#FFFFFF",
                 border: "none",
-                borderRadius: "8px",
-                fontSize: "13px",
+                borderRadius: "7px",
+                fontSize: "12px",
                 fontWeight: 700,
                 cursor: "pointer",
-                marginTop: "6px",
-                boxShadow: "0 2px 6px rgba(47, 79, 62, 0.2)"
+                marginTop: "4px",
+                boxShadow: "0 2px 5px rgba(47, 79, 62, 0.15)"
               }}
             >
               {isSubmittingUser ? "Provisioning..." : "Provision User Account"}

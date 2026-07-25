@@ -223,31 +223,38 @@ def get_available_technicians(
     db: Session = Depends(get_db)
 ):
     """
-    Retrieve only available technicians with their workload details.
-    Excludes BUSY and OFFLINE technicians from the result entirely.
+    Retrieve available technicians for assignment.
+    Includes tenant isolation fallback and all candidate statuses so candidate selection is never empty.
     """
-    # Fetch technicians with AVAILABLE or ASSIGNED status (case-insensitive)
-    query = db.query(models.Technician).filter(
+    query = db.query(models.Technician)
+    if x_tenant_id:
+        query = query.filter(
+            (models.Technician.tenant_id == x_tenant_id) |
+            (models.Technician.tenant_id == "__platform__") |
+            (models.Technician.tenant_id.is_(None))
+        )
+    
+    # Try fetching available or assigned technicians first
+    available_query = query.filter(
         models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"])
     )
-    if x_tenant_id:
-        query = query.filter(models.Technician.tenant_id == x_tenant_id)
-    techs = query.all()
+    techs = available_query.all()
+    
+    # If no active/available technicians found, fallback to fetching all technicians
+    if not techs:
+        techs = query.all()
     
     result = []
-    
     for tech in techs:
-        # Eligible if under workload limit
-        is_eligible = tech.current_jobs < tech.max_jobs
-        
+        is_eligible = (tech.current_jobs < tech.max_jobs) and ((tech.technician_status or "").upper() in ["AVAILABLE", "ASSIGNED"])
         result.append({
             "technician_id": tech.technician_id,
             "technician": tech.technician_name,
             "skill": tech.technician_skill,
             "location": tech.technician_location,
             "status": tech.technician_status,
-            "current_jobs": tech.current_jobs,
-            "max_jobs": tech.max_jobs,
+            "current_jobs": tech.current_jobs or 0,
+            "max_jobs": tech.max_jobs or 5,
             "eligible_for_assignment": is_eligible
         })
         

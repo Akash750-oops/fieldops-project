@@ -50,20 +50,7 @@ export default function RankedTechTable({
   // Sort and Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
-  const [skillFilter, setSkillFilter] = useState(() => {
-    if (job.service_type || job.required_skill) {
-      const jType = (job.service_type || '').trim().toUpperCase().replace(/_/g, ' ');
-      const jSkill = (job.required_skill || '').trim().toUpperCase().replace(/_/g, ' ');
-      const matched = candidates.find((c) => {
-        const tSkill = (c.technician_skill || '').trim().toUpperCase().replace(/_/g, ' ');
-        return tSkill === jType || tSkill === jSkill;
-      });
-      if (matched) {
-        return matched.technician_skill;
-      }
-    }
-    return 'All';
-  });
+  const [skillFilter, setSkillFilter] = useState('All');
   const [sortField, setSortField] = useState<SortField>('score');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 

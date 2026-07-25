@@ -95,6 +95,11 @@ class Job(Base):
     cancellation_reason = Column(Text, nullable=True)
     closure_reason = Column(Text, nullable=True)
 
+    # Technician rejection fields
+    rejection_reason = Column(Text, nullable=True)
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
+    rejected_by_tech_id = Column(String(50), nullable=True)
+
     # Share tracking link fields
     share_token = Column(String(36), unique=True, index=True, nullable=True)
     share_token_expires_at = Column(DateTime(timezone=True), nullable=True)

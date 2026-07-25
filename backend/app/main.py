@@ -32,6 +32,22 @@ listener_task = None
 async def lifespan(app: FastAPI):
     global scheduler, redis_async_client, redis_pubsub_client, listener_task
     start_scheduler()
+
+    # Ensure all tables & missing columns exist
+    try:
+        from .database import engine, Base
+        from sqlalchemy import text
+        Base.metadata.create_all(bind=engine)
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS rejection_reason TEXT;"))
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMP WITH TIME ZONE;"))
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS rejected_by_tech_id VARCHAR(50);"))
+            conn.execute(text("UPDATE jobs SET required_skill = 'Plumbing' WHERE LOWER(service_type) LIKE '%plumb%';"))
+            conn.execute(text("UPDATE jobs SET required_skill = 'Electrical' WHERE LOWER(service_type) LIKE '%elec%';"))
+            conn.execute(text("UPDATE jobs SET required_skill = 'HVAC' WHERE LOWER(service_type) LIKE '%hvac%' OR LOWER(service_type) LIKE '%ac%';"))
+            conn.commit()
+    except Exception as e:
+        logger.warning(f"Could not auto-create tables or columns: {e}")
     
     redis_host = os.getenv("REDIS_HOST", "localhost")
     redis_port = int(os.getenv("REDIS_PORT", 6379))
@@ -251,6 +267,11 @@ app.include_router(tracking.router)
 app.include_router(brand_safety_admin.router)
 app.include_router(admin_prompts.router)
 app.include_router(admin_communication_configuration.router)
+
+# ──── Portal Routes ────
+from .routes import technician_portal, customer_portal
+app.include_router(technician_portal.router)
+app.include_router(customer_portal.router)
 
 from .services.socket_manager import sio_app
 app.mount("/socket.io", sio_app)
