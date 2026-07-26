@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { User, Save, Camera, Shield, AlertCircle, CheckCircle } from "lucide-react";
 import { getTechnicianProfile, createTechnicianProfile, updateTechnicianProfile } from "../../services/technicianPortalService";
 import useAuthStore from "../../store/authStore";
+import { SkillComboSelect } from "../../components/ui/SkillComboSelect";
 
 const s = {
   page: { padding: "24px", height: "100%", overflowY: "auto" as const, background: "#EEF4F1", fontFamily: "'Inter', sans-serif" },
@@ -150,7 +151,12 @@ export default function TechnicianProfilePage() {
           <div style={{ ...s.fullWidth, ...{ marginTop: "4px" } }}><div style={s.section}>Professional Info</div></div>
           <div style={s.fullWidth}>
             <label style={s.label}>Skills (comma-separated)</label>
-            <input style={s.input} value={form.skills} onChange={e => upd("skills", e.target.value)} placeholder="e.g. Electrical, Plumbing, HVAC" />
+            <SkillComboSelect
+              value={form.skills}
+              onChange={(val) => upd("skills", val)}
+              placeholder="e.g. Electrical, Plumbing, HVAC"
+              inputStyle={s.input}
+            />
           </div>
           <div><label style={s.label}>Experience</label><input style={s.input} value={form.experience} onChange={e => upd("experience", e.target.value)} placeholder="e.g. 5 years" /></div>
           <div style={s.fullWidth}>

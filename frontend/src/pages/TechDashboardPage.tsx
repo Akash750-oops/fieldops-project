@@ -6,6 +6,7 @@ import StatusBadge from "../components/ui/StatusBadge";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
 import { Eye, Pencil, Trash2, ChevronDown } from "lucide-react";
 import EmptyState from "../components/ui/EmptyState";
+import { SkillComboSelect } from "../components/ui/SkillComboSelect";
 
 const PAGE_SIZE = 8;
 const REFRESH_MS = 60_000;
@@ -1918,7 +1919,14 @@ export default function TechnicianListPage(){
           <button className="tld-sidebar-close-style" style={styles.tldSidebarClose} onClick={closeForm}>×</button>
         </div>
         <div style={styles.tldSidebarBody}>
-          <form className="tech-form" onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Technician ID</label>
+              <div style={{ padding: '8px 12px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', fontSize: '13px', fontWeight: 700, color: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>{isEditing ? (editingTechId ? `TECH-${editingTechId}` : "TECH-101") : `TECH-${(techs.length + 101)}`}</span>
+                <span style={{ fontSize: '10px', background: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: '10px', fontWeight: 800 }}>AUTO-ASSIGNED</span>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Full Name <span style={{ color: '#ef4444' }}>*</span></label>
               <input
@@ -1935,19 +1943,20 @@ export default function TechnicianListPage(){
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>Skill <span style={{ color: '#ef4444' }}>*</span></label>
-              <input
-                type="text"
+              <SkillComboSelect
                 name="technician_skill"
                 value={techFormData.technician_skill}
-                onChange={handleFormChange}
+                onChange={(val) => {
+                  setTechFormData((prev) => ({ ...prev, technician_skill: val }));
+                  if (formErrors.technician_skill) {
+                    setFormErrors((prev) => ({ ...prev, technician_skill: "" }));
+                  }
+                }}
                 placeholder="e.g. Electrical, HVAC"
                 className="tld-search-input-style"
-                style={{ width: '100%', padding: '8px 12px', border: formErrors.technician_skill ? '1px solid #f87171' : '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', boxSizing: "border-box" }}
-                list="tld-skill-suggestions-input"
+                hasError={!!formErrors.technician_skill}
+                inputStyle={{ width: '100%', padding: '8px 12px', border: formErrors.technician_skill ? '1px solid #f87171' : '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', boxSizing: "border-box" }}
               />
-              <datalist id="tld-skill-suggestions-input">
-                {SKILLS.map(s => <option key={s} value={s} />)}
-              </datalist>
               {formErrors.technician_skill && <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 'bold' }}>{formErrors.technician_skill}</span>}
             </div>
 

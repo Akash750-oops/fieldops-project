@@ -500,6 +500,11 @@ async def accept_job(
 
     job.status = "EN_ROUTE"
 
+    # Mark associated assignment notifications as READ so they vanish immediately
+    db.query(InAppNotification).filter(
+        InAppNotification.job_id == str(job_id)
+    ).update({"status": "READ", "read_at": datetime.now(timezone.utc)}, synchronize_session=False)
+
     audit_log(
         db,
         action=AuditAction.JOB_ACCEPTED,
@@ -761,17 +766,17 @@ async def get_notifications(
         InAppNotification.tech_id.in_(search_ids)
     ).order_by(InAppNotification.created_at.desc()).limit(100).all()
 
-    # Sync notifications from active assigned jobs if notification entry is missing
+    # Sync notifications from pending unaccepted jobs if notification entry is missing
     if tech:
-        assigned_jobs = db.query(Job).filter(
+        pending_jobs = db.query(Job).filter(
             Job.assigned_technician_id == tech.technician_id,
-            ~func.lower(Job.status).in_(["rejected_by_technician", "completed", "closed", "cancelled"])
+            func.lower(Job.status).in_(["assigned", "active", "planned", "queued"])
         ).all()
 
         existing_job_ids = {str(n.job_id) for n in notifications if n.job_id}
 
         new_added = False
-        for job in assigned_jobs:
+        for job in pending_jobs:
             if str(job.id) not in existing_job_ids:
                 new_notif = InAppNotification(
                     id=str(uuid.uuid4()),
@@ -796,7 +801,25 @@ async def get_notifications(
             except Exception:
                 db.rollback()
 
-    unread_count = sum(1 for n in notifications if n.status == "UNREAD")
+    # Filter out assignment notifications for jobs that are already accepted, en-route, in-progress, completed, or rejected
+    job_ids = [int(n.job_id) for n in notifications if n.job_id and str(n.job_id).isdigit()]
+    job_status_map = {}
+    if job_ids:
+        job_rows = db.query(Job.id, Job.status).filter(Job.id.in_(job_ids)).all()
+        job_status_map = {j.id: (j.status or "").upper() for j in job_rows}
+
+    filtered_notifications = []
+    for n in notifications:
+        j_id = int(n.job_id) if n.job_id and str(n.job_id).isdigit() else None
+        j_st = job_status_map.get(j_id, "") if j_id else ""
+
+        # If job is already accepted/en_route/in_progress/completed/rejected, vanish the assignment notification
+        if j_st in ["EN_ROUTE", "ACCEPTED", "IN_PROGRESS", "PAUSED", "COMPLETED", "CLOSED", "REJECTED_BY_TECHNICIAN"]:
+            continue
+
+        filtered_notifications.append(n)
+
+    unread_count = sum(1 for n in filtered_notifications if n.status == "UNREAD")
 
     return {
         "notifications": [
@@ -809,7 +832,7 @@ async def get_notifications(
                 "createdAt": n.created_at.isoformat() if n.created_at else None,
                 "jobId": n.job_id,
             }
-            for n in notifications
+            for n in filtered_notifications
         ],
         "unread_count": unread_count,
     }
