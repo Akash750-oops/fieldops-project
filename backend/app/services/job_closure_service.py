@@ -31,12 +31,13 @@ def close_job(
     6. create JobClosure and update Job (status COMPLETED, completed_at, completed_by)
     7. single transaction with rollback on failure
     """
-    # 0. Enforce role restriction: Technician only
+    # 0. Enforce role restriction: Technician or Dispatcher/Admin/Manager
     role_str = (user_role or "").upper()
-    if role_str != "TECHNICIAN":
+    allowed_roles = ["TECHNICIAN", "DISPATCHER", "ADMIN", "SUPER_ADMIN", "MANAGER", "LEAD"]
+    if role_str not in allowed_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only technicians can close jobs"
+            detail="Only technicians, dispatchers, or administrators can close jobs"
         )
 
     # 1. Verify job exists
@@ -54,30 +55,32 @@ def close_job(
             detail="Job is not assigned to any technician"
         )
 
-    # 3. Verify job belongs to technician
-    # Find matching technician by technician_id, tech_id, or email/user ID
+    # 3. Verify job belongs to technician if requested by a technician
     tech = db.query(Technician).filter(
         (Technician.technician_id == job.assigned_technician_id)
     ).first()
 
-    tech_matches = False
-    if tech:
-        if (
-            str(tech.technician_id) == str(technician_identifier)
-            or tech.tech_id == str(technician_identifier)
-            or str(job.assigned_technician_id) == str(technician_identifier)
-        ):
+    if role_str == "TECHNICIAN":
+        tech_matches = False
+        if tech:
+            if (
+                str(tech.technician_id) == str(technician_identifier)
+                or tech.tech_id == str(technician_identifier)
+                or str(job.assigned_technician_id) == str(technician_identifier)
+                or (tech.phone_number and tech.phone_number == str(technician_identifier))
+                or (tech.technician_name and tech.technician_name == str(technician_identifier))
+            ):
+                tech_matches = True
+
+        # Fallback check if technician_identifier directly matches assigned_technician_id
+        if not tech_matches and str(job.assigned_technician_id) == str(technician_identifier):
             tech_matches = True
 
-    # Fallback check if technician_identifier directly matches assigned_technician_id
-    if not tech_matches and str(job.assigned_technician_id) == str(technician_identifier):
-        tech_matches = True
-
-    if not tech_matches:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Job is not assigned to this technician"
-        )
+        if not tech_matches:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Job is not assigned to this technician"
+            )
 
     # 4. Verify job not already completed
     if (job.status or "").upper() == "COMPLETED" or job.completed_at is not None:

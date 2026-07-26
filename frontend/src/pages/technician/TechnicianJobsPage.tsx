@@ -11,7 +11,7 @@ import {
   Clock,
   X,
   Check,
-  DollarSign,
+  IndianRupee,
   User,
   Navigation
 } from "lucide-react";
@@ -24,6 +24,7 @@ import {
   resumeTechnicianJob,
   completeTechnicianJob
 } from "../../services/technicianPortalService";
+import { JobClosureModal } from "../../components/jobs/JobClosureModal";
 
 const s = {
   page: { padding: "24px", height: "100%", overflowY: "auto" as const, background: "#EEF4F1", fontFamily: "'Inter', sans-serif" },
@@ -143,6 +144,7 @@ export default function TechnicianJobsPage() {
     setActionLoading(rejectModal);
     try {
       await rejectTechnicianJob(rejectModal, rejectReason);
+      setJobs((prev) => prev.filter((j) => j.id !== rejectModal));
       setRejectModal(null);
       setRejectReason("");
       loadJobs();
@@ -190,22 +192,10 @@ export default function TechnicianJobsPage() {
         </button>
       );
     }
-    if (st === "IN_PROGRESS") {
-      btns.push(
-        <button key="pause" style={s.btn("#E5E7EB", "#374151")} onClick={() => doAction(job.id, () => pauseTechnicianJob(job.id))}>
-          <Pause size={14} /> Pause
-        </button>
-      );
+    if (["IN_PROGRESS", "PAUSED"].includes(st)) {
       btns.push(
         <button key="complete" style={s.btn("#D1FAE5", "#065F46")} onClick={() => setCompleteModal(job.id)}>
           <CheckCircle size={14} /> Complete
-        </button>
-      );
-    }
-    if (st === "PAUSED") {
-      btns.push(
-        <button key="resume" style={s.btn("#FEF3C7", "#92400E")} onClick={() => doAction(job.id, () => resumeTechnicianJob(job.id))}>
-          <RotateCcw size={14} /> Resume
         </button>
       );
     }
@@ -336,8 +326,8 @@ export default function TechnicianJobsPage() {
                   EST. VALUE
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "14px", fontWeight: 700, color: "#059669" }}>
-                  <DollarSign size={15} color="#059669" />
-                  $250
+                  <IndianRupee size={15} color="#059669" />
+                  ₹250
                 </div>
               </div>
             </div>
@@ -439,31 +429,17 @@ export default function TechnicianJobsPage() {
         </div>
       )}
 
-      {/* Complete Notes Modal */}
+      {/* Job Closure Form Modal */}
       {completeModal && (
-        <div style={s.modal}>
-          <div style={s.overlay} onClick={() => setCompleteModal(null)} />
-          <div style={s.modalCard}>
-            <button onClick={() => setCompleteModal(null)} style={{ position: "absolute", top: "12px", right: "12px", background: "none", border: "none", cursor: "pointer" }}>
-              <X size={20} color="#6B7280" />
-            </button>
-            <div style={s.modalTitle}>
-              <CheckCircle size={20} color="#38A169" style={{ marginRight: "8px", verticalAlign: "middle" }} />
-              Complete Job #{completeModal}
-            </div>
-            <label style={s.label}>Completion Notes</label>
-            <textarea
-              style={s.textarea as any}
-              value={completeNotes}
-              onChange={(e) => setCompleteNotes(e.target.value)}
-              placeholder="Describe the work completed..."
-            />
-            <div style={{ display: "flex", gap: "10px", marginTop: "16px", justifyContent: "flex-end" }}>
-              <button style={s.btn("#E5E7EB", "#374151")} onClick={() => setCompleteModal(null)}>Cancel</button>
-              <button style={s.btn("#D1FAE5", "#065F46")} onClick={handleComplete}>Mark Complete</button>
-            </div>
-          </div>
-        </div>
+        <JobClosureModal
+          jobId={completeModal}
+          isOpen={!!completeModal}
+          onClose={() => setCompleteModal(null)}
+          onSuccess={() => {
+            setCompleteModal(null);
+            loadJobs();
+          }}
+        />
       )}
     </div>
   );

@@ -484,7 +484,7 @@ async def accept_job(
     current_user: AuthenticatedUser = Depends(require_role(UserRole.TECHNICIAN)),
     db: Session = Depends(get_db),
 ):
-    """Accept an assigned job."""
+    """Accept an assigned job and move technician status to EN_ROUTE automatically."""
     tech = _get_tech_for_user(db, current_user.user_id, current_user.tenant_id)
     if not tech:
         raise HTTPException(status_code=403, detail="Technician record not found")
@@ -498,7 +498,7 @@ async def accept_job(
     if not job:
         raise HTTPException(status_code=403, detail="Job not found or not assigned to you")
 
-    job.status = "ACCEPTED"
+    job.status = "EN_ROUTE"
 
     audit_log(
         db,
@@ -508,12 +508,12 @@ async def accept_job(
         role=current_user.role.value,
         entity_type="job",
         entity_id=str(job_id),
-        new_value={"status": "ACCEPTED"},
+        new_value={"status": "EN_ROUTE"},
         request=request,
     )
 
     db.commit()
-    return {"message": "Job accepted", "job_id": job_id, "status": "ACCEPTED"}
+    return {"message": "Job accepted and en-route", "job_id": job_id, "status": "EN_ROUTE"}
 
 
 @router.post("/jobs/{job_id}/reject")
@@ -530,7 +530,7 @@ async def reject_job(
     - Saves rejection reason
     - Updates job status to REJECTED_BY_TECHNICIAN
     - Creates notification for dispatchers
-    - Removes from technician's active list
+    - Moves to Planning Page Declined Jobs list
     """
     tech = _get_tech_for_user(db, current_user.user_id, current_user.tenant_id)
     if not tech:
@@ -549,7 +549,7 @@ async def reject_job(
     job.status = "REJECTED_BY_TECHNICIAN"
     job.rejection_reason = data.reason
     job.rejected_at = datetime.now(timezone.utc)
-    job.rejected_by_tech_id = tech.tech_id
+    job.rejected_by_tech_id = tech.tech_id or str(tech.technician_id)
 
     # Unassign the technician
     job.assigned_technician_id = None

@@ -1387,6 +1387,10 @@ def close_job_endpoint(
         ).first()
         if tech:
             technician_identifier = str(tech.technician_id)
+        else:
+            job_obj = db.query(Job).filter(Job.id == job_id).first()
+            if job_obj and job_obj.assigned_technician_id:
+                technician_identifier = str(job_obj.assigned_technician_id)
     else:
         # Check Authorization header or fallback authorization string
         auth_header = request.headers.get("Authorization", "")

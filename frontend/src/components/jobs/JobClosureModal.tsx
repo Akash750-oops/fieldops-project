@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, Plus, Trash2, CheckCircle2, DollarSign, Image as ImageIcon } from "lucide-react";
+import { X, Trash2, CheckCircle2, IndianRupee, Image as ImageIcon, Upload } from "lucide-react";
 import { closeJob, JobClosureData } from "../../services/planningService";
 
 interface JobClosureModalProps {
@@ -9,6 +9,40 @@ interface JobClosureModalProps {
   onSuccess: () => void;
 }
 
+const compressImage = (file: File, maxWidth = 800, quality = 0.7): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } else {
+          resolve((event.target?.result as string) || "");
+        }
+      };
+      img.onerror = () => resolve("");
+      img.src = (event.target?.result as string) || "";
+    };
+    reader.onerror = () => resolve("");
+    reader.readAsDataURL(file);
+  });
+};
+
 export const JobClosureModal: React.FC<JobClosureModalProps> = ({
   jobId,
   isOpen,
@@ -17,7 +51,7 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
 }) => {
   const [workSummary, setWorkSummary] = useState("");
   const [beforeImages, setBeforeImages] = useState<string[]>([]);
-  const [afterImages, setAfterImages] = useState<string[]>([""]);
+  const [afterImages, setAfterImages] = useState<string[]>([]);
   const [labourCost, setLabourCost] = useState<number>(0);
   const [materialCost, setMaterialCost] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -27,36 +61,35 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
 
   const subtotal = (Number(labourCost) || 0) + (Number(materialCost) || 0);
 
-  const handleAddBeforeImage = () => {
-    setBeforeImages((prev) => [...prev, ""]);
-  };
+  const handleFileUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    type: "before" | "after"
+  ) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-  const handleUpdateBeforeImage = (index: number, value: string) => {
-    setBeforeImages((prev) => {
-      const copy = [...prev];
-      copy[index] = value;
-      return copy;
-    });
+    for (const file of Array.from(files)) {
+      try {
+        const compressedBase64 = await compressImage(file);
+        if (compressedBase64) {
+          if (type === "before") {
+            setBeforeImages((prev) => [...prev, compressedBase64]);
+          } else {
+            setAfterImages((prev) => [...prev, compressedBase64]);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to compress image:", err);
+      }
+    }
+    e.target.value = "";
   };
 
   const handleRemoveBeforeImage = (index: number) => {
     setBeforeImages((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleAddAfterImage = () => {
-    setAfterImages((prev) => [...prev, ""]);
-  };
-
-  const handleUpdateAfterImage = (index: number, value: string) => {
-    setAfterImages((prev) => {
-      const copy = [...prev];
-      copy[index] = value;
-      return copy;
-    });
-  };
-
   const handleRemoveAfterImage = (index: number) => {
-    if (afterImages.length <= 1) return;
     setAfterImages((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -71,7 +104,7 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
 
     const filteredAfterImages = afterImages.map((img) => img.trim()).filter(Boolean);
     if (filteredAfterImages.length === 0) {
-      setError("At least one after image URL / file path is required.");
+      setError("At least one after image is required.");
       return;
     }
 
@@ -105,11 +138,11 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
         {/* Header */}
         <div style={styles.header}>
           <div style={styles.headerTitleWrap}>
-            <CheckCircle2 size={20} color="#166534" />
+            <CheckCircle2 size={18} color="#166534" />
             <h3 style={styles.headerTitle}>Complete Job #{jobId}</h3>
           </div>
           <button style={styles.closeBtn} onClick={onClose}>
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
@@ -124,7 +157,7 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
             </label>
             <textarea
               style={styles.textarea}
-              rows={4}
+              rows={2}
               value={workSummary}
               onChange={(e) => setWorkSummary(e.target.value)}
               placeholder="Describe work completed, tests run, and final status..."
@@ -132,69 +165,81 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
             />
           </div>
 
-          {/* Before Images */}
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Before Images (Optional)</label>
-            {beforeImages.map((url, idx) => (
-              <div key={idx} style={styles.imageRow}>
-                <ImageIcon size={16} color="#64748b" />
-                <input
-                  type="text"
-                  style={styles.input}
-                  value={url}
-                  onChange={(e) => handleUpdateBeforeImage(idx, e.target.value)}
-                  placeholder="Image path or URL (e.g. /uploads/before1.jpg)"
-                />
-                <button
-                  type="button"
-                  style={styles.iconBtn}
-                  onClick={() => handleRemoveBeforeImage(idx)}
-                >
-                  <Trash2 size={16} color="#ef4444" />
-                </button>
+          {/* Images Section (Side by side for compact layout) */}
+          <div style={styles.imagesGrid}>
+            {/* Before Images */}
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Before Images (Optional)</label>
+              <div style={styles.imagePreviewList}>
+                {beforeImages.map((img, idx) => (
+                  <div key={idx} style={styles.imagePreviewRow}>
+                    {img.startsWith("data:") || img.startsWith("http") ? (
+                      <img src={img} alt={`Before ${idx + 1}`} style={styles.thumbnail} />
+                    ) : (
+                      <ImageIcon size={14} color="#64748b" />
+                    )}
+                    <span style={styles.imageLabel}>Before #{idx + 1}</span>
+                    <button
+                      type="button"
+                      style={styles.iconBtn}
+                      onClick={() => handleRemoveBeforeImage(idx)}
+                    >
+                      <Trash2 size={14} color="#ef4444" />
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
-            <button type="button" style={styles.addBtn} onClick={handleAddBeforeImage}>
-              <Plus size={14} /> Add Before Image
-            </button>
-          </div>
+              <label style={styles.fileUploadBtn}>
+                <Upload size={13} /> {beforeImages.length > 0 ? "+ Add Another Image" : "Choose File"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleFileUpload(e, "before")}
+                  style={{ display: "none" }}
+                />
+              </label>
+            </div>
 
-          {/* After Images */}
-          <div style={styles.formGroup}>
-            <label style={styles.label}>
-              After Images (Minimum 1 Required) <span style={styles.req}>*</span>
-            </label>
-            {afterImages.map((url, idx) => (
-              <div key={idx} style={styles.imageRow}>
-                <ImageIcon size={16} color="#166534" />
-                <input
-                  type="text"
-                  style={styles.input}
-                  value={url}
-                  onChange={(e) => handleUpdateAfterImage(idx, e.target.value)}
-                  placeholder="Image path or URL (e.g. /uploads/after1.jpg)"
-                  required={idx === 0}
-                />
-                {afterImages.length > 1 && (
-                  <button
-                    type="button"
-                    style={styles.iconBtn}
-                    onClick={() => handleRemoveAfterImage(idx)}
-                  >
-                    <Trash2 size={16} color="#ef4444" />
-                  </button>
-                )}
+            {/* After Images */}
+            <div style={styles.formGroup}>
+              <label style={styles.label}>
+                After Images (Min 1) <span style={styles.req}>*</span>
+              </label>
+              <div style={styles.imagePreviewList}>
+                {afterImages.map((img, idx) => (
+                  <div key={idx} style={styles.imagePreviewRow}>
+                    {img.startsWith("data:") || img.startsWith("http") ? (
+                      <img src={img} alt={`After ${idx + 1}`} style={styles.thumbnail} />
+                    ) : (
+                      <ImageIcon size={14} color="#166534" />
+                    )}
+                    <span style={styles.imageLabel}>After #{idx + 1}</span>
+                    <button
+                      type="button"
+                      style={styles.iconBtn}
+                      onClick={() => handleRemoveAfterImage(idx)}
+                    >
+                      <Trash2 size={14} color="#ef4444" />
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
-            <button type="button" style={styles.addBtn} onClick={handleAddAfterImage}>
-              <Plus size={14} /> Add After Image
-            </button>
+              <label style={styles.fileUploadBtn}>
+                <Upload size={13} /> {afterImages.length > 0 ? "+ Add Another Image" : "Choose File"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleFileUpload(e, "after")}
+                  style={{ display: "none" }}
+                />
+              </label>
+            </div>
           </div>
 
           {/* Financial Breakdown */}
           <div style={styles.costGrid}>
             <div style={styles.formGroup}>
-              <label style={styles.label}>Labour Cost ($)</label>
+              <label style={styles.label}>Labour Cost (₹)</label>
               <input
                 type="number"
                 step="0.01"
@@ -206,7 +251,7 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
             </div>
 
             <div style={styles.formGroup}>
-              <label style={styles.label}>Material Cost ($)</label>
+              <label style={styles.label}>Material Cost (₹)</label>
               <input
                 type="number"
                 step="0.01"
@@ -218,17 +263,14 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
             </div>
 
             <div style={styles.formGroup}>
-              <label style={styles.label}>Subtotal ($) [Auto-calculated]</label>
-              <div style={styles.subtotalWrap}>
-                <DollarSign size={16} color="#166534" />
-                <input
-                  type="text"
-                  style={{ ...styles.input, backgroundColor: "#f1f5f9", fontWeight: 700 }}
-                  value={subtotal.toFixed(2)}
-                  readOnly
-                  disabled
-                />
-              </div>
+              <label style={styles.label}>Subtotal (₹)</label>
+              <input
+                type="text"
+                style={{ ...styles.input, backgroundColor: "#f1f5f9", fontWeight: 700, color: "#166534" }}
+                value={`₹ ${subtotal.toFixed(2)}`}
+                readOnly
+                disabled
+              />
             </div>
           </div>
 
@@ -264,16 +306,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   modal: {
     backgroundColor: "#ffffff",
-    borderRadius: "12px",
+    borderRadius: "14px",
     width: "100%",
-    maxWidth: "600px",
-    maxHeight: "90vh",
-    overflowY: "auto",
-    boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)",
+    maxWidth: "580px",
+    boxShadow: "0 20px 30px -5px rgba(0,0,0,0.15)",
     border: "1px solid #e2e8f0",
+    overflow: "hidden",
   },
   header: {
-    padding: "16px 24px",
+    padding: "12px 20px",
     borderBottom: "1px solid #e2e8f0",
     display: "flex",
     alignItems: "center",
@@ -286,7 +327,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: "8px",
   },
   headerTitle: {
-    fontSize: "18px",
+    fontSize: "16px",
     fontWeight: 700,
     color: "#0f172a",
     margin: 0,
@@ -300,26 +341,31 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: "4px",
   },
   body: {
-    padding: "24px",
+    padding: "16px 20px",
     display: "flex",
     flexDirection: "column",
-    gap: "18px",
+    gap: "12px",
   },
   errorAlert: {
-    padding: "12px 16px",
+    padding: "8px 12px",
     backgroundColor: "#fef2f2",
     color: "#991b1b",
-    borderRadius: "8px",
-    fontSize: "14px",
+    borderRadius: "6px",
+    fontSize: "13px",
     border: "1px solid #fecaca",
   },
   formGroup: {
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
+    gap: "4px",
+  },
+  imagesGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "12px",
   },
   label: {
-    fontSize: "14px",
+    fontSize: "13px",
     fontWeight: 600,
     color: "#334155",
   },
@@ -327,85 +373,108 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#dc2626",
   },
   textarea: {
-    padding: "10px 12px",
-    borderRadius: "8px",
+    padding: "8px 10px",
+    borderRadius: "6px",
     border: "1px solid #cbd5e1",
-    fontSize: "14px",
+    fontSize: "13px",
     outline: "none",
     fontFamily: "inherit",
+    resize: "none",
   },
   input: {
     width: "100%",
-    padding: "9px 12px",
-    borderRadius: "8px",
+    padding: "7px 10px",
+    borderRadius: "6px",
     border: "1px solid #cbd5e1",
-    fontSize: "14px",
+    fontSize: "13px",
     outline: "none",
     boxSizing: "border-box",
   },
-  imageRow: {
+  fileUploadBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    background: "#f1f5f9",
+    border: "1px dashed #cbd5e1",
+    color: "#334155",
+    padding: "6px 12px",
+    borderRadius: "6px",
+    fontSize: "12px",
+    fontWeight: 600,
+    cursor: "pointer",
+    alignSelf: "flex-start",
+    marginTop: "2px",
+  },
+  imagePreviewList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    maxHeight: "80px",
+    overflowY: "auto",
+  },
+  imagePreviewRow: {
     display: "flex",
     alignItems: "center",
-    gap: "8px",
-    marginBottom: "6px",
+    justifyContent: "space-between",
+    padding: "3px 6px",
+    background: "#f8fafc",
+    borderRadius: "6px",
+    border: "1px solid #e2e8f0",
+  },
+  thumbnail: {
+    width: "24px",
+    height: "24px",
+    objectFit: "cover",
+    borderRadius: "4px",
+    border: "1px solid #cbd5e1",
+  },
+  imageLabel: {
+    fontSize: "12px",
+    color: "#334155",
+    fontWeight: 500,
+    flex: 1,
+    marginLeft: "6px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   iconBtn: {
     background: "none",
     border: "none",
     cursor: "pointer",
-    padding: "6px",
-  },
-  addBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "4px",
-    alignSelf: "flex-start",
-    background: "#f1f5f9",
-    border: "1px solid #cbd5e1",
-    color: "#334155",
-    padding: "6px 12px",
-    borderRadius: "6px",
-    fontSize: "13px",
-    fontWeight: 500,
-    cursor: "pointer",
-    marginTop: "4px",
+    padding: "2px",
   },
   costGrid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr 1fr",
     gap: "12px",
   },
-  subtotalWrap: {
-    display: "flex",
-    alignItems: "center",
-    gap: "4px",
-  },
   footer: {
     display: "flex",
     justifyContent: "flex-end",
-    gap: "12px",
-    marginTop: "12px",
-    paddingTop: "16px",
+    gap: "10px",
+    marginTop: "4px",
+    paddingTop: "12px",
     borderTop: "1px solid #e2e8f0",
   },
   cancelBtn: {
-    padding: "10px 18px",
-    borderRadius: "8px",
+    padding: "8px 16px",
+    borderRadius: "6px",
     border: "1px solid #cbd5e1",
     backgroundColor: "#ffffff",
     color: "#475569",
     fontWeight: 600,
-    fontSize: "14px",
+    fontSize: "13px",
     cursor: "pointer",
   },
   submitBtn: {
-    padding: "10px 20px",
-    borderRadius: "8px",
+    padding: "8px 18px",
+    borderRadius: "6px",
     border: "none",
     backgroundColor: "#166534",
     color: "#ffffff",
     fontWeight: 600,
-    fontSize: "14px",
+    fontSize: "13px",
     cursor: "pointer",
   },
 };

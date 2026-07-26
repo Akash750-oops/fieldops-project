@@ -235,8 +235,18 @@ export const closeJob = async (jobId: string | number, data: JobClosureData): Pr
   try {
     const response = await api.post(`/jobs/${jobId}/close`, data);
     return response.data;
-  } catch (error) {
-    handleApiError(error);
+  } catch (error: any) {
+    try {
+      const fallback = await api.post(`/api/technician/jobs/${jobId}/complete`, {
+        completion_notes: data.work_summary,
+        photos: data.after_images,
+        labour_cost: data.labour_cost,
+        material_cost: data.material_cost,
+      });
+      return fallback.data;
+    } catch (fallbackError) {
+      handleApiError(error);
+    }
   }
 };
 
