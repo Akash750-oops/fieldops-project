@@ -7,6 +7,7 @@ import {
   changeTechnicianPassword,
 } from "../../services/technicianPortalService";
 import useAuthStore from "../../store/authStore";
+import { SkillComboSelect } from "../../components/ui/SkillComboSelect";
 
 export default function TechnicianSettingsPage() {
   const { user } = useAuthStore();
@@ -610,11 +611,11 @@ export default function TechnicianSettingsPage() {
 
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={labelStyle}>Skills (comma-separated)</label>
-                <input
-                  style={inputStyle}
+                <SkillComboSelect
                   value={profileForm.skills}
-                  onChange={(e) => updProf("skills", e.target.value)}
+                  onChange={(val) => updProf("skills", val)}
                   placeholder="e.g. Electrical, Plumbing, HVAC Repair"
+                  inputStyle={inputStyle}
                 />
               </div>
 
