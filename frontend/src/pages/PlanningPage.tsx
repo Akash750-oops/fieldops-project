@@ -1209,6 +1209,7 @@ function PlanningDashboard() {
     fetchTechnicianStatus();
     fetchTechniciansList();
     fetchDispatchQueueCount();
+    fetchDeclinedJobsList();
   };
 
   useEffect(() => {
@@ -1760,21 +1761,6 @@ function PlanningDashboard() {
             }}>{declinedJobsList.length}</span>
           </button>
         </div>
-        <div className="planning-search-row-responsive" style={{ display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
-          <div className="planning-header-search-wrap-style" style={styles.planningHeaderSearchWrap}>
-            <span className="planning-search-icon-style" style={styles.planningSearchIcon}>
-              <Search size={14} />
-            </span>
-            <input
-              type="text"
-              placeholder="Search jobs, customers, locations..."
-              className="planning-search-input-style"
-              style={styles.planningSearchInput}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        </div>
       </div>
 
       {/* ── Tab Content ── */}
@@ -2274,7 +2260,20 @@ function PlanningDashboard() {
                               </span>
                             </td>
                             <td style={styles.dashboardTableTd}>
-                              <span style={{ ...styles.statusBadge, ...styles.statusAssigned }}>ASSIGNED</span>
+                              <span style={{
+                                ...styles.statusBadge,
+                                ...((item.status || "").toUpperCase() === "EN_ROUTE"
+                                  ? { background: "#EDE9FE", color: "#5B21B6", border: "1px solid #DDD6FE" }
+                                  : (item.status || "").toUpperCase() === "IN_PROGRESS"
+                                  ? { background: "#D1FAE5", color: "#065F46", border: "1px solid #A7F3D0" }
+                                  : { background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A" })
+                              }}>
+                                {(item.status || "").toUpperCase() === "EN_ROUTE"
+                                  ? "EN ROUTE"
+                                  : (item.status || "").toUpperCase() === "IN_PROGRESS"
+                                  ? "IN PROGRESS"
+                                  : "WAITING FOR ACCEPT"}
+                              </span>
                             </td>
                             <td style={styles.dashboardTableTd}>
                               <div style={styles.workloadInfo}>

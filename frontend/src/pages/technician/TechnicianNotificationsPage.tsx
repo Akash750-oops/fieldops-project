@@ -66,9 +66,11 @@ export default function TechnicianNotificationsPage() {
     try {
       await acceptTechnicianJob(jobId);
       await markRead(notifId);
-      setSuccessBanner(`Successfully accepted Job #${jobId}!`);
+      setSuccessBanner(`Job #${jobId} accepted! Status moved to EN ROUTE.`);
       setTimeout(() => setSuccessBanner(""), 4000);
-      loadNotifications();
+      // Immediately erase notification from list
+      setNotifications((prev) => prev.filter((n) => n.id !== notifId && parseInt(n.jobId, 10) !== jobId));
+      setUnread((u) => Math.max(0, u - 1));
     } catch (e: any) {
       alert(e.response?.data?.detail || "Failed to accept job");
     } finally {
@@ -83,6 +85,8 @@ export default function TechnicianNotificationsPage() {
       await rejectTechnicianJob(rejectModalJobId, rejectReason);
       setSuccessBanner(`Job #${rejectModalJobId} declined.`);
       setTimeout(() => setSuccessBanner(""), 4000);
+      // Immediately erase notification from local state
+      setNotifications((prev) => prev.filter((n) => parseInt(n.jobId, 10) !== rejectModalJobId));
       setRejectModalJobId(null);
       setRejectReason("");
       loadNotifications();
