@@ -133,7 +133,7 @@ def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(g
 
         # 7. Perform Assignment
         job.assigned_technician_id = technician.technician_id
-        job.status = "in progress"
+        job.status = "ASSIGNED"
         
         # Use workload utility for increment and status sync
         from ..workload_utils import update_workload_count
