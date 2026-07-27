@@ -66,7 +66,7 @@ def seed_organizations_and_users(db: Session):
     # List of default users to seed
     seed_users_data = [
         {
-            "email": "superadmin@fieldops.com",
+            "email": "superhead@fieldops.com",
             "password": "SuperAdmin@123",
             "first_name": "Super",
             "last_name": "Admin",
