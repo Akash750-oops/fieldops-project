@@ -49,7 +49,7 @@ class Job(Base):
     __tablename__ = "jobs"  
 
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(String(50), index=True, nullable=True) # Added for tenant isolation
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), index=True, nullable=True) # Added for tenant isolation
     customer_name = Column(String(100), nullable=False)
     location = Column(String(150), nullable=False)
     issue_description = Column(Text, nullable=False)
@@ -105,6 +105,7 @@ class Job(Base):
     share_token_expires_at = Column(DateTime(timezone=True), nullable=True)
 
     technician = relationship("Technician", back_populates="jobs")
+    organization=relationship("Organization",back_populates="jobs")
 
     @property
     def technician_id(self) -> Optional[str]:
@@ -141,10 +142,11 @@ class DispatcherNotification(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     tech_id = Column(String(36), nullable=False, index=True)
-    tenant_id = Column(String(50), nullable=False, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"),nullable=False, index=True)
     message = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    organization=relationship("Organization",back_populates="dispatcher_notifications")
 
 class NotificationDelivery(Base):
     __tablename__ = "notification_deliveries"
@@ -520,8 +522,8 @@ class SLAEscalation(Base):
 
 class DispatcherAlert(Base):
     __tablename__ = "dispatcher_alerts"
-
     id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"),nullable=False, index=True)
     type = Column(String(50), nullable=False)
     severity = Column(String(20), nullable=False)
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
@@ -532,6 +534,7 @@ class DispatcherAlert(Base):
     acknowledged = Column(Integer, default=0) # 0 for false, 1 for true
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    organization = relationship("Organization", back_populates="dispatcher_alerts")
 class OverrideAuditEvent(Base):
     __tablename__ = "override_audit_events"
 
@@ -965,6 +968,7 @@ class JobAssignment(Base):
     __tablename__ = "job_assignments"
     id = Column(Integer, primary_key=True, index=True)
     job_id = Column(Integer,ForeignKey("jobs.id"),nullable=False,index=True,)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"),nullable=False, index=True)
     technician_id = Column(Integer,ForeignKey("technicians.technician_id"),nullable=False,index=True,)
     rank = Column(Integer,nullable=False,)  
     status = Column(String(30),nullable=False,default="PENDING",)
@@ -973,6 +977,7 @@ class JobAssignment(Base):
     is_current = Column(Boolean,nullable=False,default=False,)
     created_at = Column(DateTime(timezone=True),server_default=func.now(),)
 
+    organization = relationship("Organization", back_populates="job_assignments")
 
 class AgentStateRecord(Base):
     """
@@ -1145,4 +1150,4 @@ def prevent_customer_preference_audit_update(mapper, connection, target):
 
 @event.listens_for(CustomerPreferenceAudit, "before_delete")
 def prevent_customer_preference_audit_delete(mapper, connection, target):
-    raise ValueError("CustomerPreferenceAudit is immutable")
+    raise ValueError("CustomerPreferenceAudit is immutable")

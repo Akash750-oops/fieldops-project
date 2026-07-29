@@ -14,7 +14,7 @@ from sqlalchemy import (
     Index, CheckConstraint,
 )
 from sqlalchemy.sql import func
-
+from sqlalchemy.orm import relationship
 from ..database import Base
 
 
@@ -71,7 +71,11 @@ class Organization(Base):
     suspended_at = Column(DateTime(timezone=True), nullable=True)
     suspended_by = Column(String(36), nullable=True)
     suspension_reason = Column(String(500), nullable=True)
-
+    
+    dispatcher_notifications = relationship("DispatcherNotification", back_populates="organization")
+    job_assignments = relationship("JobAssignment", back_populates="organization")
+    dispatcher_alerts = relationship("DispatcherAlert", back_populates="organization")
+    jobs = relationship("Job", back_populates="organization")
     __table_args__ = (
         CheckConstraint(
             "status IN ('ACTIVE', 'SUSPENDED', 'DELETED')",
