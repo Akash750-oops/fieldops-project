@@ -16,18 +16,18 @@ from sqlalchemy import func
 from typing import Optional
 
 from ..database import get_db
-from ..auth.dependencies import get_current_user, AuthenticatedUser, require_role
+from ..auth.dependencies import AuthenticatedUser, require_role
 from ..auth.rbac import UserRole
 from ..auth.password import hash_password, verify_password
 from ..models import (
     Job, Technician, InAppNotification,
-    TechnicianProfile, ServiceRequest,
+    TechnicianProfile, 
 )
 from ..models.user import User
 from ..portal_schemas import (
     TechnicianProfileCreate, TechnicianProfileUpdate, TechnicianProfileResponse,
     TechnicianJobResponse, TechnicianJobRejectRequest, TechnicianJobCompleteRequest,
-    TechnicianJobActionRequest, TechnicianDashboardResponse, ChangePasswordRequest,
+    TechnicianDashboardResponse, ChangePasswordRequest,
 )
 from ..services.enterprise_audit import audit_log, AuditAction
 
@@ -39,48 +39,100 @@ router = APIRouter(
 )
 
 
-def _get_tech_for_user(db: Session, user_id: str, tenant_id: str) -> Technician:
-    """Find the Technician record linked to this user via tech_id, technician_id, name, or phone."""
-    query = db.query(Technician)
-    
+def _get_tech_for_user(
+    db: Session,
+    user_id: str,
+    tenant_id: str,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.TECHNICIAN)),
+) -> Optional[Technician]:
+    """Find the technician record belonging to this user and organization."""
+
+    query = db.query(Technician).filter(
+        Technician.tenant_id == tenant_id
+    )
+
     # 1. Direct match by tech_id or integer technician_id
+    numeric_user_id = int(user_id) if str(user_id).isdigit() else -1
+
     tech = query.filter(
-        (Technician.tech_id == str(user_id)) |
-        (Technician.technician_id == (int(user_id) if str(user_id).isdigit() else -1))
+        (Technician.tech_id == str(user_id))
+        | (Technician.technician_id == numeric_user_id)
     ).first()
-    
+
     if tech:
         return tech
 
-    # 2. Match by TechnicianProfile or User linked to user_id
-    profile = db.query(TechnicianProfile).filter(TechnicianProfile.user_id == str(user_id)).first()
-    user = db.query(User).filter(User.id == str(user_id)).first()
+    # 2. Find tenant-scoped profile and user
+    profile = db.query(TechnicianProfile).filter(
+        TechnicianProfile.user_id == str(user_id),
+        TechnicianProfile.tenant_id == tenant_id,
+    ).first()
 
-    target_name = profile.full_name if (profile and profile.full_name) else (user.full_name if user else None)
-    target_phone = profile.mobile_number if (profile and profile.mobile_number) else (user.phone_number if user else None)
+    user = db.query(User).filter(User.id == current_user.user_id,User.tenant_id == current_user.tenant_id,).first()
+    
+    target_name = (
+        profile.full_name
+        if profile and profile.full_name
+        else user.full_name if user else None
+    )
 
+    target_phone = (
+        profile.mobile_number
+        if profile and profile.mobile_number
+        else user.phone_number if user else None
+    )
+
+    # query is already restricted by Technician.tenant_id
     if target_name:
-        tech_by_name = query.filter(func.lower(Technician.technician_name) == target_name.lower().strip()).first()
+        tech_by_name = query.filter(
+            func.lower(Technician.technician_name)
+            == target_name.lower().strip()
+        ).first()
+
         if tech_by_name:
             tech_by_name.tech_id = str(user_id)
+
             try:
                 db.commit()
             except Exception:
                 db.rollback()
+                raise
+
             return tech_by_name
 
     if target_phone:
-        tech_by_phone = query.filter(Technician.phone_number == target_phone.strip()).first()
+        tech_by_phone = query.filter(
+            Technician.phone_number == target_phone.strip()
+        ).first()
+
         if tech_by_phone:
             tech_by_phone.tech_id = str(user_id)
+
             try:
                 db.commit()
             except Exception:
                 db.rollback()
-            return tech_by_phone
+                raise
 
+            return tech_by_phone
     return None
 
+
+def _get_notification_recipient_ids(
+    user_id: str,
+    tech: Optional[Technician],
+) -> list[str]:
+    """Return every valid notification recipient ID for this technician."""
+
+    recipient_ids = {str(user_id)}
+
+    if tech:
+        recipient_ids.add(str(tech.technician_id))
+
+        if tech.tech_id:
+            recipient_ids.add(str(tech.tech_id))
+
+    return list(recipient_ids)
 
 # ──────────────────────────────────────────────────
 # Profile Endpoints
@@ -97,7 +149,7 @@ async def get_technician_profile(
         TechnicianProfile.tenant_id == current_user.tenant_id,
     ).first()
 
-    user = db.query(User).filter(User.id == current_user.user_id).first()
+    user = db.query(User).filter(User.id == current_user.user_id,User.tenant_id == current_user.tenant_id,).first()
 
     if not profile:
         # Return a minimal response indicating profile not completed
@@ -106,7 +158,7 @@ async def get_technician_profile(
             user_id=current_user.user_id,
             tenant_id=current_user.tenant_id,
             full_name=user.full_name if user else "",
-            mobile_number=user.phone_number or "",
+            mobile_number=(user.phone_number if user and user.phone_number else ""),
             profile_completed=False,
             email=user.email if user else "",
             created_at=datetime.now(timezone.utc),
@@ -156,6 +208,7 @@ async def create_technician_profile(
     """Create technician profile (first-time setup)."""
     existing = db.query(TechnicianProfile).filter(
         TechnicianProfile.user_id == current_user.user_id,
+        TechnicianProfile.tenant_id == current_user.tenant_id,
     ).first()
 
     if existing:
@@ -191,8 +244,13 @@ async def create_technician_profile(
         skill_str = ", ".join(profile.skills) if profile.skills else "General Technician"
         loc_str = profile.address or f"{profile.city or ''}, {profile.state or ''}".strip(", ") or "Main Zone"
         tech = db.query(Technician).filter(
-            (Technician.tech_id == str(current_user.user_id)) | 
-            ((Technician.tenant_id == current_user.tenant_id) & (Technician.technician_name == profile.full_name))
+            Technician.tenant_id == current_user.tenant_id,
+            (
+                Technician.tech_id == str(current_user.user_id)
+            )
+            | (
+                Technician.technician_name == profile.full_name
+            ),
         ).first()
 
         if not tech:
@@ -232,7 +290,7 @@ async def create_technician_profile(
     db.commit()
     db.refresh(profile)
 
-    user = db.query(User).filter(User.id == current_user.user_id).first()
+    user = db.query(User).filter(User.id == current_user.user_id,User.tenant_id == current_user.tenant_id,).first()
 
     age = None
     if profile.date_of_birth:
@@ -296,8 +354,13 @@ async def update_technician_profile(
         skill_str = ", ".join(profile.skills) if profile.skills else "General Technician"
         loc_str = profile.address or f"{profile.city or ''}, {profile.state or ''}".strip(", ") or "Main Zone"
         tech = db.query(Technician).filter(
-            (Technician.tech_id == str(current_user.user_id)) | 
-            ((Technician.tenant_id == current_user.tenant_id) & (Technician.technician_name == profile.full_name))
+            Technician.tenant_id == current_user.tenant_id,
+            (
+                Technician.tech_id == str(current_user.user_id)
+            )
+            | (
+                Technician.technician_name == profile.full_name
+            ),
         ).first()
 
         if not tech:
@@ -338,7 +401,7 @@ async def update_technician_profile(
     db.commit()
     db.refresh(profile)
 
-    user = db.query(User).filter(User.id == current_user.user_id).first()
+    user = db.query(User).filter(User.id == current_user.user_id,User.tenant_id == current_user.tenant_id,).first()
     age = None
     if profile.date_of_birth:
         today = date.today()
@@ -383,7 +446,7 @@ async def change_password(
     db: Session = Depends(get_db),
 ):
     """Change technician password."""
-    user = db.query(User).filter(User.id == current_user.user_id).first()
+    user = db.query(User).filter(User.id == current_user.user_id,User.tenant_id == current_user.tenant_id,).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -417,6 +480,7 @@ def _get_assigned_jobs_query(db: Session, user_id: str, tenant_id: str):
     if not tech:
         return db.query(Job).filter(Job.id < 0)  # empty query
     return db.query(Job).filter(
+        Job.tenant_id == tenant_id,
         Job.assigned_technician_id == tech.technician_id
     )
 
@@ -499,11 +563,25 @@ async def accept_job(
         raise HTTPException(status_code=403, detail="Job not found or not assigned to you")
 
     job.status = "EN_ROUTE"
+    recipient_ids = _get_notification_recipient_ids(
+        current_user.user_id,
+        tech,
+    )
 
     # Mark associated assignment notifications as READ so they vanish immediately
     db.query(InAppNotification).filter(
-        InAppNotification.job_id == str(job_id)
-    ).update({"status": "READ", "read_at": datetime.now(timezone.utc)}, synchronize_session=False)
+        InAppNotification.tenant_id == current_user.tenant_id,
+        InAppNotification.job_id == str(job_id),
+        InAppNotification.tech_id.in_(recipient_ids),
+        InAppNotification.type == "JOB_ASSIGNED",
+
+    ).update(
+        {
+            "status": "READ",
+            "read_at": datetime.now(timezone.utc),
+        },
+        synchronize_session=False,
+    )
 
     audit_log(
         db,
@@ -563,9 +641,10 @@ async def reject_job(
     if tech.current_jobs and tech.current_jobs > 0:
         tech.current_jobs -= 1
 
-    # Create in-app notification for dispatchers/admins
+    # Create rejection confirmation notification for the technician
     notif = InAppNotification(
         id=str(uuid.uuid4()),
+        tenant_id=job.tenant_id,
         tech_id=tech.tech_id or str(tech.technician_id),
         job_id=str(job_id),
         type="JOB_REJECTED",
@@ -573,7 +652,6 @@ async def reject_job(
         body=f"{tech.technician_name} rejected Job #{job_id}: {data.reason}",
         status="UNREAD",
         priority="HIGH",
-        tenant_id=current_user.tenant_id,
     )
     db.add(notif)
 
@@ -750,89 +828,195 @@ async def complete_job(
 
 @router.get("/notifications")
 async def get_notifications(
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.TECHNICIAN)),
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.TECHNICIAN)
+    ),
     db: Session = Depends(get_db),
 ):
-    """Get technician notifications, auto-syncing notifications from assigned jobs."""
-    tech = _get_tech_for_user(db, current_user.user_id, current_user.tenant_id)
+    """Get technician notifications and sync missing assignment notifications."""
 
-    search_ids = [str(current_user.user_id)]
-    if tech:
-        search_ids.append(str(tech.technician_id))
-        if tech.tech_id:
-            search_ids.append(str(tech.tech_id))
+    tech = _get_tech_for_user(
+        db,
+        current_user.user_id,
+        current_user.tenant_id,
+    )
+
+    search_ids = _get_notification_recipient_ids(
+        current_user.user_id,
+        tech,
+    )
 
     notifications = db.query(InAppNotification).filter(
-        InAppNotification.tech_id.in_(search_ids)
-    ).order_by(InAppNotification.created_at.desc()).limit(100).all()
+        InAppNotification.tenant_id == current_user.tenant_id,
+        InAppNotification.tech_id.in_(search_ids),
+    ).order_by(
+        InAppNotification.created_at.desc()
+    ).limit(100).all()
 
-    # Sync notifications from pending unaccepted jobs if notification entry is missing
+    # Create missing notifications for pending jobs.
     if tech:
         pending_jobs = db.query(Job).filter(
+            Job.tenant_id == current_user.tenant_id,
             Job.assigned_technician_id == tech.technician_id,
-            func.lower(Job.status).in_(["assigned", "active", "planned", "queued"])
+            func.lower(Job.status).in_(
+                ["assigned", "active", "planned", "queued"]
+            ),
         ).all()
 
-        existing_job_ids = {str(n.job_id) for n in notifications if n.job_id}
+        pending_job_ids = [
+            str(job.id)
+            for job in pending_jobs
+        ]
+
+        existing_notification_rows = []
+
+        if pending_job_ids:
+            existing_notification_rows = db.query(
+                InAppNotification.job_id
+            ).filter(
+                InAppNotification.tenant_id
+                == current_user.tenant_id,
+                InAppNotification.tech_id.in_(search_ids),
+                InAppNotification.type == "JOB_ASSIGNED",
+                InAppNotification.job_id.in_(pending_job_ids),
+            ).all()
+
+        existing_job_ids = {
+            str(row.job_id)
+            for row in existing_notification_rows
+            if row.job_id
+        }
 
         new_added = False
+
         for job in pending_jobs:
             if str(job.id) not in existing_job_ids:
-                new_notif = InAppNotification(
+                new_notification = InAppNotification(
                     id=str(uuid.uuid4()),
+                    tenant_id=job.tenant_id,
                     tech_id=str(current_user.user_id),
                     job_id=str(job.id),
                     type="JOB_ASSIGNED",
                     title="New Job Assigned",
-                    body=f"You have been assigned to Job #{job.id}: {job.service_type or 'Service Request'} at {job.location or 'Customer location'}.",
+                    body=(
+                        f"You have been assigned to Job #{job.id}: "
+                        f"{job.service_type or 'Service Request'} at "
+                        f"{job.location or 'Customer location'}."
+                    ),
                     status="UNREAD",
                     priority=job.priority or "HIGH",
-                    created_at=job.created_at or datetime.now(timezone.utc)
+                    created_at=(
+                        job.created_at
+                        or datetime.now(timezone.utc)
+                    ),
                 )
-                db.add(new_notif)
+
+                db.add(new_notification)
+                existing_job_ids.add(str(job.id))
                 new_added = True
 
         if new_added:
             try:
                 db.commit()
-                notifications = db.query(InAppNotification).filter(
-                    InAppNotification.tech_id.in_(search_ids)
-                ).order_by(InAppNotification.created_at.desc()).limit(100).all()
-            except Exception:
-                db.rollback()
 
-    # Filter out assignment notifications for jobs that are already accepted, en-route, in-progress, completed, or rejected
-    job_ids = [int(n.job_id) for n in notifications if n.job_id and str(n.job_id).isdigit()]
+                notifications = db.query(InAppNotification).filter(
+                    InAppNotification.tenant_id
+                    == current_user.tenant_id,
+                    InAppNotification.tech_id.in_(search_ids),
+                ).order_by(
+                    InAppNotification.created_at.desc()
+                ).limit(100).all()
+
+            except Exception as exc:
+                db.rollback()
+                logger.exception(
+                    "Unable to sync technician notifications: %s",
+                    exc,
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail="Unable to synchronize notifications",
+                )
+
+    job_ids = [
+        int(notification.job_id)
+        for notification in notifications
+        if notification.job_id
+        and str(notification.job_id).isdigit()
+    ]
+
     job_status_map = {}
+
     if job_ids:
-        job_rows = db.query(Job.id, Job.status).filter(Job.id.in_(job_ids)).all()
-        job_status_map = {j.id: (j.status or "").upper() for j in job_rows}
+        job_rows = db.query(
+            Job.id,
+            Job.status,
+        ).filter(
+            Job.tenant_id == current_user.tenant_id,
+            Job.id.in_(job_ids),
+        ).all()
+
+        job_status_map = {
+            job.id: (job.status or "").upper()
+            for job in job_rows
+        }
+
+    hidden_job_statuses = {
+        "EN_ROUTE",
+        "ACCEPTED",
+        "IN_PROGRESS",
+        "PAUSED",
+        "COMPLETED",
+        "CLOSED",
+        "REJECTED_BY_TECHNICIAN",
+    }
 
     filtered_notifications = []
-    for n in notifications:
-        j_id = int(n.job_id) if n.job_id and str(n.job_id).isdigit() else None
-        j_st = job_status_map.get(j_id, "") if j_id else ""
 
-        # If job is already accepted/en_route/in_progress/completed/rejected, vanish the assignment notification
-        if j_st in ["EN_ROUTE", "ACCEPTED", "IN_PROGRESS", "PAUSED", "COMPLETED", "CLOSED", "REJECTED_BY_TECHNICIAN"]:
+    for notification in notifications:
+        job_id = (
+            int(notification.job_id)
+            if notification.job_id
+            and str(notification.job_id).isdigit()
+            else None
+        )
+
+        job_status = (
+            job_status_map.get(job_id, "")
+            if job_id is not None
+            else ""
+        )
+
+        if (
+            notification.type == "JOB_ASSIGNED"
+            and job_status in hidden_job_statuses
+        ):
             continue
 
-        filtered_notifications.append(n)
+        filtered_notifications.append(notification)
 
-    unread_count = sum(1 for n in filtered_notifications if n.status == "UNREAD")
+    unread_count = sum(
+        1
+        for notification in filtered_notifications
+        if notification.status == "UNREAD"
+    )
 
     return {
         "notifications": [
             {
-                "id": str(n.id),
-                "type": n.type,
-                "title": n.title,
-                "message": n.body,
-                "isRead": n.status != "UNREAD",
-                "createdAt": n.created_at.isoformat() if n.created_at else None,
-                "jobId": n.job_id,
+                "id": str(notification.id),
+                "type": notification.type,
+                "title": notification.title,
+                "message": notification.body,
+                "isRead": notification.status != "UNREAD",
+                "createdAt": (
+                    notification.created_at.isoformat()
+                    if notification.created_at
+                    else None
+                ),
+                "jobId": notification.job_id,
             }
-            for n in filtered_notifications
+            for notification in filtered_notifications
         ],
         "unread_count": unread_count,
     }
@@ -841,35 +1025,87 @@ async def get_notifications(
 @router.put("/notifications/{notification_id}/read")
 async def mark_notification_read(
     notification_id: str,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.TECHNICIAN)),
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.TECHNICIAN)
+    ),
     db: Session = Depends(get_db),
 ):
-    """Mark a notification as read."""
-    notif = db.query(InAppNotification).filter(
+    """Mark one of the current technician's notifications as read."""
+
+    tech = _get_tech_for_user(
+        db,
+        current_user.user_id,
+        current_user.tenant_id,
+    )
+
+    recipient_ids = _get_notification_recipient_ids(
+        current_user.user_id,
+        tech,
+    )
+
+    notification = db.query(InAppNotification).filter(
         InAppNotification.id == notification_id,
+        InAppNotification.tenant_id == current_user.tenant_id,
+        InAppNotification.tech_id.in_(recipient_ids),
     ).first()
-    if notif:
-        notif.status = "READ"
-        notif.read_at = datetime.now(timezone.utc)
+
+    if not notification:
+        raise HTTPException(
+            status_code=404,
+            detail="Notification not found",
+        )
+
+    if notification.status == "UNREAD":
+        notification.status = "READ"
+        notification.read_at = datetime.now(timezone.utc)
         db.commit()
-    return {"message": "Marked as read"}
+        db.refresh(notification)
+
+    return {
+        "message": "Marked as read",
+        "notification_id": notification.id,
+        "status": notification.status,
+    }
 
 
 @router.put("/notifications/read-all")
 async def mark_all_notifications_read(
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.TECHNICIAN)),
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.TECHNICIAN)
+    ),
     db: Session = Depends(get_db),
 ):
-    """Mark all notifications as read."""
-    tech = _get_tech_for_user(db, current_user.user_id, current_user.tenant_id)
-    tech_id = tech.tech_id if tech else current_user.user_id
+    """Mark all current technician notifications as read."""
 
-    db.query(InAppNotification).filter(
-        InAppNotification.tech_id == tech_id,
+    tech = _get_tech_for_user(
+        db,
+        current_user.user_id,
+        current_user.tenant_id,
+    )
+
+    recipient_ids = _get_notification_recipient_ids(
+        current_user.user_id,
+        tech,
+    )
+
+    updated_count = db.query(InAppNotification).filter(
+        InAppNotification.tenant_id == current_user.tenant_id,
+        InAppNotification.tech_id.in_(recipient_ids),
         InAppNotification.status == "UNREAD",
-    ).update({"status": "READ", "read_at": datetime.now(timezone.utc)})
+    ).update(
+        {
+            "status": "READ",
+            "read_at": datetime.now(timezone.utc),
+        },
+        synchronize_session=False,
+    )
+
     db.commit()
-    return {"message": "All notifications marked as read"}
+
+    return {
+        "message": "All notifications marked as read",
+        "updated": updated_count,
+    }
 
 
 # ──────────────────────────────────────────────────

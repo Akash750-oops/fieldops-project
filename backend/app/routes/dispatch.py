@@ -15,12 +15,14 @@ from ..schemas import HeartbeatPayload, AvailabilityResponse
 from ..services.timer_service import TimerService
 from ..services.cooldown_service import CooldownService
 from ..services.socket_manager import sio, emit_notification
+from ..auth.dependencies import AuthenticatedUser, require_role
+from ..auth.rbac import UserRole
 
 class OverrideRequest(BaseModel):
     technician_id: str
     justification: str
     actor_name: Optional[str] = None
-    actor_role: Optional[str] = None
+
 
 router = APIRouter(
     prefix="/technicians",
@@ -42,13 +44,16 @@ def technician_heartbeat(
     id: str,
     request: Request,
     payload: HeartbeatPayload = Body(default_factory=HeartbeatPayload),
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    authorization: str = Depends(verify_jwt_token),
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.TECHNICIAN)
+    ),
     db: Session = Depends(get_db),
-    redis_client = Depends(get_redis_client)
+    redis_client = Depends(get_redis_client),
+    
 ):
+    tenant_id = current_user.tenant_id
     correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
-    log_extra = {"correlation_id": correlation_id, "tenant_id": x_tenant_id, "tech_id": id}
+    log_extra = {"correlation_id": correlation_id, "tenant_id": tenant_id, "tech_id": id,"user_id": current_user.user_id,}
 
     try:
         # Validate tech ID format (accepts custom format like 'tech-7e0304af' or standard UUIDs)
@@ -56,7 +61,7 @@ def technician_heartbeat(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tech ID")
 
         # Rate limiting: max 1 per 30 seconds
-        rate_limit_key = f"rate_limit:{x_tenant_id}:{id}"
+        rate_limit_key = f"rate_limit:{tenant_id}:{id}"
         try:
             if not redis_client.set(rate_limit_key, "1", ex=30, nx=True):
                 logger.warning("Rate limit exceeded for heartbeat", extra=log_extra)
@@ -67,16 +72,12 @@ def technician_heartbeat(
             logger.warning(f"Redis error checking rate limit: {e}", extra=log_extra)
         
         # Verify tenant isolation and existence
-        tech = db.query(Technician).filter(Technician.tech_id == id).first()
+        tech = db.query(Technician).filter(Technician.tech_id == id,Technician.tenant_id == tenant_id,).first()
         
         if not tech:
             logger.error("Technician not found", extra=log_extra)
             raise HTTPException(status_code=404, detail="Technician not found")
             
-        if tech.tenant_id and tech.tenant_id != x_tenant_id:
-            logger.error("Cross-tenant access attempted", extra=log_extra)
-            raise HTTPException(status_code=403, detail="Access denied")
-
         # Update database
         now = datetime.now(timezone.utc)
         tech.last_ping = now
@@ -93,7 +94,7 @@ def technician_heartbeat(
         }
 
         # Update Redis cache with 60s TTL
-        heartbeat_key = f"tech:availability:{x_tenant_id}:{id}"
+        heartbeat_key = f"tech:availability:{tenant_id}:{id}"
         try:
             redis_client.setex(heartbeat_key, 60, json.dumps(cache_data))
         except Exception as e:
@@ -187,139 +188,239 @@ def invalidate_technician_cache(
 @router.post("/assignments/{job_id}/override")
 async def admin_override_assignment(
     job_id: int,
-    request: OverrideRequest,
+    payload: OverrideRequest,
     req: Request,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    authorization: str = Depends(verify_jwt_token),
-    db: Session = Depends(get_db)
+    current_user: AuthenticatedUser = Depends(
+        require_role(
+            UserRole.ADMIN,
+            UserRole.DISPATCHER,
+            UserRole.SUPER_ADMIN,
+        )
+    ),
+    db: Session = Depends(get_db),
 ):
-    correlation_id = req.headers.get("X-Correlation-ID", str(uuid.uuid4()))
-    log_extra = {"correlation_id": correlation_id, "tenant_id": x_tenant_id, "job_id": job_id}
-    
-    # Role check (admin/dispatcher/manager only)
-    auth_lower = authorization.lower()
-    if "admin" not in auth_lower and "dispatcher" not in auth_lower and "manager" not in auth_lower:
-        raise HTTPException(status_code=403, detail="Admin, Manager or Dispatcher role required for override")
-        
-    job = db.query(Job).filter(Job.id == job_id).first()
+    correlation_id = req.headers.get(
+        "X-Correlation-ID",
+        str(uuid.uuid4()),
+    )
+
+    log_extra = {
+        "correlation_id": correlation_id,
+        "user_id": current_user.user_id,
+        "tenant_id": current_user.tenant_id,
+        "job_id": job_id,
+    }
+
+    # Super Admin can access any organization.
+    # Other roles can access only their own organization.
+    job_query = db.query(Job).filter(
+        Job.id == job_id
+    )
+
+    if not current_user.is_super_admin:
+        job_query = job_query.filter(
+            Job.tenant_id == current_user.tenant_id
+        )
+
+    job = job_query.first()
+
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    # Support both tech_id (UUID string) and technician_id (integer)
-    tech = db.query(Technician).filter(Technician.tech_id == request.technician_id).first()
-    if not tech and request.technician_id.isdigit():
-        tech = db.query(Technician).filter(Technician.technician_id == int(request.technician_id)).first()
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found",
+        )
+
+    effective_tenant_id = job.tenant_id
+
+    # Find the new technician in the same organization as the job.
+    tech = db.query(Technician).filter(
+        Technician.tech_id == payload.technician_id,
+        Technician.tenant_id == effective_tenant_id,
+    ).first()
+
+    if not tech and payload.technician_id.isdigit():
+        tech = db.query(Technician).filter(
+            Technician.technician_id
+            == int(payload.technician_id),
+            Technician.tenant_id == effective_tenant_id,
+        ).first()
+
     if not tech:
-        raise HTTPException(status_code=404, detail="Technician not found")
-        
-    # Track previous technician if assigned
+        raise HTTPException(
+            status_code=404,
+            detail="Technician not found",
+        )
+
+    # notifications.tech_id references technicians.tech_id.
+    if not tech.tech_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Technician is not linked with a tech_id. "
+                "Complete the technician-user linkage first."
+            ),
+        )
+
+    recipient_tech_id = tech.tech_id
+
     prev_id = None
     prev_name = "Unassigned"
+
     if job.assigned_technician_id:
-        previous_tech = db.query(Technician).filter(Technician.technician_id == job.assigned_technician_id).first()
+        previous_tech = db.query(Technician).filter(
+            Technician.technician_id
+            == job.assigned_technician_id,
+            Technician.tenant_id == effective_tenant_id,
+        ).first()
+
         if previous_tech:
             prev_id = previous_tech.technician_id
             prev_name = previous_tech.technician_name
-            
-    # Resolve actor details
-    actor_role = request.actor_role or ("admin" if "admin" in auth_lower else "manager" if "manager" in auth_lower else "dispatcher")
-    actor_name = request.actor_name or (
-        "Admin Rajesh" if actor_role == "admin" else 
-        "Manager Priya" if actor_role == "manager" else 
-        "Dispatcher John"
-    )
-        
+
+    # Actor role must come from the verified JWT.
+    actor_role = current_user.role.value
+    actor_name = payload.actor_name or current_user.user_id
+
     audit = AuditEvent(
-        tech_id=tech.tech_id or str(tech.technician_id),
-        tenant_id=x_tenant_id,
+        tech_id=recipient_tech_id,
+        tenant_id=effective_tenant_id,
         event_type="ADMIN_OVERRIDE",
-        old_status=request.justification[:30],
-        new_status="OVERRIDDEN"
+        old_status=payload.justification[:30],
+        new_status="OVERRIDDEN",
     )
     db.add(audit)
-    
-    # Update job and increment workload
+
     job.assigned_technician_id = tech.technician_id
     job.status = "ASSIGNED"
-    
+
     override_log = AssignmentOverride(
         job_id=job.id,
         actor_name=actor_name,
         actor_role=actor_role,
-        justification=request.justification,
+        justification=payload.justification,
         previous_technician_id=prev_id,
         previous_technician_name=prev_name,
         new_technician_id=tech.technician_id,
-        new_technician_name=tech.technician_name
+        new_technician_name=tech.technician_name,
     )
     db.add(override_log)
 
     notif_id = str(uuid.uuid4())
-    if tech.tech_id:
-        db_notif = InAppNotification(
-            id=notif_id,
-            tech_id=tech.tech_id,
-            job_id=str(job.id),
-            type="JOB_ASSIGNED",
-            title="Forced Job Assignment",
-            body=f"You have been manually force-assigned to job: {job.service_type} at {job.location}. Reason: {request.justification}",
-            status="UNREAD",
-            priority="HIGH",
-            created_at=datetime.now(timezone.utc)
-        )
-        db.add(db_notif)
 
-    db.commit()
-    db.refresh(override_log)
-    
-    # Construct override log dict for WebSocket broadcast
+    notification_body = (
+        f"You have been manually force-assigned to job: "
+        f"{job.service_type} at {job.location}. "
+        f"Reason: {payload.justification}"
+    )
+
+    db_notification = InAppNotification(
+        id=notif_id,
+        tenant_id=effective_tenant_id,
+        tech_id=recipient_tech_id,
+        job_id=str(job.id),
+        type="JOB_ASSIGNED",
+        title="Forced Job Assignment",
+        body=notification_body,
+        status="UNREAD",
+        priority="HIGH",
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(db_notification)
+
+    try:
+        db.commit()
+        db.refresh(override_log)
+    except Exception:
+        db.rollback()
+
+        logger.exception(
+            "Failed to save assignment override",
+            extra=log_extra,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to apply assignment override",
+        )
+
     override_data = {
         "id": override_log.id,
         "job_id": override_log.job_id,
         "actor_name": override_log.actor_name,
         "actor_role": override_log.actor_role,
         "justification": override_log.justification,
-        "previous_technician_id": override_log.previous_technician_id,
-        "previous_technician_name": override_log.previous_technician_name,
+        "previous_technician_id": (
+            override_log.previous_technician_id
+        ),
+        "previous_technician_name": (
+            override_log.previous_technician_name
+        ),
         "new_technician_id": override_log.new_technician_id,
         "new_technician_name": override_log.new_technician_name,
-        "created_at": override_log.created_at.isoformat() if override_log.created_at else datetime.now(timezone.utc).isoformat()
+        "created_at": (
+            override_log.created_at.isoformat()
+            if override_log.created_at
+            else datetime.now(timezone.utc).isoformat()
+        ),
     }
-    
-    # Broadcast new override to WebSocket clients
-    await sio.emit("override:new", override_data)
-    
-    # Notify technician in real-time
-    if tech.tech_id:
-        payload = {
-            "id": notif_id,
-            "tech_id": tech.tech_id,
-            "job_id": str(job.id),
-            "type": "JOB_ASSIGNED",
-            "title": "Forced Job Assignment",
-            "body": f"You have been manually force-assigned to job: {job.service_type} at {job.location}. Reason: {request.justification}",
-            "status": "UNREAD",
-            "priority": "HIGH",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "job": {
-                "id": job.id,
-                "title": f"{job.service_type} - {job.location}",
-                "description": job.issue_description,
-                "location": job.location,
-                "priority": job.priority,
-                "status": job.status
-            }
-        }
-        await emit_notification(tech.tech_id, payload)
-        
-    # Dismiss alert banner for all dispatchers
-    await sio.emit("redispatch:dismiss", {
-        "job_id": job.id
-    })
-    
+
+    await sio.emit(
+        "override:new",
+        override_data,
+    )
+
+    notification_payload = {
+        "id": notif_id,
+        "tenant_id": effective_tenant_id,
+        "tech_id": recipient_tech_id,
+        "job_id": str(job.id),
+        "type": "JOB_ASSIGNED",
+        "title": "Forced Job Assignment",
+        "body": notification_body,
+        "status": "UNREAD",
+        "priority": "HIGH",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "job": {
+            "id": job.id,
+            "title": f"{job.service_type} - {job.location}",
+            "description": job.issue_description,
+            "location": job.location,
+            "priority": job.priority,
+            "status": job.status,
+        },
+    }
+
+    await emit_notification(
+        recipient_tech_id,
+        notification_payload,
+    )
+
+    await sio.emit(
+        "redispatch:dismiss",
+        {"job_id": job.id},
+    )
+
     redis_client = get_redis_client()
-    TimerService.start_timer(redis_client, str(job.id), str(tech.tech_id))
-    CooldownService.clear_cooldown(redis_client, str(job.id), str(tech.tech_id))
-    
-    logger.info("Admin override applied", extra=log_extra)
-    return {"message": "Override applied successfully", "job_id": job_id, "technician_id": request.technician_id}
+
+    TimerService.start_timer(
+        redis_client,
+        str(job.id),
+        recipient_tech_id,
+    )
+
+    CooldownService.clear_cooldown(
+        redis_client,
+        str(job.id),
+        recipient_tech_id,
+    )
+
+    logger.info(
+        "Admin override applied",
+        extra=log_extra,
+    )
+
+    return {
+        "message": "Override applied successfully",
+        "job_id": job_id,
+        "technician_id": payload.technician_id,
+    }

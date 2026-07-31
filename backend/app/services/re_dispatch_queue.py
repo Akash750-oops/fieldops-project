@@ -2,7 +2,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Tuple
 from sqlalchemy.orm import Session
-import json
 
 from app.models import Job, AuditEvent
 from app.services.exclusion_service import ExclusionService
@@ -55,70 +54,134 @@ class ReDispatchQueueService:
         return base.get(priority, 400) - created_at_utc.timestamp()
 
     @classmethod
-    def enqueue_failed_job(cls, db: Session, redis_client, job: Job, tenant_id: str, reason: str, tech_id: str = None) -> Dict[str, Any]:
+    def enqueue_failed_job(
+        cls,
+        db: Session,
+        redis_client,
+        job: Job,
+        tenant_id: str,
+        reason: str,
+        tech_id: str | None = None,
+    ) -> Dict[str, Any]:
         """
-        Handles transition to QUEUED, bumps priority, and inserts into Redis queue.
-        """
-        now = datetime.now(timezone.utc)
-        
-        if tech_id and redis_client:
-            ExclusionService.add_exclusion(redis_client, str(job.id), tech_id, reason)
+        Move a failed assignment back to QUEUED.
 
-        
-        # 1. Update DB Tracking
+        Database changes are flushed but not committed. The calling route
+        controls the final transaction so the job, audit records, technician
+        update, and notification are saved atomically.
+        """
+
+        now = datetime.now(timezone.utc)
+
+        # Always derive the trusted tenant from the validated job.
+        effective_tenant_id = job.tenant_id
+
+        if not effective_tenant_id:
+            raise ValueError(f"Job {job.id} does not have a tenant_id" )
+        # Detect an incorrect caller instead of accepting another tenant.
+        if tenant_id != effective_tenant_id:
+            raise ValueError("Tenant mismatch while requeuing job")
+        if tech_id and redis_client:
+            ExclusionService.add_exclusion(
+                redis_client,
+                str(job.id),
+                tech_id,
+                reason,
+            )
+
         new_attempt_count = (job.attempt_count or 0) + 1
         already_bumped = job.bumped_at is not None
-        
-        new_priority, bumped = cls.calculate_new_priority(job.priority, new_attempt_count, already_bumped)
-        
+
+        new_priority, bumped = cls.calculate_new_priority(
+            job.priority,
+            new_attempt_count,
+            already_bumped,
+        )
+
         old_status = job.status
         old_priority = job.priority
-        
+
+        # Return the job to the unassigned queue.
         job.status = "QUEUED"
+        job.assigned_technician_id = None
         job.attempt_count = new_attempt_count
-        
+
         if bumped:
             job.previous_priority = old_priority
             job.priority = new_priority
             job.bumped_at = now
-            logger.info(f"ReDispatchQueue: Bumping job {job.id} priority {old_priority} -> {new_priority}")
-            
-        # Check alerts
-        DispatcherAlertService.check_and_trigger_alert(db, redis_client, job)
-            
-        # 2. Add Audit Event
+
+            logger.info(
+                "ReDispatchQueue: Bumping job %s priority %s -> %s",
+                job.id,
+                old_priority,
+                new_priority,
+            )
+
+        DispatcherAlertService.check_and_trigger_alert(
+            db,
+            redis_client,
+            job,
+        )
+
         audit = AuditEvent(
-            tech_id=tech_id or str(job.assigned_technician_id or "system"),
-            tenant_id=tenant_id,
+            tech_id=tech_id or "system",
+            tenant_id=effective_tenant_id,
             event_type="JOB_REQUEUED",
             old_status=old_status,
             new_status="QUEUED",
-            reason=f"{reason} (Attempt: {new_attempt_count}, Priority: {new_priority})"
+            reason=(
+                f"{reason} "
+                f"(Attempt: {new_attempt_count}, "
+                f"Priority: {new_priority})"
+            ),
         )
         db.add(audit)
-        
-        db.commit()
-        
-        # 3. Insert into Redis ZSET Queue
-        score = cls.calculate_priority_score(job.priority, job.created_at)
-        queue_key = f"dispatch:queue:{tenant_id}"
-        
-        # ZADD queue_key score job_id
+
+        # Execute SQL validation without committing the transaction.
+        db.flush()
+
+        score = cls.calculate_priority_score(
+            job.priority,
+            job.created_at,
+        )
+
+        queue_key = (
+            f"dispatch:queue:{effective_tenant_id}"
+        )
+
         if redis_client:
-            redis_client.zadd(queue_key, {str(job.id): score})
-            
-            # Log metrics
-            redis_client.incr("metrics:queue_insertions")
-            queue_depth = redis_client.zcard(queue_key)
-            redis_client.set("metrics:queue_depth", queue_depth)
-            
-        logger.info(f"ReDispatchQueue: Enqueued job {job.id} to {queue_key} with score {score:.2f}")
-        
+            redis_client.zadd(
+                queue_key,
+                {str(job.id): score},
+            )
+
+            redis_client.incr(
+                "metrics:queue_insertions"
+            )
+
+            queue_depth = redis_client.zcard(
+                queue_key
+            )
+
+            redis_client.set(
+                "metrics:queue_depth",
+                queue_depth,
+            )
+
+        logger.info(
+            "ReDispatchQueue: Enqueued job %s to %s "
+            "with score %.2f",
+            job.id,
+            queue_key,
+            score,
+        )
+
         return {
             "job_id": job.id,
             "new_status": job.status,
             "priority": job.priority,
             "bumped": bumped,
             "attempt_count": new_attempt_count,
-            "queue_score": score
+            "queue_score": score,
         }

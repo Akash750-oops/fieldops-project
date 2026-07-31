@@ -33,7 +33,7 @@ class User(Base):
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     role = Column(String(30), nullable=False, index=True)  # UserRole enum value
-    tenant_id = Column(String(50), nullable=False, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     phone_number = Column(String(20), nullable=True)
 
     # Account status
@@ -55,6 +55,7 @@ class User(Base):
 
     # Relationships
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    organization=relationship("Organization",back_populates="users")
 
     __table_args__ = (
         UniqueConstraint("email", "tenant_id", name="uq_users_email_tenant"),

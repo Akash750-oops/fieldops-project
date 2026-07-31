@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query,status
 from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -8,11 +8,12 @@ import uuid
 import logging
 
 from app.database import get_db
-from app.models import Job, Technician, AuditEvent, DispatcherNotification
+from app.models import Job, Technician, AuditEvent, DispatcherNotification,InAppNotification
 from app.schemas import (
     JobCreate, JobResponse, PlanResponse, RankedTechnician, DisqualifiedTechnician, ScoringWeights,
     JobClosureCreate, JobClosureResponse
 )
+from app.services.job_closure_service import get_job_closure
 from app import schemas
 
 from pydantic import BaseModel, Field
@@ -25,10 +26,10 @@ from app.services.exclusion_service import ExclusionService
 from app.services.skill import SkillScoringService
 from app.services.workload import WorkloadScoringService
 from app.services.composite import CompositeScoringService
-from app.routes.dispatch import verify_jwt_token
 from app.utils import map_service_type_to_skill, is_skill_matching
 
-from app.auth.dependencies import get_current_user_or_tenant, AuthenticatedUser
+from app.auth.dependencies import get_current_user,get_current_user_or_tenant, AuthenticatedUser,require_role
+from app.auth.rbac import UserRole
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -36,6 +37,24 @@ router = APIRouter(
     tags=["Jobs"]
 )
 
+
+def get_technician_for_current_user(
+    db: Session,
+    current_user: AuthenticatedUser,
+) -> Technician:
+    """
+    Find the technician record belonging to the authenticated user
+    and authenticated organization.
+    """
+
+    numeric_user_id = (int(current_user.user_id)if str(current_user.user_id).isdigit()else -1)
+
+    technician = db.query(Technician).filter(
+        Technician.tenant_id == current_user.tenant_id,(Technician.tech_id == str(current_user.user_id))| (Technician.technician_id == numeric_user_id),).first()
+    if not technician:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Technician record not found",)
+
+    return technician
 
 @router.get("/stats")
 def get_jobs_stats(
@@ -74,11 +93,7 @@ def get_jobs_stats(
             tech_query = tech_query.filter(Technician.tenant_id == tenant_id)
 
         tech_available = tech_query.filter(func.lower(Technician.technician_status) == "available").count()
-        tech_busy = tech_query.filter(
-            (func.lower(Technician.technician_status) == "busy") | 
-            (func.lower(Technician.technician_status) == "on job") | 
-            (func.lower(Technician.technician_status) == "on job / busy")
-        ).count()
+        tech_busy = tech_query.filter((func.lower(Technician.technician_status) == "busy") | (func.lower(Technician.technician_status) == "on job") | (func.lower(Technician.technician_status) == "on job / busy")).count()
         tech_break = tech_query.filter(func.lower(Technician.technician_status) == "break").count()
         tech_offline = tech_query.filter(func.lower(Technician.technician_status) == "offline").count()
 
@@ -114,10 +129,7 @@ def get_jobs_stats(
             }
         }
     except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch dashboard stats: {str(error)}"
-        )
+        raise HTTPException(status_code=500,detail=f"Failed to fetch dashboard stats: {str(error)}")
 
 
 @router.get("/service-types", response_model=list[str])
@@ -180,11 +192,7 @@ def create_job(
         if job.status.upper() == "ESCALATED":
             from app.models import SLAEscalation, AuditEvent
             now_utc = datetime.now(timezone.utc)
-            escalation = SLAEscalation(
-                job_id=new_job.id,
-                manager_notified_at=now_utc,
-                status="ESCALATED"
-            )
+            escalation = SLAEscalation(job_id=new_job.id,manager_notified_at=now_utc,status="ESCALATED")
             db.add(escalation)
             audit = AuditEvent(
                 tech_id="system",
@@ -201,10 +209,7 @@ def create_job(
 
     except Exception as error:
         db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create job: {str(error)}"
-        )
+        raise HTTPException(status_code=500,detail=f"Failed to create job: {str(error)}")
 
 
 @router.get("", response_model=list[JobResponse])
@@ -293,10 +298,7 @@ def get_pending_jobs(
     TERMINAL_STATUSES = ["completed", "cancelled", "canceled",
                          "COMPLETED", "CANCELLED", "CANCELED"]
     try:
-        query = db.query(Job).filter(
-            Job.assigned_technician_id.is_(None),
-            Job.status.notin_(TERMINAL_STATUSES)
-        )
+        query = db.query(Job).filter(Job.assigned_technician_id.is_(None),Job.status.notin_(TERMINAL_STATUSES))
         if not user or not user.is_super_admin:
             query = query.filter(Job.tenant_id == tenant_id)
         
@@ -376,16 +378,55 @@ async def plan_job_assignment(
     job_id: int,
     request: Request,
     admin_override: bool = False,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    authorization: str = Depends(verify_jwt_token),
+    current_user: AuthenticatedUser = Depends(
+        require_role(
+            UserRole.ADMIN,
+            UserRole.DISPATCHER,
+            UserRole.SUPER_ADMIN,
+        )
+    ),
     db: Session = Depends(get_db),
-    redis_client = Depends(get_redis_client)
+    redis_client=Depends(get_redis_client),
 ):
+    job_query = db.query(Job).filter(
+        Job.id == job_id
+    )
+
+    if not current_user.is_super_admin:
+        job_query = job_query.filter(
+            Job.tenant_id == current_user.tenant_id
+        )
+
+    job = job_query.first()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    effective_tenant_id = job.tenant_id
+    job_status = (job.status or "").upper().strip()
+
+    if job_status not in {"QUEUED", "ACTIVE"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Job must be in QUEUED or ACTIVE status "
+                "to generate a plan"
+            ),
+        )
+
     correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
-    log_extra = {"correlation_id": correlation_id, "tenant_id": x_tenant_id, "job_id": job_id}
+    log_extra = {
+        "correlation_id": correlation_id,
+        "tenant_id": effective_tenant_id,
+        "user_id": current_user.user_id,
+        "job_id": job_id,
+    }
     
     # Rate limit check (max 10 requests per minute)
-    rate_limit_key = f"rate_limit:job_plan:{x_tenant_id}:{job_id}"
+    rate_limit_key = f"rate_limit:job_plan:{effective_tenant_id}:{job_id}"
     req_count = redis_client.incr(rate_limit_key)
     if req_count is not None:
         if req_count == 1:
@@ -395,21 +436,15 @@ async def plan_job_assignment(
             raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     # Cache check (30s TTL)
-    cache_key = f"cache:job_plan:{x_tenant_id}:{job_id}"
+    cache_key = f"cache:job_plan:{effective_tenant_id}:{job_id}"
     cached_data = redis_client.get(cache_key)
     if cached_data:
         logger.info("Cache hit for job plan", extra=log_extra)
         return json.loads(cached_data)
         
-    job = db.query(Job).filter(Job.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    
-    if job.status.upper() not in ["QUEUED", "ACTIVE"]:
-        raise HTTPException(status_code=400, detail="Job must be in QUEUED status to generate a plan")
         
     technicians = db.query(Technician).filter(
-        (Technician.tenant_id == x_tenant_id) | (Technician.tenant_id.is_(None)),
+        (Technician.tenant_id == effective_tenant_id),
         func.lower(Technician.technician_status).in_(["available", "assigned"])
     ).all()
     
@@ -446,13 +481,9 @@ async def plan_job_assignment(
         # 1. Hard Constraints
         warnings_list = []
         if admin_override:
-            # Check pseudo-JWT for admin/dispatcher roles
-            if "admin" not in authorization.lower() and "dispatcher" not in authorization.lower():
-                raise HTTPException(status_code=403, detail="Admin or Dispatcher role required for override")
-            # Bypass certification logic, just log the override
             audit = AuditEvent(
                 tech_id=tech.tech_id or f"id-{tech.technician_id}",
-                tenant_id=x_tenant_id,
+                tenant_id=effective_tenant_id,
                 event_type="CERT_OVERRIDE",
                 old_status="DISQUALIFIED_POTENTIAL",
                 new_status="OVERRIDDEN"
@@ -554,7 +585,7 @@ async def plan_job_assignment(
     db.commit() 
     
     # 3. Composite Ranking
-    weights = composite_service.get_weights(db, x_tenant_id)
+    weights = composite_service.get_weights(db, effective_tenant_id)
     for q in qualified:
         comp = composite_service.composite_score(q["proximity_score"], q["skill_score"], q["workload_score"], weights)
         q["composite_score"] = comp["composite_score"]
@@ -614,45 +645,115 @@ class JobAssignRequest(BaseModel):
 @router.post("/{job_id}/accept")
 def accept_job(
     job_id: int,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    authorization: str = Depends(verify_jwt_token),
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.TECHNICIAN)
+    ),
     db: Session = Depends(get_db),
-    redis_client = Depends(get_redis_client)
+    redis_client=Depends(get_redis_client),
 ):
-    tech_id = authorization
-    lock_key = f"lock:job_accept:{job_id}"
-    if not redis_client.set(lock_key, "locked", nx=True, ex=10):
-        raise HTTPException(status_code=409, detail="Concurrent modification")
+    technician = get_technician_for_current_user(
+        db,
+        current_user,
+    )
+
+    if not technician.tech_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Technician is not linked with a tech_id",
+        )
+
+    lock_key = (
+        f"lock:job_accept:"
+        f"{current_user.tenant_id}:{job_id}"
+    )
+
+    if not redis_client.set(
+        lock_key,
+        "locked",
+        nx=True,
+        ex=10,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Concurrent modification",
+        )
+
     try:
-        job = db.query(Job).filter(Job.id == job_id).first()
+        job = db.query(Job).filter(
+            Job.id == job_id,
+            Job.tenant_id == current_user.tenant_id,
+        ).first()
+
         if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
-        if job.status != "ASSIGNED":
-            raise HTTPException(status_code=400, detail="Job is not in ASSIGNED status")
-            
-        tech = db.query(Technician).filter(Technician.tech_id == tech_id).first()
-        if not tech or job.assigned_technician_id != tech.technician_id:
-            raise HTTPException(status_code=403, detail="Technician not assigned to this job")
-            
-        if not redis_client.exists(f"job:timer:{job_id}"):
-            raise HTTPException(status_code=423, detail="Acceptance window expired")
-            
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Job not found",
+            )
+
+        if (job.status or "").upper() != "ASSIGNED":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Job is not in ASSIGNED status",
+            )
+
+        if (
+            job.assigned_technician_id
+            != technician.technician_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Technician not assigned to this job",
+            )
+
+        if not redis_client.exists(
+            f"job:timer:{job_id}"
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_423_LOCKED,
+                detail="Acceptance window expired",
+            )
+
+        previous_status = job.status
+
         job.status = "EN_ROUTE"
-        tech.technician_status = "EN_ROUTE"
-        tech.current_jobs = 1
-        
-        audit = AuditEvent(tech_id=tech_id, tenant_id=x_tenant_id, event_type="JOB_ACCEPTED", new_status="EN_ROUTE")
+        technician.technician_status = "EN_ROUTE"
+
+        audit = AuditEvent(
+            tech_id=technician.tech_id,
+            tenant_id=job.tenant_id,
+            event_type="JOB_ACCEPTED",
+            old_status=previous_status,
+            new_status="EN_ROUTE",
+        )
         db.add(audit)
-        db.commit()
-        
-        redis_client.delete(f"job:timer:{job_id}")
-        
+
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "Failed to accept job %s",
+                job_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to accept job",
+            )
+
+        redis_client.delete(
+            f"job:timer:{job_id}"
+        )
+
         return {
             "status": "EN_ROUTE",
-            "previous_status": "ASSIGNED",
-            "technician": {"tech_id": tech_id, "status": "EN_ROUTE"},
-            "tracking_enabled": True
+            "previous_status": previous_status,
+            "technician": {
+                "tech_id": technician.tech_id,
+                "status": "EN_ROUTE",
+            },
+            "tracking_enabled": True,
         }
+
     finally:
         redis_client.delete(lock_key)
 
@@ -660,241 +761,575 @@ def accept_job(
 def reject_job(
     job_id: int,
     req: JobRejectRequest,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    authorization: str = Depends(verify_jwt_token),
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.TECHNICIAN)
+    ),
     db: Session = Depends(get_db),
-    redis_client = Depends(get_redis_client)
+    redis_client=Depends(get_redis_client),
 ):
-    tech_id = authorization
-    job = db.query(Job).filter(Job.id == job_id).first()
+    from app.services.re_dispatch_queue import (
+        ReDispatchQueueService,
+    )
+
+    # Get the technician linked to the authenticated JWT user.
+    tech = get_technician_for_current_user(
+        db,
+        current_user,
+    )
+
+    if not tech.tech_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Technician is not linked with a tech_id",
+        )
+
+    # Find the job only inside the authenticated organization.
+    job = db.query(Job).filter(
+        Job.id == job_id,
+        Job.tenant_id == current_user.tenant_id,
+    ).first()
+
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    tech = db.query(Technician).filter(Technician.tech_id == tech_id).first()
-    if not tech or job.assigned_technician_id != tech.technician_id:
-        raise HTTPException(status_code=403, detail="Technician not assigned to this job")
-        
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    if (job.status or "").upper() != "ASSIGNED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only an assigned job can be rejected",
+        )
+
+    if job.assigned_technician_id != tech.technician_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Technician not assigned to this job",
+        )
+
+    old_status = job.status
+
     tech.technician_status = "AVAILABLE"
-    tech.current_jobs = 0
-    
-    from app.services.re_dispatch_queue import ReDispatchQueueService
+    tech.current_jobs = max(
+        (tech.current_jobs or 0) - 1,
+        0,
+    )
+
     ReDispatchQueueService.enqueue_failed_job(
         db=db,
         redis_client=redis_client,
         job=job,
-        tenant_id=x_tenant_id,
+        tenant_id=job.tenant_id,
         reason=req.reason,
-        tech_id=tech_id
+        tech_id=tech.tech_id,
     )
-    
-    from app.services.cooldown_service import CooldownService
-    CooldownService.set_cooldown(redis_client, str(job.id), tech_id, 120)
-    
-    audit = AuditEvent(tech_id=tech_id, tenant_id=x_tenant_id, event_type="JOB_REJECTED", new_status="QUEUED", reason=req.reason)
+
+    CooldownService.set_cooldown(
+        redis_client,
+        str(job.id),
+        tech.tech_id,
+        120,
+    )
+
+    audit = AuditEvent(
+        tech_id=tech.tech_id,
+        tenant_id=job.tenant_id,
+        event_type="JOB_REJECTED",
+        old_status=old_status,
+        new_status="QUEUED",
+        reason=req.reason,
+    )
     db.add(audit)
-    
-    notif = DispatcherNotification(tech_id=tech_id, tenant_id=x_tenant_id, message=f"Rejected: {req.reason}")
-    db.add(notif)
-    
-    db.commit()
-    
+
+    notification = DispatcherNotification(
+        tech_id=tech.tech_id,
+        tenant_id=job.tenant_id,
+        message=f"Rejected: {req.reason}",
+    )
+    db.add(notification)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+        logger.exception(
+            "Failed to reject job %s",
+            job_id,
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to reject job",
+        )
+
     return {
         "status": "QUEUED",
-        "rejection": {"reason": req.reason},
-        "cooldown": {"duration_seconds": 120},
-        "re_dispatch": {"triggered": True}
+        "rejection": {
+            "reason": req.reason,
+        },
+        "cooldown": {
+            "duration_seconds": 120,
+        },
+        "re_dispatch": {
+            "triggered": True,
+        },
     }
 
 @router.post("/{job_id}/reassign")
 def reassign_job(
     job_id: int,
     req: JobReassignRequest,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    authorization: str = Depends(verify_jwt_token),
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.TECHNICIAN)
+    ),
     db: Session = Depends(get_db),
-    redis_client = Depends(get_redis_client)
+    redis_client=Depends(get_redis_client),
 ):
-    tech_id = authorization
-    job = db.query(Job).filter(Job.id == job_id).first()
+    old_technician = get_technician_for_current_user(
+        db,
+        current_user,
+    )
+
+    job = db.query(Job).filter(
+        Job.id == job_id,
+        Job.tenant_id == current_user.tenant_id,
+    ).first()
+
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    old_tech = db.query(Technician).filter(Technician.tech_id == tech_id).first()
-    if not old_tech or job.assigned_technician_id != old_tech.technician_id:
-        raise HTTPException(status_code=403, detail="Technician not assigned to this job")
-        
-    new_tech = db.query(Technician).filter(Technician.tech_id == req.new_tech_id).first()
-    if not new_tech:
-        raise HTTPException(status_code=400, detail="New technician not found")
-        
-    if new_tech.technician_status == "OFFLINE":
-        raise HTTPException(status_code=400, detail="New technician is OFFLINE")
-        
-    if not is_skill_matching(new_tech.technician_skill, job.required_skill, job.service_type):
-        raise HTTPException(status_code=400, detail="New technician missing required skills")
-        
-    if new_tech.current_jobs >= 3:
-        raise HTTPException(status_code=400, detail="New technician at maximum workload capacity")
-        
-    job.assigned_technician_id = new_tech.technician_id
-    old_tech.current_jobs = 0
-    new_tech.current_jobs = 1
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    if (
+        job.assigned_technician_id
+        != old_technician.technician_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Technician not assigned to this job",
+        )
+
+    new_technician = db.query(Technician).filter(
+        Technician.tech_id == req.new_tech_id,
+        Technician.tenant_id == job.tenant_id,
+    ).first()
+
+    if not new_technician:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="New technician not found",
+        )
+
+    new_status = (
+        new_technician.technician_status or ""
+    ).upper().strip()
+
+    if new_status == "OFFLINE":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New technician is OFFLINE",
+        )
+
+    if not is_skill_matching(
+        new_technician.technician_skill,
+        job.required_skill,
+        job.service_type,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New technician missing required skills",
+        )
+
+    if (
+        new_technician.current_jobs or 0
+    ) >= (
+        new_technician.max_jobs or 3
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "New technician is at maximum "
+                "workload capacity"
+            ),
+        )
+
+    job.assigned_technician_id = (
+        new_technician.technician_id
+    )
     job.status = "ASSIGNED"
-    
-    audit = AuditEvent(tech_id=req.new_tech_id, tenant_id=x_tenant_id, event_type="JOB_REASSIGNED", new_status="ASSIGNED", reason=req.reason)
+
+    old_technician.current_jobs = max(
+        (old_technician.current_jobs or 0) - 1,
+        0,
+    )
+
+    new_technician.current_jobs = (
+        new_technician.current_jobs or 0
+    ) + 1
+
+    audit = AuditEvent(
+        tech_id=new_technician.tech_id,
+        tenant_id=job.tenant_id,
+        event_type="JOB_REASSIGNED",
+        new_status="ASSIGNED",
+        reason=req.reason,
+    )
     db.add(audit)
-    db.commit()
-    
-    redis_client.set(f"job:timer:{job_id}", "1")
-    
+    notification = InAppNotification(
+        id=str(uuid.uuid4()),
+        tenant_id=job.tenant_id,
+        tech_id=new_technician.tech_id,
+        job_id=str(job.id),
+        type="JOB_REASSIGNED",
+        title="Job Reassigned",
+        body=(
+            f"Job {job.id}: {job.service_type} at "
+            f"{job.location} has been reassigned to you."
+        ),
+        status="UNREAD",
+        priority="HIGH",
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(notification)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed to reassign job %s",
+            job_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to reassign job",
+        )
+
+    redis_client.set(
+        f"job:timer:{job_id}",
+        "1",
+    )
+
     return {
         "status": "ASSIGNED",
-        "previous_technician": {"tech_id": tech_id},
-        "new_technician": {"tech_id": req.new_tech_id}
+        "previous_technician": {
+            "tech_id": old_technician.tech_id,
+        },
+        "new_technician": {
+            "tech_id": new_technician.tech_id,
+        },
     }
 
 @router.post("/{job_id}/assign")
 async def assign_job(
     job_id: int,
     req: JobAssignRequest,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
-    x_permissions: str = Header(None, alias="X-Permissions"),
-    authorization: str = Depends(verify_jwt_token),
+    current_user: AuthenticatedUser = Depends(
+        require_role(
+            UserRole.ADMIN,
+            UserRole.DISPATCHER,
+            UserRole.SUPER_ADMIN,
+        )
+    ),
     db: Session = Depends(get_db),
-    redis_client = Depends(get_redis_client)
+    redis_client=Depends(get_redis_client),
 ):
-    from app.models import OverrideAuditEvent, InAppNotification, AssignmentOverride
+    from app.models import (
+        OverrideAuditEvent,
+        InAppNotification,
+        AssignmentOverride,
+    )
     from app.services.timer_service import TimerService
-    from app.services.cooldown_service import CooldownService
-    from app.services.socket_manager import sio, emit_notification
+    from app.services.socket_manager import (
+        sio,
+        emit_notification,
+    )
 
     with with_job_lock(str(job_id)):
-        job = db.query(Job).filter(Job.id == job_id).first()
+        # Step 1: Find the job.
+        job_query = db.query(Job).filter(
+            Job.id == job_id
+        )
+
+        # Normal users can access only their organization's jobs.
+        if not current_user.is_super_admin:
+            job_query = job_query.filter(
+                Job.tenant_id == current_user.tenant_id
+            )
+
+        job = job_query.first()
+
         if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
-            
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Job not found",
+            )
+
+        # Always use the organization stored on the validated job.
+        effective_tenant_id = job.tenant_id
+        job_status = (job.status or "").upper().strip()
+
+        if job_status not in {"QUEUED", "ACTIVE"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Job must be in QUEUED or ACTIVE status "
+                    "to be assigned"
+                ),
+            )
+
         if job.assigned_technician_id:
-            raise HTTPException(status_code=400, detail="Job is already assigned to a technician")
-            
-        tech = db.query(Technician).filter(Technician.tech_id == req.tech_id).first()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Job is already assigned to a technician",
+            )
+
+        # Step 2: Find technician inside the job's organization.
+        tech = db.query(Technician).filter(
+            Technician.tech_id == req.tech_id,
+            Technician.tenant_id == effective_tenant_id,
+        ).first()
+
+        # Also support an integer technician_id.
         if not tech and req.tech_id.isdigit():
-            tech = db.query(Technician).filter(Technician.technician_id == int(req.tech_id)).first()
+            tech = db.query(Technician).filter(
+                Technician.technician_id == int(req.tech_id),
+                Technician.tenant_id == effective_tenant_id,
+            ).first()
+
         if not tech:
-            raise HTTPException(status_code=404, detail="Technician not found")
-            
-        status_upper = (tech.technician_status or "").upper().strip()
-        if status_upper in ["OFFLINE", "BUSY"]:
-            raise HTTPException(status_code=400, detail="Technician is unavailable. Busy or Offline technicians cannot be assigned jobs.")
-            
-        if not req.skip_skill_check and not is_skill_matching(tech.technician_skill, job.required_skill, job.service_type):
-            raise HTTPException(status_code=400, detail="Technician missing required skills")
-            
-        if not req.skip_workload_check and tech.current_jobs >= tech.max_jobs:
-            raise HTTPException(status_code=400, detail="Technician at maximum workload capacity")
-            
-        prev_id = None
-        prev_name = "Unassigned"
-        
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Technician not found",
+            )
+
+        # notifications.tech_id must contain a valid Technician.tech_id.
+        if not tech.tech_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Technician is not linked with a tech_id. "
+                    "Complete the technician-user linkage first."
+                ),
+            )
+
+        recipient_tech_id = tech.tech_id
+
+        technician_status = (
+            tech.technician_status or ""
+        ).upper().strip()
+
+        if technician_status in {"OFFLINE", "BUSY"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Technician is unavailable. Busy or offline "
+                    "technicians cannot be assigned jobs."
+                ),
+            )
+
+        if (
+            not req.skip_skill_check
+            and not is_skill_matching(
+                tech.technician_skill,
+                job.required_skill,
+                job.service_type,
+            )
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Technician missing required skills",
+            )
+
+        current_jobs = tech.current_jobs or 0
+        max_jobs = tech.max_jobs or 3
+
+        if (
+            not req.skip_workload_check
+            and current_jobs >= max_jobs
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Technician at maximum workload capacity",
+            )
+
+        # Step 3: Assign the technician.
+        # Save the old job values for the audit record.
+
+        old_assigned_technician_id = job.assigned_technician_id
+        old_status = job.status
+
         job.assigned_technician_id = tech.technician_id
         job.status = "ASSIGNED"
-        
+        tech.current_jobs = (tech.current_jobs or 0) + 1
+
         override_log = AssignmentOverride(
             job_id=job.id,
-            actor_name="Dispatcher",
-            actor_role="dispatcher",
+            actor_name=str(current_user.user_id),
+            actor_role=current_user.role.value,
             justification=req.justification,
-            previous_technician_id=prev_id,
-            previous_technician_name=prev_name,
+            previous_technician_id=None,
+            previous_technician_name="Unassigned",
             new_technician_id=tech.technician_id,
-            new_technician_name=tech.technician_name
+            new_technician_name=tech.technician_name,
         )
         db.add(override_log)
-        
+
+        # Step 4: Create the override audit entry.
         audit = OverrideAuditEvent(
             id=str(uuid.uuid4()),
-            actor_id="dispatcher",
-            actor_role="dispatcher",
-            tenant_id=x_tenant_id,
+            actor_id=str(current_user.user_id),
+            actor_role=current_user.role.value,
+            tenant_id=effective_tenant_id,
             job_id=job.id,
             action="force_assign",
-            before_state={},
-            after_state={},
+            before_state={
+                "assigned_technician_id": old_assigned_technician_id,
+                "status": old_status,
+            },
+            after_state={
+                "assigned_technician_id": tech.technician_id,
+                "status": "ASSIGNED",
+            },
             justification=req.justification,
-            reason="force_assign bypassing PlanningAgent"
+            reason="Force assignment bypassing PlanningAgent",
         )
         db.add(audit)
-        
-        notif_id = str(uuid.uuid4())
-        if tech.tech_id:
-            db_notif = InAppNotification(
-                id=notif_id,
-                tech_id=tech.tech_id,
-                job_id=str(job.id),
-                type="JOB_ASSIGNED",
-                title="Job Assigned",
-                body=f"You have been assigned to job: {job.service_type} at {job.location}.",
-                status="UNREAD",
-                priority="HIGH",
-                created_at=datetime.now(timezone.utc)
+
+        # Step 5: Create the tenant-linked notification.
+        notification_id = str(uuid.uuid4())
+
+        notification_body = (
+            f"You have been assigned to job: "
+            f"{job.service_type} at {job.location}."
+        )
+
+        db_notification = InAppNotification(
+            id=notification_id,
+            tenant_id=effective_tenant_id,
+            tech_id=recipient_tech_id,
+            job_id=str(job.id),
+            type="JOB_ASSIGNED",
+            title="Job Assigned",
+            body=notification_body,
+            status="UNREAD",
+            priority="HIGH",
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(db_notification)
+
+        # Step 6: Save all database changes together.
+        try:
+            db.commit()
+            db.refresh(override_log)
+
+        except Exception:
+            db.rollback()
+
+            logger.exception(
+                "Failed to assign job %s",
+                job_id,
             )
-            db.add(db_notif)
-            
-        db.commit()
-        db.refresh(override_log)
-        
-        # Broadcast override history update
+
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to assign job",
+            )
+
+        # Step 7: Broadcast override history.
         override_data = {
             "id": override_log.id,
+            "tenant_id": effective_tenant_id,
             "job_id": override_log.job_id,
             "actor_name": override_log.actor_name,
             "actor_role": override_log.actor_role,
             "justification": override_log.justification,
-            "previous_technician_id": override_log.previous_technician_id,
-            "previous_technician_name": override_log.previous_technician_name,
-            "new_technician_id": override_log.new_technician_id,
-            "new_technician_name": override_log.new_technician_name,
-            "created_at": override_log.created_at.isoformat() if override_log.created_at else datetime.now(timezone.utc).isoformat()
+            "previous_technician_id": (
+                override_log.previous_technician_id
+            ),
+            "previous_technician_name": (
+                override_log.previous_technician_name
+            ),
+            "new_technician_id": (
+                override_log.new_technician_id
+            ),
+            "new_technician_name": (
+                override_log.new_technician_name
+            ),
+            "created_at": (
+                override_log.created_at.isoformat()
+                if override_log.created_at
+                else datetime.now(timezone.utc).isoformat()
+            ),
         }
-        await sio.emit("override:new", override_data)
-        
-        # Send WS notification to tech
-        if tech.tech_id:
-            payload = {
-                "id": notif_id,
-                "tech_id": tech.tech_id,
-                "job_id": str(job.id),
-                "type": "JOB_ASSIGNED",
-                "title": "Job Assigned",
-                "body": f"You have been assigned to job: {job.service_type} at {job.location}.",
-                "status": "UNREAD",
-                "priority": "HIGH",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "job": {
-                    "id": job.id,
-                    "title": f"{job.service_type} - {job.location}",
-                    "description": job.issue_description,
-                    "location": job.location,
-                    "priority": job.priority,
-                    "status": job.status
-                }
-            }
-            await emit_notification(tech.tech_id, payload)
-            
-        # Start timer & clear cooldown
-        TimerService.start_timer(redis_client, str(job.id), str(tech.tech_id))
-        CooldownService.clear_cooldown(redis_client, str(job.id), str(tech.tech_id))
-        
-        # Dismiss alert banner for all dispatchers
-        await sio.emit("redispatch:dismiss", {
-            "job_id": job.id
-        })
-        
+
+        await sio.emit(
+            "override:new",
+            override_data,
+        )
+
+        # Step 8: Send real-time notification.
+        notification_payload = {
+            "id": notification_id,
+            "tenant_id": effective_tenant_id,
+            "tech_id": recipient_tech_id,
+            "job_id": str(job.id),
+            "type": "JOB_ASSIGNED",
+            "title": "Job Assigned",
+            "body": notification_body,
+            "status": "UNREAD",
+            "priority": "HIGH",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "job": {
+                "id": job.id,
+                "title": (
+                    f"{job.service_type} - {job.location}"
+                ),
+                "description": job.issue_description,
+                "location": job.location,
+                "priority": job.priority,
+                "status": job.status,
+            },
+        }
+
+        await emit_notification(
+            recipient_tech_id,
+            notification_payload,
+        )
+
+        # Step 9: Start timer and clear cooldown.
+        TimerService.start_timer(
+            redis_client,
+            str(job.id),
+            recipient_tech_id,
+        )
+
+        CooldownService.clear_cooldown(
+            redis_client,
+            str(job.id),
+            recipient_tech_id,
+        )
+
+        # Step 10: Dismiss dispatcher alert.
+        await sio.emit(
+            "redispatch:dismiss",
+            {
+                "job_id": job.id,
+                "tenant_id": effective_tenant_id,
+            },
+        )
+
         return {
             "status": "ASSIGNED",
+            "job_id": job.id,
+            "technician_id": recipient_tech_id,
+            "tenant_id": effective_tenant_id,
             "override": {
                 "cooldown_bypassed": True,
-                "exclusion_bypassed": True
-            }
+                "exclusion_bypassed": True,
+            },
         }
 
 @router.get("/{job_id}", response_model=JobResponse)
@@ -1077,201 +1512,360 @@ class TransitionRequest(BaseModel):
     reason: Optional[str] = None
     is_override: Optional[bool] = False
 
-def decode_jwt_token_or_pseudo(token: str) -> dict:
-    import jwt
-    import os
-    JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key")
-    JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-    try:
-        claims = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return {
-            "actor_id": claims.get("user_id", claims.get("sub", "system")),
-            "actor_role": claims.get("role", "technician"),
-            "tenant_id": claims.get("tenant_id", "tenant-1")
-        }
-    except Exception:
-        token_lower = token.lower()
-        role = "technician"
-        if "admin" in token_lower:
-            role = "admin"
-        elif "dispatcher" in token_lower:
-            role = "dispatcher"
-        elif "manager" in token_lower:
-            role = "manager"
-        elif "supervisor" in token_lower:
-            role = "supervisor"
-            
-        actor_id = "mock-user"
-        if ":" in token:
-            parts = token.split(":")
-            actor_id = parts[0]
-            if len(parts) > 1:
-                role = parts[1]
-                
-        return {
-            "actor_id": actor_id,
-            "actor_role": role,
-            "tenant_id": "tenant-1"
-        }
 
 @api_v1_router.get("/jobs/{id}/valid-transitions")
 def get_job_valid_transitions(
     id: str,
-    authorization: str = Depends(verify_jwt_token),
-    db: Session = Depends(get_db)
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
 ):
-    claims = decode_jwt_token_or_pseudo(authorization)
-    actor_role = claims["actor_role"]
-    
-    job = db.query(Job).filter(Job.id == int(id) if str(id).isdigit() else Job.id == id).first()
+    if not str(id).isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID",
+        )
+
+    job_query = db.query(Job).filter(
+        Job.id == int(id)
+    )
+
+    if not current_user.is_super_admin:
+        job_query = job_query.filter(
+            Job.tenant_id == current_user.tenant_id
+        )
+
+    job = job_query.first()
+
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    from app.services.job_status_machine import TransitionValidator
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    from app.services.job_status_machine import (
+        TransitionValidator,
+    )
+
     validator = TransitionValidator()
-    return validator.get_valid_transitions(job, actor_role)
+
+    return validator.get_valid_transitions(
+        job,
+        current_user.role.value,
+    )
 
 @api_v1_router.post("/jobs/{id}/transition")
 def transition_job_endpoint(
     id: str,
     payload: TransitionRequest,
     request: Request,
-    authorization: str = Depends(verify_jwt_token),
-    db: Session = Depends(get_db)
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
 ):
-    claims = decode_jwt_token_or_pseudo(authorization)
-    actor_id = claims["actor_id"]
-    actor_role = claims["actor_role"]
-    
-    client_ip = request.client.host if request.client else "unknown"
-    user_agent = request.headers.get("User-Agent", "Unknown")
-    
-    logger.info(f"Transition attempt for job {id} to {payload.status} by {actor_id} ({actor_role}) from IP {client_ip}, UA {user_agent}")
-    
-    job = db.query(Job).filter(Job.id == int(id) if str(id).isdigit() else Job.id == id).first()
+    if not str(id).isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID",
+        )
+
+    actor_id = current_user.user_id
+    actor_role = current_user.role.value
+
+    client_ip = (
+        request.client.host
+        if request.client
+        else "unknown"
+    )
+    user_agent = request.headers.get(
+        "User-Agent",
+        "Unknown",
+    )
+
+    logger.info(
+        "Transition attempt for job %s to %s "
+        "by %s (%s) from IP %s, UA %s",
+        id,
+        payload.status,
+        actor_id,
+        actor_role,
+        client_ip,
+        user_agent,
+    )
+
+    job_query = db.query(Job).filter(
+        Job.id == int(id)
+    )
+
+    if not current_user.is_super_admin:
+        job_query = job_query.filter(
+            Job.tenant_id == current_user.tenant_id
+        )
+
+    job = job_query.first()
+
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
     job._actor_id = actor_id
     job._actor_role = actor_role
     job._transition_reason = payload.reason
     job._is_override = payload.is_override
-    
-    from app.services.job_status_machine import InvalidTransitionError, PermissionDeniedError, ReasonRequiredError
+
+    from app.services.job_status_machine import (
+        InvalidTransitionError,
+        PermissionDeniedError,
+        ReasonRequiredError,
+    )
+
     try:
         job.transition(
             payload.status,
             actor_id=actor_id,
             actor_role=actor_role,
             reason=payload.reason,
-            is_override=payload.is_override
+            is_override=payload.is_override,
         )
+
         db.commit()
-        return {"status": "success", "job_id": str(job.id), "new_status": job.status}
-    except InvalidTransitionError as e:
+
+        return {
+            "status": "success",
+            "job_id": str(job.id),
+            "new_status": job.status,
+        }
+
+    except InvalidTransitionError as exc:
         db.rollback()
-        raise HTTPException(status_code=400, detail=e.to_dict())
-    except PermissionDeniedError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.to_dict(),
+        )
+
+    except PermissionDeniedError as exc:
         db.rollback()
-        raise HTTPException(status_code=403, detail=str(e))
-    except ReasonRequiredError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
+
+    except ReasonRequiredError as exc:
         db.rollback()
-        raise HTTPException(status_code=400, detail={"error": "REASON_REQUIRED", "message": str(e)})
-    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "REASON_REQUIRED",
+                "message": str(exc),
+            },
+        )
+
+    except Exception:
         db.rollback()
-        logger.error(f"Failed to transition job {id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(
+            "Failed to transition job %s",
+            id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to transition job",
+        )
 
 @api_v1_router.get("/jobs/{id}/sla")
 def get_job_sla(
     id: str,
-    authorization: str = Depends(verify_jwt_token),
-    db: Session = Depends(get_db)
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
 ):
+    if not str(id).isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID",
+        )
+
+    job_query = db.query(Job).filter(
+        Job.id == int(id)
+    )
+
+    if not current_user.is_super_admin:
+        job_query = job_query.filter(
+            Job.tenant_id == current_user.tenant_id
+        )
+
+    job = job_query.first()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
     from app.services.sla_service import SLAService
+
     sla = SLAService()
-    state = sla.get_sla_state(id)
+    state = sla.get_sla_state(str(job.id))
+
     if not state:
-        raise HTTPException(status_code=404, detail="SLA state not found or job has no active SLA timer")
-        
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "SLA state not found or job has no "
+                "active SLA timer"
+            ),
+        )
+
     return {
         "job_id": state["job_id"],
         "deadline": state["sla_deadline"],
-        "remaining_minutes": int(state["remaining_seconds"] / 60),
+        "remaining_minutes": int(
+            state["remaining_seconds"] / 60
+        ),
         "status": state["status"],
         "is_critical": state["is_critical"],
-        "is_breached": state["is_breached"]
+        "is_breached": state["is_breached"],
     }
+
+
 
 @api_v1_router.get("/sla/dashboard")
 def get_sla_dashboard(
-    authorization: str = Depends(verify_jwt_token),
-    db: Session = Depends(get_db)
+    current_user: AuthenticatedUser = Depends(
+        require_role(
+            UserRole.ADMIN,
+            UserRole.DISPATCHER,
+            UserRole.SUPER_ADMIN,
+        )
+    ),
+    db: Session = Depends(get_db),
 ):
-    jobs = db.query(Job).filter(Job.status.in_(["ASSIGNED", "EN_ROUTE", "ON_SITE"])).all()
-    
+    query = db.query(Job).filter(
+        Job.status.in_(
+            ["ASSIGNED", "EN_ROUTE", "ON_SITE"]
+        )
+    )
+
+    if not current_user.is_super_admin:
+        query = query.filter(
+            Job.tenant_id == current_user.tenant_id
+        )
+
+    jobs = query.all()
+
     from app.services.sla_service import SLAService
+
     sla = SLAService()
-    
+
     active_slas = 0
     critical = 0
     breached = 0
     total_remaining_minutes = 0
-    
+
     for job in jobs:
         state = sla.get_sla_state(str(job.id))
+
         if state:
             active_slas += 1
+
             if state["is_breached"]:
                 breached += 1
             elif state["is_critical"]:
                 critical += 1
-            total_remaining_minutes += int(state["remaining_seconds"] / 60)
-            
-    avg_remaining = int(total_remaining_minutes / active_slas) if active_slas > 0 else 0
-    
+
+            total_remaining_minutes += int(
+                state["remaining_seconds"] / 60
+            )
+
+    average_remaining = (
+        int(total_remaining_minutes / active_slas)
+        if active_slas > 0
+        else 0
+    )
+
     return {
         "active_slas": active_slas,
         "critical": critical,
         "breached": breached,
-        "avg_remaining_minutes": avg_remaining
+        "avg_remaining_minutes": average_remaining,
     }
-
 
 class JobShareResponse(BaseModel):
     token: str
     expires_at: str
     share_url: str
 
-@api_v1_router.post("/jobs/{id}/share", response_model=JobShareResponse)
+@api_v1_router.post(
+    "/jobs/{id}/share",
+    response_model=JobShareResponse,
+)
 def share_job_tracking(
     id: str,
-    authorization: str = Depends(verify_jwt_token),
-    db: Session = Depends(get_db)
+    current_user: AuthenticatedUser = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
 ):
-    claims = decode_jwt_token_or_pseudo(authorization)
-    job = db.query(Job).filter(Job.id == int(id) if str(id).isdigit() else Job.id == id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    if not str(id).isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job ID",
+        )
 
-    import uuid
-    from datetime import datetime, timedelta, timezone
+    job_query = db.query(Job).filter(
+        Job.id == int(id)
+    )
+
+    if not current_user.is_super_admin:
+        job_query = job_query.filter(
+            Job.tenant_id == current_user.tenant_id
+        )
+
+    job = job_query.first()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
 
     token = str(uuid.uuid4())
-    expiry = datetime.now(timezone.utc) + timedelta(hours=24)
+    expiry = (
+        datetime.now(timezone.utc)
+        + timedelta(hours=24)
+    )
 
     job.share_token = token
     job.share_token_expires_at = expiry
-    db.commit()
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed to create tracking link for job %s",
+            job.id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to create tracking link",
+        )
 
     import os
-    base_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-    share_url = f"{base_url}/track/{token}"
+
+    base_url = os.getenv(
+        "FRONTEND_URL",
+        "http://localhost:5173",
+    )
 
     return {
         "token": token,
         "expires_at": expiry.isoformat(),
-        "share_url": share_url
+        "share_url": f"{base_url}/track/{token}",
     }
 
 
@@ -1361,72 +1955,126 @@ def get_public_tracking_info(
 
 # ──── Job Closure Endpoints ────
 
-@router.post("/{job_id}/close", response_model=schemas.JobClosureResponse)
+@router.post(
+    "/{job_id}/close",
+    response_model=schemas.JobClosureResponse,
+)
 def close_job_endpoint(
     job_id: int,
     payload: schemas.JobClosureCreate,
-    request: Request,
-    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
-    authorization: Optional[str] = None,
-    db: Session = Depends(get_db)
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.TECHNICIAN)
+    ),
+    db: Session = Depends(get_db),
 ):
     """
-    Close a job with work summary, images, and costs. Restricted to Technicians.
+    Close a job assigned to the authenticated technician.
     """
-    user, tenant_id = user_tenant
 
-    user_role = "TECHNICIAN"
-    technician_identifier = ""
+    technician = get_technician_for_current_user(
+        db,
+        current_user,
+    )
 
-    if user:
-        user_role = (user.role or "TECHNICIAN").upper()
-        technician_identifier = user.email or str(user.id)
-        # Check if there is a technician record matching user
-        tech = db.query(Technician).filter(
-            (Technician.phone_number == user.email) | (Technician.tech_id == str(user.id))
-        ).first()
-        if tech:
-            technician_identifier = str(tech.technician_id)
-        else:
-            job_obj = db.query(Job).filter(Job.id == job_id).first()
-            if job_obj and job_obj.assigned_technician_id:
-                technician_identifier = str(job_obj.assigned_technician_id)
-    else:
-        # Check Authorization header or fallback authorization string
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token_val = auth_header.replace("Bearer ", "").strip()
-            technician_identifier = token_val
-        elif authorization:
-            technician_identifier = authorization
+    job = db.query(Job).filter(
+        Job.id == job_id,
+        Job.tenant_id == current_user.tenant_id,
+    ).first()
 
-    if not technician_identifier:
+    if not job:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required to close job"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    if (
+        job.assigned_technician_id
+        != technician.technician_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This job is not assigned to you",
+        )
+
+    terminal_statuses = {
+        "COMPLETED",
+        "CANCELLED",
+        "CANCELED",
+        "CLOSED",
+    }
+
+    current_status = (
+        job.status or ""
+    ).upper().strip()
+
+    if current_status in terminal_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Job cannot be closed because its current "
+                f"status is {current_status}"
+            ),
         )
 
     from app.services.job_closure_service import close_job
+
     return close_job(
         db=db,
-        job_id=job_id,
+        job_id=job.id,
         closure_data=payload,
-        technician_identifier=technician_identifier,
-        user_role=user_role
+        technician_identifier=str(
+            technician.technician_id
+        ),
+        user_role=current_user.role.value.upper(),
     )
 
 
-@router.get("/{job_id}/closure", response_model=schemas.JobClosureResponse)
+@router.get(
+    "/{job_id}/closure",
+    response_model=schemas.JobClosureResponse,
+)
 def get_job_closure_endpoint(
     job_id: int,
-    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
-    db: Session = Depends(get_db)
+    current_user: AuthenticatedUser = Depends(
+        require_role(
+            UserRole.ADMIN,
+            UserRole.DISPATCHER,
+            UserRole.TECHNICIAN,
+            UserRole.SUPER_ADMIN,
+        )
+    ),
+    db: Session = Depends(get_db),
 ):
-    """
-    Retrieve job closure details.
-    """
-    from app.services.job_closure_service import get_job_closure
-    return get_job_closure(db=db, job_id=job_id)
+    job_query = db.query(Job).filter(Job.id == job_id)
 
+    if not current_user.is_super_admin:
+        job_query = job_query.filter(
+            Job.tenant_id == current_user.tenant_id
+        )
+
+    job = job_query.first()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    if current_user.role == UserRole.TECHNICIAN:
+        technician = get_technician_for_current_user(
+            db,
+            current_user,
+        )
+
+        if job.assigned_technician_id != technician.technician_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This job is not assigned to you",
+            )
+
+    return get_job_closure(
+        db=db,
+        job_id=job.id,
+    )
 
 

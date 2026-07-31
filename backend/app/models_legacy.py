@@ -20,7 +20,7 @@ class Technician(Base):
 
     technician_id = Column(Integer, primary_key=True, index=True)
     tech_id = Column(String(36), unique=True, index=True, nullable=True) # Added for heartbeat UUID
-    tenant_id = Column(String(50), index=True, nullable=True) # Added for tenant isolation
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), index=True, nullable=True) # Added for tenant isolation
     technician_name = Column(String(100), nullable=False)
     technician_skill = Column(String(100), nullable=False)
     certifications_data = Column(JSON, nullable=True)
@@ -43,6 +43,7 @@ class Technician(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     jobs = relationship("Job", back_populates="technician")
+    organization=relationship("Organization",back_populates="technicans")
 
 
 class Job(Base):
@@ -180,6 +181,7 @@ class InAppNotification(Base):
 
     id = Column(String(36), primary_key=True) # Using UUID string for portability
     tech_id = Column(String(36), ForeignKey("technicians.tech_id"), nullable=False)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True) 
     job_id = Column(String(36), nullable=True) # Assuming jobs use string UUIDs in some contexts, or int
     type = Column(String(50), nullable=False)
     title = Column(String(200), nullable=False)
@@ -192,7 +194,9 @@ class InAppNotification(Base):
     read_at = Column(DateTime(timezone=True), nullable=True)
     dismissed_at = Column(DateTime(timezone=True), nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
-    notification_metadata = Column(JSON, default={})
+    notification_metadata = Column(JSON, default=dict)
+
+    organization=relationship("Organization",back_populates="InApp_Notification")
 
     __table_args__ = (
         CheckConstraint("status IN ('UNREAD', 'READ', 'DISMISSED')", name="valid_status"),
@@ -543,6 +547,7 @@ class DispatcherAlert(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     organization = relationship("Organization", back_populates="dispatcher_alerts")
+    
 class OverrideAuditEvent(Base):
     __tablename__ = "override_audit_events"
 
