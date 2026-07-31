@@ -16,7 +16,7 @@ from sqlalchemy import func
 from typing import Optional
 
 from ..database import get_db
-from ..auth.dependencies import get_current_user, AuthenticatedUser, require_role
+from ..auth.dependencies import  AuthenticatedUser, require_role
 from ..auth.rbac import UserRole
 from ..auth.password import hash_password, verify_password
 from ..models import (
@@ -63,7 +63,7 @@ async def get_customer_profile(
             user_id=current_user.user_id,
             tenant_id=current_user.tenant_id,
             full_name=user.full_name if user else "",
-            mobile_number=user.phone_number or "",
+            mobile_number=user.phone_number if user else "",
             profile_completed=False,
             email=user.email if user else "",
             created_at=datetime.now(timezone.utc),
@@ -98,6 +98,7 @@ async def create_customer_profile(
     """Create customer profile (first-time setup)."""
     existing = db.query(CustomerProfileModel).filter(
         CustomerProfileModel.user_id == current_user.user_id,
+        CustomerProfileModel.tenant_id == current_user.tenant_id,
     ).first()
 
     if existing:
@@ -439,7 +440,7 @@ async def track_customer_jobs(
 
     linked_jobs = []
     if job_ids:
-        linked_jobs = db.query(Job).filter(Job.id.in_(job_ids)).all()
+        linked_jobs = db.query(Job).filter(Job.id.in_(job_ids),Job.tenant_id == current_user.tenant_id,).all()
 
     all_jobs = {j.id: j for j in direct_jobs}
     for j in linked_jobs:
@@ -451,9 +452,7 @@ async def track_customer_jobs(
         tech_photo = None
         tech_phone = None
         if job.assigned_technician_id:
-            tech = db.query(Technician).filter(
-                Technician.technician_id == job.assigned_technician_id
-            ).first()
+            tech = db.query(Technician).filter(Technician.technician_id == job.assigned_technician_id,Technician.tenant_id == current_user.tenant_id,).first()
             if tech:
                 tech_name = tech.technician_name
                 tech_phone = tech.phone_number
@@ -504,6 +503,7 @@ async def get_customer_job_detail(
         sr = db.query(ServiceRequest).filter(
             ServiceRequest.linked_job_id == job_id,
             ServiceRequest.customer_user_id == current_user.user_id,
+            ServiceRequest.tenant_id == current_user.tenant_id,
         ).first()
         if not sr:
             raise HTTPException(status_code=403, detail="You don't have access to this job")
@@ -512,9 +512,7 @@ async def get_customer_job_detail(
     tech_photo = None
     tech_phone = None
     if job.assigned_technician_id:
-        tech = db.query(Technician).filter(
-            Technician.technician_id == job.assigned_technician_id
-        ).first()
+        tech = db.query(Technician).filter(Technician.technician_id == job.assigned_technician_id,Technician.tenant_id == current_user.tenant_id,).first()
         if tech:
             tech_name = tech.technician_name
             tech_phone = tech.phone_number
@@ -568,11 +566,13 @@ async def get_notifications(
 ):
     """Get customer notifications."""
     notifications = db.query(InAppNotification).filter(
+        InAppNotification.tenant_id == current_user.tenant_id,
         InAppNotification.tech_id == current_user.user_id,
     ).order_by(InAppNotification.created_at.desc()).limit(100).all()
 
     unread_count = db.query(InAppNotification).filter(
         InAppNotification.tech_id == current_user.user_id,
+        InAppNotification.tenant_id == current_user.tenant_id,
         InAppNotification.status == "UNREAD",
     ).count()
 
@@ -596,17 +596,31 @@ async def get_notifications(
 @router.put("/notifications/{notification_id}/read")
 async def mark_notification_read(
     notification_id: str,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.CUSTOMER)),
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.CUSTOMER)
+    ),
     db: Session = Depends(get_db),
 ):
-    """Mark a notification as read."""
-    notif = db.query(InAppNotification).filter(
+    """Mark one customer-owned notification as read."""
+
+    notification = db.query(InAppNotification).filter(
         InAppNotification.id == notification_id,
-    ).first()
-    if notif:
-        notif.status = "READ"
-        notif.read_at = datetime.now(timezone.utc)
+        InAppNotification.tenant_id == current_user.tenant_id,
+        InAppNotification.tech_id == current_user.user_id,).first()
+
+    if not notification:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Notification not found",)
+
+    notification.status = "READ"
+    notification.read_at = datetime.now(timezone.utc)
+
+    try:
         db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to mark notification %s as read",notification_id,)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail="Unable to mark notification as read",)
+
     return {"message": "Marked as read"}
 
 
@@ -617,11 +631,13 @@ async def mark_all_read(
 ):
     """Mark all notifications as read."""
     db.query(InAppNotification).filter(
+        InAppNotification.tenant_id == current_user.tenant_id,
         InAppNotification.tech_id == current_user.user_id,
         InAppNotification.status == "UNREAD",
     ).update({"status": "READ", "read_at": datetime.now(timezone.utc)})
     db.commit()
     return {"message": "All notifications marked as read"}
+
 
 
 # ──────────────────────────────────────────────────

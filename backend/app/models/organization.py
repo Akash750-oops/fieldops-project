@@ -13,6 +13,7 @@ from sqlalchemy import (
     Boolean, Column, DateTime, Integer, String, JSON,
     Index, CheckConstraint,
 )
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from ..database import Base
@@ -66,7 +67,15 @@ class Organization(Base):
     # Soft delete
     deleted_at = Column(DateTime(timezone=True), nullable=True)
     deleted_by = Column(String(36), nullable=True)
-    
+
+    #relationship
+    users = relationship("User",back_populates="organization")
+    jobs = relationship("Job",back_populates="organization")
+    technicans=relationship("Technician",back_populates="organization")
+    technician_profile=relationship("TechnicianProfile",back_populates="organization")
+    customer_profiles_extended=relationship("CustomerProfileModel",back_populates="organization")
+    InApp_Notification=relationship("InAppNotification",back_populates="organization")
+
     # Suspension tracking
     suspended_at = Column(DateTime(timezone=True), nullable=True)
     suspended_by = Column(String(36), nullable=True)
