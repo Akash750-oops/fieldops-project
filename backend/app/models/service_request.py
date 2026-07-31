@@ -35,7 +35,7 @@ class ServiceRequest(Base):
         nullable=False,
         index=True,
     )
-    tenant_id = Column(String(50), nullable=False, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
 
     # Request details
     title = Column(String(200), nullable=False)
@@ -69,3 +69,5 @@ class ServiceRequest(Base):
         Index("idx_sr_tenant_status", "tenant_id", "status"),
         Index("idx_sr_linked_job", "linked_job_id"),
     )
+
+    organization=relationship("Organization",back_populates="service_requests")

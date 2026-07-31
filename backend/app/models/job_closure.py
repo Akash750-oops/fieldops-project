@@ -12,7 +12,7 @@ class JobClosure(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
-    technician_id = Column(String(100), nullable=False)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     work_summary = Column(Text, nullable=False)
     before_images = Column(JSON, nullable=True)
     after_images = Column(JSON, nullable=False)
@@ -22,5 +22,7 @@ class JobClosure(Base):
     completed_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    organization=relationship("Organization",back_populates="job_closures")
 
     job = relationship("Job", backref="closure")

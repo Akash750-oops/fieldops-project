@@ -76,6 +76,31 @@ class Organization(Base):
     job_assignments = relationship("JobAssignment", back_populates="organization")
     dispatcher_alerts = relationship("DispatcherAlert", back_populates="organization")
     jobs = relationship("Job", back_populates="organization")
+    communication_channel_configurations = relationship("CommunicationChannelConfiguration", back_populates="organization")
+    communication_configuration_audits = relationship("CommunicationConfigurationAudit", back_populates="organization")
+    tenant_gps_configurations = relationship("TenantGPSConfiguration", back_populates="organization")
+    scoring_configurations = relationship("ScoringConfiguration", back_populates="organization")
+    assignment_overrides = relationship("AssignmentOverride", back_populates="organization")
+    override_audit_events = relationship("OverrideAuditEvent", back_populates="organization")
+    customer_preference_audits = relationship("CustomerPreferenceAudit", back_populates="organization")
+    preference_audit_logs = relationship("PreferenceAuditLog", back_populates="organization")
+    security_audit_logs = relationship("SecurityAuditLog", back_populates="organization")
+    enterprise_audit_logs = relationship("EnterpriseAuditLog", back_populates="organization")
+    audit_events = relationship("AuditEvent", back_populates="organization")
+    ai_guardrail_violations = relationship("AIGuardrailViolation", back_populates="organization")
+    ai_brand_safety_rules = relationship("AIBrandSafetyRule", back_populates="organization")
+    agent_state_records = relationship("AgentStateRecord", back_populates="organization")
+    gps_purge_audit_logs = relationship("GPSPurgeAuditLog", back_populates="organization")
+    gps_rejected_ping_logs = relationship("GPSRejectedPingLog", back_populates="organization")
+    sla_escalations = relationship("SLAEscalation", back_populates="organization")
+    job_closures = relationship("JobClosure", back_populates="organization")
+    eta_history = relationship("ETAHistory", back_populates="organization")
+    gps_pings = relationship("GPSPing", back_populates="organization")
+    service_requests = relationship("ServiceRequest", back_populates="organization")
+
+
+
+
     __table_args__ = (
         CheckConstraint(
             "status IN ('ACTIVE', 'SUSPENDED', 'DELETED')",

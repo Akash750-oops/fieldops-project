@@ -122,7 +122,7 @@ class AuditEvent(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     tech_id = Column(String(36), nullable=True, index=True)
-    tenant_id = Column(String(50), nullable=False, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     event_type = Column(String(50), nullable=False)
     old_status = Column(String(30), nullable=True)
     new_status = Column(String(30), nullable=True)
@@ -135,6 +135,7 @@ class AuditEvent(Base):
     details = Column(JSON, nullable=True)
     timestamp = Column(DateTime(timezone=True), nullable=True)
     correlation_id = Column(String(36), nullable=True)
+    organization=relationship("Organization",back_populates="audit_events")
 
 
 class DispatcherNotification(Base):
@@ -410,11 +411,13 @@ class PreferenceAuditLog(Base):
     __tablename__ = "preference_audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     tech_id = Column(String(36), nullable=False, index=True)
     updated_by = Column(String(50), nullable=False)
     old_preferences = Column(JSON, nullable=True)
     new_preferences = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    organization=relationship("Organization",back_populates="preference_audit_logs")
 
 class SkillTaxonomy(Base):
     __tablename__ = "skill_taxonomy"
@@ -427,11 +430,12 @@ class SkillTaxonomy(Base):
 class ScoringConfiguration(Base):
     __tablename__ = "scoring_configurations"
 
-    tenant_id = Column(String(50), primary_key=True, default="default")
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     proximity_weight = Column(Float, default=0.4)
     skill_weight = Column(Float, default=0.4)
     workload_weight = Column(Float, default=0.2)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    organization=relationship("Organization",back_populates="scoring_configurations")
 
 
 from sqlalchemy import event
@@ -456,7 +460,7 @@ class AIBrandSafetyRule(Base):
     __tablename__ = "ai_brand_safety_rules"
 
     id = Column(String(36),primary_key=True,default=lambda: str(uuid.uuid4()),)
-    tenant_id = Column(String(50),nullable=False,index=True,)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     rule_id = Column(String(100),nullable=False,)
     category = Column(String(30),nullable=False,)
     match_type = Column(String(20),nullable=False,)
@@ -468,6 +472,8 @@ class AIBrandSafetyRule(Base):
     updated_by = Column(String(100),nullable=True,)
     created_at = Column(DateTime(timezone=True),server_default=func.now(),nullable=False,)
     updated_at = Column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now(),nullable=False,)
+    organization=relationship("Organization",back_populates="ai_brand_safety_rules")
+
     __table_args__ = (
         UniqueConstraint(
             "tenant_id",
@@ -512,6 +518,7 @@ class SLAEscalation(Base):
     __tablename__ = "sla_escalations"
 
     id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
     manager_notified_at = Column(DateTime(timezone=True), nullable=True)
     manager_responded_at = Column(DateTime(timezone=True), nullable=True)
@@ -519,6 +526,7 @@ class SLAEscalation(Base):
     action_taken = Column(String(100), nullable=True)
     status = Column(String(50), default="ESCALATED")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    organization=relationship("Organization",back_populates="sla_escalations")
 
 class DispatcherAlert(Base):
     __tablename__ = "dispatcher_alerts"
@@ -556,8 +564,9 @@ class OverrideAuditEvent(Base):
     user_agent = Column(Text, nullable=True)
     correlation_id = Column(String(36), nullable=True)
     
-    tenant_id = Column(String(50), nullable=False)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    organization=relationship("Organization",back_populates="override_audit_events")
 
 @event.listens_for(OverrideAuditEvent, "before_update")
 def prevent_override_audit_event_update(mapper, connection, target):
@@ -581,7 +590,7 @@ class AIGuardrailViolation(Base):
 
     id = Column(String(36),primary_key=True,default=lambda: str(uuid.uuid4()),)
 
-    tenant_id = Column(String(50),nullable=False,index=True,)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
 
     correlation_id = Column(String(100),nullable=True,index=True,)
 
@@ -620,6 +629,8 @@ class AIGuardrailViolation(Base):
     total_latency_ms = Column(Float,nullable=False,default=0.0,)
 
     created_at = Column(DateTime(timezone=True),server_default=func.now(),nullable=False,index=True,)
+
+    organization=relationship("Organization",back_populates="ai_guardrail_violations")
 
     __table_args__ = (
         Index("idx_ai_guardrail_tenant_created","tenant_id","created_at",),
@@ -668,6 +679,7 @@ class AssignmentOverride(Base):
     __tablename__ = "assignment_overrides"
 
     id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
     actor_name = Column(String(100), nullable=False)
     actor_role = Column(String(30), nullable=False)
@@ -677,12 +689,14 @@ class AssignmentOverride(Base):
     new_technician_id = Column(Integer, ForeignKey("technicians.technician_id"), nullable=False)
     new_technician_name = Column(String(100), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    organization=relationship("Organization",back_populates="assignment_overrides")
 
 
 class GPSPing(Base):
     __tablename__ = "gps_pings"
 
     id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     technician_id = Column(String(36), ForeignKey("technicians.tech_id"), nullable=False, index=True)
     job_id = Column(String(36), nullable=False, index=True)
     latitude = Column(Float, nullable=False)
@@ -695,15 +709,17 @@ class GPSPing(Base):
     user_agent = Column(Text, nullable=True)
     correlation_id = Column(String(36), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    organization=relationship("Organization",back_populates="gps_pings")
 
 
 class TenantGPSConfiguration(Base):
     __tablename__ = "tenant_gps_configurations"
 
-    tenant_id = Column(String(50), primary_key=True, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     retention_days = Column(Integer, nullable=False, default=30)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    organization=relationship("Organization",back_populates="tenant_gps_configurations")
 
     __table_args__ = (
         CheckConstraint("retention_days BETWEEN 1 AND 90", name="valid_retention_days"),
@@ -714,12 +730,13 @@ class GPSPurgeAuditLog(Base):
     __tablename__ = "gps_purge_audit_logs"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(50), nullable=False, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     job_id = Column(String(36), nullable=True, index=True)
     purge_type = Column(String(20), nullable=False)  # 'age_based', 'event_based', 'manual'
     deleted_count = Column(Integer, nullable=False)
     correlation_id = Column(String(36), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    organization=relationship("Organization",back_populates="gps_purge_audit_logs")
 
 
 class GPSRejectedPingLog(Base):
@@ -730,7 +747,8 @@ class GPSRejectedPingLog(Base):
     job_id = Column(String(36), nullable=True, index=True)
     reason = Column(String(200), nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-    tenant_id = Column(String(50), nullable=True, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
+    organization=relationship("Organization",back_populates="gps_rejected_ping_logs")
 
 
 @event.listens_for(Job, 'after_update')
@@ -812,12 +830,14 @@ class CommunicationChannelConfiguration(Base):
     __tablename__ = "communication_channel_configurations"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     channel = Column(String(50), nullable=False)
     state = Column(String(20), nullable=False)
     revision = Column(Integer, nullable=False)
     updated_by = Column(String(100), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    organization=relationship("Organization",back_populates="communication_channel_configurations")
 
     __table_args__ = (
         UniqueConstraint("channel", name="uq_communication_channel_configuration_channel"),
@@ -829,6 +849,7 @@ class CommunicationConfigurationAudit(Base):
     __tablename__ = "communication_configuration_audits"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     channel = Column(String(50), nullable=False, index=True)
     previous_state = Column(String(20), nullable=True)
     new_state = Column(String(20), nullable=False)
@@ -839,6 +860,7 @@ class CommunicationConfigurationAudit(Base):
     reason = Column(String(500), nullable=False)
     correlation_id = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    organization=relationship("Organization",back_populates="communication_configuration_audits")
 
 @event.listens_for(CommunicationConfigurationAudit, "before_update")
 def prevent_communication_audit_update(mapper, connection, target):
@@ -861,7 +883,8 @@ class ETAHistory(Base):
     traffic_delay_minutes = Column(Float, default=0.0)
     source_ping_id = Column(String(36), ForeignKey("gps_pings.id"), nullable=False, index=True)
     calculated_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-    tenant_id = Column(String(50), nullable=False, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
+    organization=relationship("Organization",back_populates="eta_history")
 
 
 @event.listens_for(GPSPing, "after_insert")
@@ -957,7 +980,8 @@ class SecurityAuditLog(Base):
     target_tenant = Column(String(50), nullable=True, index=True)
     technician_id = Column(String(50), nullable=True)
     job_id = Column(String(50), nullable=True)
-    tenant_id = Column(String(50), nullable=True, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
+    organization=relationship("Organization",back_populates="security_audit_logs")
 
 class JobAssignment(Base):
     """
@@ -1024,7 +1048,10 @@ class AgentStateRecord(Base):
 
     tenant_id = Column(
         String(50),
+        ForeignKey("organizations.id", 
+        ondelete="RESTRICT")
         nullable=False,
+        index=True,
         comment="Tenant that owns this agent.",
     )
 
@@ -1072,6 +1099,9 @@ class AgentStateRecord(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    organization=relationship("Organization",back_populates="agent_state_records")
+
 
     __table_args__ = (
         UniqueConstraint(
@@ -1135,7 +1165,7 @@ class CustomerPreferenceAudit(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     customer_profile_id = Column(String(36), ForeignKey("customer_profiles.id"), nullable=False)
-    tenant_id = Column(String(50), nullable=False)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     previous_revision = Column(Integer, nullable=False)
     new_revision = Column(Integer, nullable=False)
     changed_fields = Column(JSON, nullable=False)
@@ -1143,6 +1173,7 @@ class CustomerPreferenceAudit(Base):
     actor_source = Column(String(50), nullable=False)
     correlation_id = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    organization=relationship("Organization",back_populates="customer_preference_audits")
 
 @event.listens_for(CustomerPreferenceAudit, "before_update")
 def prevent_customer_preference_audit_update(mapper, connection, target):

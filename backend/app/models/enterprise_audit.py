@@ -38,7 +38,7 @@ class EnterpriseAuditLog(Base):
     user_id = Column(String(36), nullable=True, index=True)
     user_email = Column(String(255), nullable=True)
     role = Column(String(30), nullable=True, index=True)
-    tenant_id = Column(String(50), nullable=False, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
 
     # When
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -67,6 +67,7 @@ class EnterpriseAuditLog(Base):
     # Severity
     severity = Column(String(20), nullable=False, default="INFO")
     # INFO, WARNING, ERROR, CRITICAL
+    organization=relationship("Organization",back_populates="enterprise_audit_logs")
 
     __table_args__ = (
         Index("idx_enterprise_audit_tenant_time", "tenant_id", "timestamp"),
