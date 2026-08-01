@@ -116,5 +116,6 @@ def update_schema():
     print("Database schema updated successfully.")
 
 
+
 if __name__ == "__main__":
     update_schema()

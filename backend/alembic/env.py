@@ -1,8 +1,9 @@
 from logging.config import fileConfig
-
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
-
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 from alembic import context
 
 # this is the Alembic Config object, which provides
@@ -14,9 +15,65 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-import os
-from pathlib import Path
-from dotenv import load_dotenv
+import re
+
+
+GPS_PARTITION_PATTERN = re.compile(
+    r"^gps_pings_\d{4}_\d{2}$"
+)
+
+IGNORED_TABLES = {
+    "redispatch_attempts",
+    "gps_pings",   
+}
+
+def is_ignored_table(table_name: str | None) -> bool:
+    if not table_name:
+        return False
+
+    return (
+        table_name in IGNORED_TABLES
+        or GPS_PARTITION_PATTERN.fullmatch(table_name) is not None
+    )
+
+
+def include_name(
+        name: str | None,
+        type_: str,
+        parent_names: dict,
+    ) -> bool:
+        """
+        Exclude manually managed tables during database reflection.
+        
+        """
+
+        if type_ == "table" and is_ignored_table(name):
+                return False
+
+        return True
+
+def include_object(
+    obj,
+    name: str | None,
+    type_: str,
+    reflected: bool,
+    compare_to,
+) -> bool:
+    """
+    Exclude ignored tables from both database reflection
+    and SQLAlchemy model metadata.
+    """
+
+    if type_ == "table":
+        table_name = name
+    else:
+        table = getattr(obj, "table", None)
+        table_name = getattr(table, "name", None)
+
+    if is_ignored_table(table_name):
+        return False
+
+    return True
 
 # Load environment variables relative to env.py
 env_path = Path(__file__).resolve().parent.parent / '.env'
@@ -56,6 +113,9 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_name=include_name,
+        include_object=include_object,
+        compare_type=True,
     )
 
     with context.begin_transaction():
@@ -77,7 +137,11 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            include_name=include_name,
+            include_object=include_object,
+            compare_type=True,
         )
 
         with context.begin_transaction():

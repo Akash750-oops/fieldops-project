@@ -106,8 +106,8 @@ class Organization(Base):
     eta_history = relationship("ETAHistory", back_populates="organization")
     gps_pings = relationship("GPSPing", back_populates="organization")
     service_requests = relationship("ServiceRequest", back_populates="organization")
-
-
+    notification_templates = relationship("NotificationTemplate",back_populates="organization")
+    notification_deliveries = relationship("NotificationDelivery",back_populates="organization")
 
 
     __table_args__ = (

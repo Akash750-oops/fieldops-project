@@ -18,6 +18,7 @@ except Exception as e:
 async def send_job_assignment_notification(
     db: Session,
     job_id: str,
+    tenant_id: str,
     job_title: str,
     location: str,
     tech_ids: list[str],
@@ -194,9 +195,10 @@ async def send_job_assignment_notification(
                 if resp.success:
                     sent_count += 1
                     delivery = NotificationDelivery(
-                        tech_id=tech_id, 
-                        job_id=str(job_id), 
-                        status="delivered", # Marked as delivered by FCM handoff
+                        tenant_id=tenant_id,
+                        tech_id=tech_id,
+                        job_id=str(job_id),
+                        status="delivered",
                         fcm_message_id=resp.message_id
                     )
                     db.add(delivery)
@@ -213,6 +215,7 @@ async def send_job_assignment_notification(
                             logger.info(f"Cleaned up invalid token for tech_id {tech_id}", extra=log_extra)
                         failed_count += 1
                         delivery = NotificationDelivery(
+                            tenant_id=tenant_id,
                             tech_id=tech_id, 
                             job_id=str(job_id), 
                             status="failed", 
@@ -227,9 +230,10 @@ async def send_job_assignment_notification(
                         if attempt == max_retries - 1:
                             failed_count += 1
                             delivery = NotificationDelivery(
-                                tech_id=tech_id, 
-                                job_id=str(job_id), 
-                                status="failed", 
+                                tenant_id=tenant_id,
+                                tech_id=tech_id,
+                                job_id=str(job_id),
+                                status="failed",
                                 error_message=str(resp.exception)
                             )
                             db.add(delivery)
@@ -252,9 +256,10 @@ async def send_job_assignment_notification(
                     failed_count += 1
                     tech_id = tech_map[token]
                     delivery = NotificationDelivery(
-                        tech_id=tech_id, 
-                        job_id=str(job_id), 
-                        status="failed", 
+                        tenant_id=tenant_id,
+                        tech_id=tech_id,
+                        job_id=str(job_id),
+                        status="failed",
                         error_message=str(e)
                     )
                     db.add(delivery)
