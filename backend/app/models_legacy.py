@@ -154,14 +154,17 @@ class NotificationDelivery(Base):
     __tablename__ = "notification_deliveries"
 
     id = Column(Integer, primary_key=True, index=True)
-    tech_id = Column(String(36), nullable=False, index=True)
-    job_id = Column(String(36), nullable=False, index=True)
+    tech_id = Column(String(36),ForeignKey("technicians.tech_id"),nullable=False)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"),nullable=False,index=True)
+    job_id = Column(Integer,ForeignKey("jobs.id"),nullable=False,index=True)    
     fcm_message_id = Column(String(255), nullable=True)
     status = Column(String(30), nullable=False, default="sent") # sent, delivered, failed
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+
+    organization = relationship("Organization",back_populates="notification_deliveries")
 
 class SMSDelivery(Base):
     __tablename__ = "sms_deliveries"
@@ -270,10 +273,11 @@ class NotificationTemplate(Base):
     )
 
     tenant_id = Column(
-        String(50),
-        nullable=False,
-        index=True,
-        default="**platform**",
+    String(50),
+    ForeignKey("organizations.id", ondelete="RESTRICT"),
+    nullable=False,
+    index=True,
+    default="**platform**",
     )
 
     agent_type = Column(
@@ -313,6 +317,11 @@ class NotificationTemplate(Base):
             "TemplateVersion.version_number.desc()"
         ),
     )
+
+    organization = relationship(
+    "Organization",
+    back_populates="notification_templates",
+)
 
     __table_args__ = (
         Index(
@@ -400,7 +409,7 @@ class TemplateVersion(Base):
             "template_id",
             "version_number",
             name="uq_template_version"
-        ),
+        ),                                                                                      
         Index(
             "idx_active_template_version",
             "template_id",
@@ -433,12 +442,13 @@ class SkillTaxonomy(Base):
 
 class ScoringConfiguration(Base):
     __tablename__ = "scoring_configurations"
-
+    id = Column(Integer, primary_key=True,autoincrement=True, index=True)
     tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     proximity_weight = Column(Float, default=0.4)
     skill_weight = Column(Float, default=0.4)
     workload_weight = Column(Float, default=0.2)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
     organization=relationship("Organization",back_populates="scoring_configurations")
 
 
@@ -719,8 +729,8 @@ class GPSPing(Base):
 
 class TenantGPSConfiguration(Base):
     __tablename__ = "tenant_gps_configurations"
-
-    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
+    
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), primary_key= True)
     retention_days = Column(Integer, nullable=False, default=30)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -1003,7 +1013,7 @@ class JobAssignment(Base):
     status = Column(String(30),nullable=False,default="PENDING",)
     assigned_at = Column(DateTime(timezone=True),nullable=True,)
     responded_at = Column(DateTime(timezone=True),nullable=True,)
-    is_current = Column(Boolean,nullable=False,default=False,)
+    is_current = Column(Boolean,nullable=False,default=False,)  
     created_at = Column(DateTime(timezone=True),server_default=func.now(),)
 
     organization = relationship("Organization", back_populates="job_assignments")
@@ -1054,10 +1064,10 @@ class AgentStateRecord(Base):
     tenant_id = Column(
         String(50),
         ForeignKey("organizations.id", 
-        ondelete="RESTRICT")
+        ondelete="RESTRICT"),
         nullable=False,
         index=True,
-        comment="Tenant that owns this agent.",
+        comment="Tenant that owns this agent."
     )
 
     agent_version = Column(

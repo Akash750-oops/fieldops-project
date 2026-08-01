@@ -7,9 +7,11 @@ Tracks every security-relevant event with full context.
 
 import uuid
 from sqlalchemy import (
-    Column, DateTime, String, Text, JSON, Index, event,
+    Column, DateTime, String, Text, JSON, Index, event,ForeignKey,
 )
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
+from app.models import Organization
 
 from ..database import Base
 

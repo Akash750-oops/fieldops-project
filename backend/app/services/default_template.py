@@ -1360,7 +1360,7 @@ def generate_default_templates():
                     "title_template": template["title"],
                     "body_template": body,
                     "variables": variables,
-                    "tenant_id": "**platform**",
+                    "tenant_id": "current_user.tenant_id",
                     "agent_type": "CommsAgent"
                 })
     return templates
@@ -1379,7 +1379,7 @@ def seed_default_templates(db: Session):
                     type=template["type"],
                     channel=template["channel"],
                     locale=template["locale"],
-                    tenant_id="**platform**",
+                    tenant_id="current_user.tenant_id",
                     agent_type="CommsAgent"
                 )
                 .first()
@@ -1399,7 +1399,7 @@ def seed_default_templates(db: Session):
                     type=template["type"],
                     channel=template["channel"],
                     locale=template["locale"],
-                    tenant_id="**platform**",
+                    tenant_id="current_user.tenant_id",
                     agent_type="CommsAgent",
                     is_active=True,
                     is_deleted=False
