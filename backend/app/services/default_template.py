@@ -1328,7 +1328,7 @@ def validate_catalog():
                 if base_paths != target_paths:
                     raise ValueError(f"Variable paths mismatch for {event_key} {channel_key} in {loc}. Base: {base_paths}, Target: {target_paths}")
 
-def generate_default_templates():
+def generate_default_templates(tenant_id: str = "tenant-1"):
     validate_catalog()
     templates = []
     for locale in SUPPORTED_LOCALES:
@@ -1360,13 +1360,13 @@ def generate_default_templates():
                     "title_template": template["title"],
                     "body_template": body,
                     "variables": variables,
-                    "tenant_id": "current_user.tenant_id",
+                    "tenant_id": tenant_id,
                     "agent_type": "CommsAgent"
                 })
     return templates
 
-def seed_default_templates(db: Session):
-    templates = generate_default_templates()
+def seed_default_templates(db: Session, target_tenant_id: str = "tenant-1"):
+    templates = generate_default_templates(tenant_id=target_tenant_id)
     from app.services.template_version_service import create_initial_version
     
     # We do not commit until all templates and initial versions are created.
@@ -1379,7 +1379,7 @@ def seed_default_templates(db: Session):
                     type=template["type"],
                     channel=template["channel"],
                     locale=template["locale"],
-                    tenant_id="current_user.tenant_id",
+                    tenant_id=target_tenant_id,
                     agent_type="CommsAgent"
                 )
                 .first()
@@ -1399,7 +1399,7 @@ def seed_default_templates(db: Session):
                     type=template["type"],
                     channel=template["channel"],
                     locale=template["locale"],
-                    tenant_id="current_user.tenant_id",
+                    tenant_id=target_tenant_id,
                     agent_type="CommsAgent",
                     is_active=True,
                     is_deleted=False

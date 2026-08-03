@@ -42,6 +42,7 @@ async def lifespan(app: FastAPI):
             conn.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS rejection_reason TEXT;"))
             conn.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMP WITH TIME ZONE;"))
             conn.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS rejected_by_tech_id VARCHAR(50);"))
+            conn.execute(text("ALTER TABLE sla_escalations ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(50);"))
             conn.execute(text("UPDATE jobs SET required_skill = 'Plumbing' WHERE LOWER(service_type) LIKE '%plumb%';"))
             conn.execute(text("UPDATE jobs SET required_skill = 'Electrical' WHERE LOWER(service_type) LIKE '%elec%';"))
             conn.execute(text("UPDATE jobs SET required_skill = 'HVAC' WHERE LOWER(service_type) LIKE '%hvac%' OR LOWER(service_type) LIKE '%ac%';"))

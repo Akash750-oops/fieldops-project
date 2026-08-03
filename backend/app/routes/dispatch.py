@@ -45,7 +45,7 @@ def technician_heartbeat(
     request: Request,
     payload: HeartbeatPayload = Body(default_factory=HeartbeatPayload),
     current_user: AuthenticatedUser = Depends(
-        require_role(UserRole.TECHNICIAN)
+        require_role(UserRole.TECHNICIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
     ),
     db: Session = Depends(get_db),
     redis_client = Depends(get_redis_client),
@@ -72,11 +72,20 @@ def technician_heartbeat(
             logger.warning(f"Redis error checking rate limit: {e}", extra=log_extra)
         
         # Verify tenant isolation and existence
-        tech = db.query(Technician).filter(Technician.tech_id == id,Technician.tenant_id == tenant_id,).first()
+        if id.isdigit():
+            tech = db.query(Technician).filter(
+                (Technician.tech_id == id) | (Technician.technician_id == int(id))
+            ).first()
+        else:
+            tech = db.query(Technician).filter(Technician.tech_id == id).first()
         
         if not tech:
             logger.error("Technician not found", extra=log_extra)
             raise HTTPException(status_code=404, detail="Technician not found")
+
+        if tech.tenant_id and tech.tenant_id != tenant_id:
+            logger.error("Access denied: tenant mismatch", extra=log_extra)
+            raise HTTPException(status_code=403, detail="Access denied")
             
         # Update database
         now = datetime.now(timezone.utc)
