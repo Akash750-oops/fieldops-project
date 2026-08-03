@@ -156,7 +156,7 @@ class NotificationDelivery(Base):
     id = Column(Integer, primary_key=True, index=True)
     tech_id = Column(String(36),ForeignKey("technicians.tech_id"),nullable=False)
     tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"),nullable=False,index=True)
-    job_id = Column(Integer,ForeignKey("jobs.id"),nullable=False,index=True)    
+    job_id = Column(String(36),ForeignKey("jobs.id"),nullable=False,index=True)    
     fcm_message_id = Column(String(255), nullable=True)
     status = Column(String(30), nullable=False, default="sent") # sent, delivered, failed
     error_message = Column(Text, nullable=True)
@@ -719,11 +719,11 @@ class GPSPing(Base):
     timestamp = Column(DateTime(timezone=True), nullable=False)
     accuracy = Column(Float, nullable=True)
     altitude = Column(Float, nullable=True)
-    tenant_id = Column(String(50), nullable=False, index=True)
     ip_address = Column(String(50), nullable=True)
     user_agent = Column(Text, nullable=True)
     correlation_id = Column(String(36), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
     organization=relationship("Organization",back_populates="gps_pings")
 
 
@@ -899,6 +899,7 @@ class ETAHistory(Base):
     source_ping_id = Column(String(36), ForeignKey("gps_pings.id"), nullable=False, index=True)
     calculated_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
+
     organization=relationship("Organization",back_populates="eta_history")
 
 

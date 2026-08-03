@@ -192,7 +192,7 @@ def create_job(
         if job.status.upper() == "ESCALATED":
             from app.models import SLAEscalation, AuditEvent
             now_utc = datetime.now(timezone.utc)
-            escalation = SLAEscalation(job_id=new_job.id,manager_notified_at=now_utc,status="ESCALATED")
+            escalation = SLAEscalation(tenant_id=new_job.tenant_id or "default", job_id=new_job.id, manager_notified_at=now_utc, status="ESCALATED")
             db.add(escalation)
             audit = AuditEvent(
                 tech_id="system",
