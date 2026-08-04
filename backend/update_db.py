@@ -100,7 +100,13 @@ def update_schema():
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS share_token VARCHAR(36) UNIQUE;",
         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS share_token_expires_at TIMESTAMP WITH TIME ZONE;",
 
-        # Fix notification_templates.is_active column type (INTEGER -> BOOLEAN)
+        # Fix notification_templates.is_active column type (INTEGER -> BOOLEAN) and ensure all columns exist
+        "ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS variables JSON DEFAULT '[]';",
+        "ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(50) DEFAULT 'tenant-1';",
+        "ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS agent_type VARCHAR(50) DEFAULT 'CommsAgent';",
+        "ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;",
+        "ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(50);",
         "ALTER TABLE notification_templates ALTER COLUMN is_active TYPE BOOLEAN USING is_active::BOOLEAN;",
     ]
     

@@ -282,6 +282,33 @@ async def create_service_request(
     db: Session = Depends(get_db),
 ):
     """Create a new service request."""
+    from ..utils import map_service_type_to_skill
+
+    user_rec = db.query(User).filter(User.id == current_user.user_id).first()
+    cust_first = (user_rec.first_name if user_rec and user_rec.first_name else "").strip()
+    cust_last = (user_rec.last_name if user_rec and user_rec.last_name else "").strip()
+    cust_name = f"{cust_first} {cust_last}".strip() or (user_rec.email if user_rec else "Customer")
+    cust_email = user_rec.email if user_rec else None
+
+    req_skill = map_service_type_to_skill(data.service_type or "General")
+
+    new_job = Job(
+        tenant_id=current_user.tenant_id,
+        customer_name=cust_name,
+        location=data.location or "Customer Location",
+        issue_description=f"{data.title}: {data.description}",
+        priority=data.priority or "MEDIUM",
+        service_type=data.service_type or "General",
+        contact_number=data.contact_number or "N/A",
+        preferred_service_date=data.preferred_visit_date or datetime.now(timezone.utc).date(),
+        required_skill=req_skill,
+        status="CREATED",
+        customer_id=str(current_user.user_id),
+        customer_email=cust_email,
+    )
+    db.add(new_job)
+    db.flush()
+
     sr = ServiceRequest(
         request_number=_generate_request_number(),
         customer_user_id=current_user.user_id,
@@ -295,6 +322,7 @@ async def create_service_request(
         location=data.location,
         contact_number=data.contact_number,
         status="PENDING",
+        linked_job_id=new_job.id,
     )
     db.add(sr)
 

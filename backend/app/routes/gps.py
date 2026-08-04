@@ -116,10 +116,13 @@ def get_gps_history(
     job_id: Optional[str] = None,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     db: Session = Depends(get_db),
     authorization: str = Depends(verify_jwt_token)
 ):
     query = db.query(models.GPSPing).filter(models.GPSPing.technician_id == technician_id)
+    if x_tenant_id:
+        query = query.filter(models.GPSPing.tenant_id == x_tenant_id)
     
     if job_id:
         query = query.filter(models.GPSPing.job_id == job_id)
