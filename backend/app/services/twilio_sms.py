@@ -199,6 +199,7 @@ async def send_job_assignment_sms(
             
         # Ready to send
         delivery = SMSDelivery(
+            tenant_id=tech.tenant_id or "tenant-1",
             tech_id=tech.tech_id,
             job_id=str(job_id),
             status="queued"

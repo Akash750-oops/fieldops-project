@@ -114,7 +114,6 @@ def seed_organizations_and_users(db: Session):
             "tenant_id": "tenant-1",
         },
     ]
-
     for udata in seed_users_data:
         existing = db.query(User).filter(
             User.email == udata["email"],
@@ -147,3 +146,6 @@ if __name__ == "__main__":
         print("Seed completed successfully!")
     finally:
         db.close()
+
+
+

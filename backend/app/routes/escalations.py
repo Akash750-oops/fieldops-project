@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -56,11 +57,14 @@ def get_job_for_user(
 
     return job
 
-def get_active_escalation(db: Session, job_id: int):
-    esc = db.query(SLAEscalation).filter(
+def get_active_escalation(db: Session, job_id: int, current_user: Optional[AuthenticatedUser] = None):
+    query = db.query(SLAEscalation).filter(
         SLAEscalation.job_id == job_id,
         SLAEscalation.manager_responded_at.is_(None)
-    ).first()
+    )
+    if current_user and not current_user.is_super_admin:
+        query = query.filter(SLAEscalation.tenant_id == current_user.tenant_id)
+    esc = query.first()
     if not esc:
         raise HTTPException(status_code=404, detail="Active escalation not found for this job")
     return esc
@@ -98,6 +102,7 @@ def extend_sla(
     esc = get_active_escalation(
         db,
         job_id,
+        current_user,
     )
 
     if job.sla_deadline:
@@ -176,6 +181,7 @@ def cancel_job(
     esc = get_active_escalation(
         db,
         job_id,
+        current_user,
     )
 
     old_status = job.status
@@ -283,6 +289,7 @@ async def force_assign(
     escalation = get_active_escalation(
         db,
         job_id,
+        current_user,
     )
 
     old_status = job.status

@@ -169,13 +169,15 @@ async def list_organizations(
     status_filter: Optional[str] = Query(None, alias="status"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    all_tenants: bool = Query(False, description="Platform admin only: view all tenants"),
     current_user: AuthenticatedUser = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """List organizations. Super Admin sees all, Admin sees own org."""
+    """List organizations. Filtered by current user's tenant by default."""
     query = db.query(Organization).filter(Organization.deleted_at.is_(None))
 
-    if current_user.role != UserRole.SUPER_ADMIN:
+    # Strict tenant isolation by default for all users
+    if not (all_tenants and current_user.tenant_id == "__platform__"):
         query = query.filter(Organization.id == current_user.tenant_id)
 
     if status_filter:
@@ -222,8 +224,8 @@ async def get_organization(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    # Admin can only view their own org
-    if current_user.role == UserRole.ADMIN and current_user.tenant_id != org_id:
+    # Users can only view their own org unless platform admin
+    if current_user.tenant_id != "__platform__" and current_user.tenant_id != org_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
     user_count = db.query(func.count(User.id)).filter(
@@ -263,6 +265,9 @@ async def update_organization(
         Organization.id == org_id,
         Organization.deleted_at.is_(None),
     ).first()
+
+    if current_user.tenant_id != "__platform__" and current_user.tenant_id != org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -308,6 +313,9 @@ async def suspend_organization(
         Organization.deleted_at.is_(None),
     ).first()
 
+    if current_user.tenant_id != "__platform__" and current_user.tenant_id != org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
@@ -349,6 +357,9 @@ async def activate_organization(
         Organization.deleted_at.is_(None),
     ).first()
 
+    if current_user.tenant_id != "__platform__" and current_user.tenant_id != org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
@@ -387,6 +398,9 @@ async def delete_organization(
         Organization.id == org_id,
         Organization.deleted_at.is_(None),
     ).first()
+
+    if current_user.tenant_id != "__platform__" and current_user.tenant_id != org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -427,8 +441,16 @@ async def create_org_admin(
     db: Session = Depends(get_db),
 ):
     """Create an admin or user for an organization. Super Admin or Org Admin."""
-    if current_user.role != UserRole.SUPER_ADMIN and current_user.tenant_id != org_id:
+    if current_user.tenant_id != "__platform__" and current_user.tenant_id != org_id:
         raise HTTPException(status_code=403, detail="Access denied to this organization")
+
+    # Prevent creation of Super Admin accounts via user provisioning
+    requested_role = (payload.role or "").lower().strip()
+    if requested_role in ["super_admin", "superadmin", "super admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Creating Super Admin accounts is not permitted.",
+        )
 
     org = db.query(Organization).filter(
         Organization.id == org_id,

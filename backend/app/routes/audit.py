@@ -26,8 +26,8 @@ def get_override_audits_for_job(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid job ID format")
 
-    # Optional: Verify job belongs to tenant
-    job = db.query(Job).filter(Job.id == job_db_id).first()
+    # Verify job belongs to tenant
+    job = db.query(Job).filter(Job.id == job_db_id, Job.tenant_id == x_tenant_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 

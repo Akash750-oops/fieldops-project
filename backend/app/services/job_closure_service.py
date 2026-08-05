@@ -90,7 +90,10 @@ def close_job(
         )
 
     # Check if a JobClosure record already exists
-    existing_closure = db.query(JobClosure).filter(JobClosure.job_id == job_id).first()
+    existing_closure = db.query(JobClosure).filter(
+        JobClosure.job_id == job_id,
+        JobClosure.tenant_id == job.tenant_id,
+    ).first()
     if existing_closure:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -105,7 +108,7 @@ def close_job(
     try:
         closure_record = JobClosure(
             job_id=job.id,
-            technician_id=str(technician_identifier),
+            tenant_id=job.tenant_id,
             work_summary=closure_data.work_summary,
             before_images=closure_data.before_images or [],
             after_images=closure_data.after_images,
@@ -148,7 +151,10 @@ def get_job_closure(db: Session, job_id: int) -> JobClosure:
             detail="Job not found"
         )
 
-    closure = db.query(JobClosure).filter(JobClosure.job_id == job_id).first()
+    closure = db.query(JobClosure).filter(
+        JobClosure.job_id == job_id,
+        JobClosure.tenant_id == job.tenant_id,
+    ).first()
     if not closure:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

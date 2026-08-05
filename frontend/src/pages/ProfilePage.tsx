@@ -1070,7 +1070,6 @@ export default function ProfilePage() {
                 <option value="dispatcher">Dispatcher</option>
                 <option value="technician">Technician</option>
                 <option value="customer">Customer</option>
-                {isSuperAdmin && <option value="super_admin">Super Admin</option>}
               </select>
             </div>
 

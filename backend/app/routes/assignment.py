@@ -1,46 +1,71 @@
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from typing import List
 
 from ..database import get_db
 from .. import models, schemas, utils
+from ..auth.dependencies import get_current_user_or_tenant, AuthenticatedUser
 
 router = APIRouter(
     tags=["Assignment"]
 )
 
 @router.get("/technicians/match-skill", response_model=List[schemas.TechnicianResponse])
-def match_skill(job_type: str, db: Session = Depends(get_db)):
+def match_skill(
+    job_type: str,
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
+    db: Session = Depends(get_db)
+):
     """
     Find available technicians matching the required skill (job_type).
     Falls back gracefully if exact match returns no results.
     """
+    user, tenant_id = user_tenant
     pattern = f"%{job_type.strip()}%"
-    technicians = db.query(models.Technician).filter(
+    tech_query = db.query(models.Technician).filter(
         models.Technician.technician_skill.ilike(pattern)
-    ).all()
+    )
+    if not user or not user.is_super_admin:
+        tech_query = tech_query.filter(models.Technician.tenant_id == tenant_id)
+
+    technicians = tech_query.all()
     
     if not technicians:
-        technicians = db.query(models.Technician).all()
+        fallback_query = db.query(models.Technician)
+        if not user or not user.is_super_admin:
+            fallback_query = fallback_query.filter(models.Technician.tenant_id == tenant_id)
+        technicians = fallback_query.all()
         
     return technicians
 
 @router.get("/technicians/nearest", response_model=schemas.NearestTechnicianResponse)
-def get_nearest_technician(job_id: int, db: Session = Depends(get_db)):
+def get_nearest_technician(
+    job_id: int,
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
+    db: Session = Depends(get_db)
+):
     """
     Identify the nearest available technician based on skill and location.
     """
-    job = db.query(models.Job).filter(models.Job.id == job_id).first()
+    user, tenant_id = user_tenant
+    job_query = db.query(models.Job).filter(models.Job.id == job_id)
+    if not user or not user.is_super_admin:
+        job_query = job_query.filter(models.Job.tenant_id == tenant_id)
+    job = job_query.first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Filter technicians by skill, availability, and workload
-    technicians = db.query(models.Technician).filter(
+    # Filter technicians by skill, availability, workload, and tenant
+    tech_query = db.query(models.Technician).filter(
         models.Technician.technician_skill == job.required_skill,
         models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"]),
         models.Technician.current_jobs < models.Technician.max_jobs
-    ).all()
+    )
+    if not user or not user.is_super_admin:
+        tech_query = tech_query.filter(models.Technician.tenant_id == tenant_id)
+
+    technicians = tech_query.all()
 
     if not technicians:
         raise HTTPException(
@@ -66,16 +91,21 @@ def get_nearest_technician(job_id: int, db: Session = Depends(get_db)):
 
 @router.post("/assign-job")
 @router.post("/assign-technician")
-def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(get_db)):
+def assign_job(
+    assignment: schemas.TechnicianAssignment,
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
+    db: Session = Depends(get_db)
+):
     """
     Assign a technician to a job with full validation.
     Checks:
-    - Job existence
-    - Technician existence
+    - Job existence & tenant boundary
+    - Technician existence & tenant boundary
     - Technician availability (BUSY/OFFLINE)
     - Skill match
     - Duplicate assignment prevention
     """
+    user, tenant_id = user_tenant
     try:
         # 1. Parse Job ID
         job_id_str = str(assignment.job_id)
@@ -84,8 +114,11 @@ def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(g
         else:
             job_id = int(job_id_str)
 
-        # 2. Fetch Job
-        job = db.query(models.Job).filter(models.Job.id == job_id).first()
+        # 2. Fetch Job with tenant isolation
+        job_query = db.query(models.Job).filter(models.Job.id == job_id)
+        if not user or not user.is_super_admin:
+            job_query = job_query.filter(models.Job.tenant_id == tenant_id)
+        job = job_query.first()
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
 
@@ -96,31 +129,34 @@ def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(g
                 detail=f"Job #{job.id} is already assigned to technician #{job.assigned_technician_id}"
             )
 
-        # 4. Fetch/Determine Technician
+        # 4. Fetch/Determine Technician with tenant isolation
         technician = None
         if assignment.technician_id is not None:
             tech_val = assignment.technician_id
             if isinstance(tech_val, int) or (isinstance(tech_val, str) and tech_val.isdigit()):
-                technician = db.query(models.Technician).filter(
-                    models.Technician.technician_id == int(tech_val)
-                ).first()
+                t_q = db.query(models.Technician).filter(models.Technician.technician_id == int(tech_val))
+                if not user or not user.is_super_admin:
+                    t_q = t_q.filter(models.Technician.tenant_id == tenant_id)
+                technician = t_q.first()
             if not technician:
-                technician = db.query(models.Technician).filter(
-                    models.Technician.tech_id == str(tech_val)
-                ).first()
+                t_q = db.query(models.Technician).filter(models.Technician.tech_id == str(tech_val))
+                if not user or not user.is_super_admin:
+                    t_q = t_q.filter(models.Technician.tenant_id == tenant_id)
+                technician = t_q.first()
             if not technician:
                 raise HTTPException(status_code=404, detail="Technician not found")
         elif assignment.job_type:
             # Auto-assign logic based on skill and availability
-            technicians = db.query(models.Technician).filter(
+            t_q = db.query(models.Technician).filter(
                 models.Technician.technician_skill == assignment.job_type,
                 models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"]),
                 models.Technician.current_jobs < models.Technician.max_jobs
-            ).all()
+            )
+            if not user or not user.is_super_admin:
+                t_q = t_q.filter(models.Technician.tenant_id == tenant_id)
+            technicians = t_q.all()
             if not technicians:
                 raise HTTPException(status_code=400, detail=f"No available technicians found with skill: {assignment.job_type}")
-            # Just pick the first available one for basic auto-assignment
-            # In a real scenario, we might sort by distance or workload
             technicians.sort(key=lambda t: t.current_jobs)
             technician = technicians[0]
         else:
@@ -130,12 +166,10 @@ def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(g
         from ..validation import validate_technician_for_assignment
         validate_technician_for_assignment(technician, job)
 
-
         # 7. Perform Assignment
         job.assigned_technician_id = technician.technician_id
         job.status = "ASSIGNED"
         
-        # Use workload utility for increment and status sync
         from ..workload_utils import update_workload_count
         update_workload_count(db, technician.technician_id, 1)
 
@@ -155,11 +189,9 @@ def assign_job(assignment: schemas.TechnicianAssignment, db: Session = Depends(g
         }
 
     except HTTPException:
-        # Re-raise HTTP exceptions to be handled by the global handler
         raise
     except SQLAlchemyError as e:
         db.rollback()
-        # Log database error here if logging is configured
         print(f"Database error during job assignment: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

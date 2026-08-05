@@ -34,7 +34,7 @@ Retry policy
 ------------
 Each subscriber delivery uses:
 
-- Initial attempt
+- Initial attempt+
 - Retry 1 after 1 second
 - Retry 2 after 2 seconds
 - Retry 3 after 4 seconds

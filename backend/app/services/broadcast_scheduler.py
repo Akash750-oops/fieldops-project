@@ -186,6 +186,7 @@ class BroadcastScheduler:
         SQLite (tests) and PostgreSQL (production).
         """
         from sqlalchemy import text
+        from sqlalchemy.exc import ProgrammingError, OperationalError
 
         # Use UTC-naive threshold for compatibility with both SQLite and PG
         threshold = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=GPS_STALENESS_S)
@@ -223,7 +224,13 @@ class BroadcastScheduler:
                 p.latitude, p.longitude, p.accuracy, p.altitude
         """)
 
-        return db.execute(sql, {"threshold": threshold_str}).fetchall()
+        try:
+            return db.execute(sql, {"threshold": threshold_str}).fetchall()
+        except (ProgrammingError, OperationalError) as exc:
+            if "gps_pings" in str(exc).lower() or "does not exist" in str(exc).lower() or "no such table" in str(exc).lower():
+                logger.warning(f"[scheduler] Table 'gps_pings' does not exist yet: {exc}")
+                return []
+            raise
 
     # ── ETA Cache ─────────────────────────────────────────────────────────────
 
