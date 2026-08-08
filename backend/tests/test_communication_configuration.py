@@ -12,7 +12,13 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.models import CommunicationChannelConfiguration, CommunicationConfigurationAudit, Technician
+from app.models import (
+    Base,
+    Organization,
+    Technician,
+    CommunicationChannelConfiguration,
+    CommunicationConfigurationAudit,
+)
 from app.services.ai.FieldOpsAI.schemas.communication_configuration import (
     CommunicationChannelState,
     CommunicationMessageCategory,
@@ -41,8 +47,17 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 def setup_db():
     Base.metadata.create_all(bind=engine)
     with Session(engine) as session:
+        org = Organization(
+             id="default",
+             name="Test Organization",
+             slug="test-org",
+   )
+
+        session.add(org)
+        session.commit()
         config = CommunicationChannelConfiguration(
             id=str(uuid.uuid4()),
+            tenant_id="default",
             channel="SMS",
             state="ENABLED",
             revision=1,
@@ -52,6 +67,7 @@ def setup_db():
         )
         config_email = CommunicationChannelConfiguration(
             id=str(uuid.uuid4()),
+            tenant_id="default",
             channel="EMAIL",
             state="ENABLED",
             revision=1,
@@ -452,6 +468,7 @@ def test_delivery_emergency_only_standard_never_calls(
 # Audit Tests
 def test_audit_immutability(db_session,no_sms_rate_limit,):
     audit = CommunicationConfigurationAudit(
+        tenant_id="tenant1",
         channel="SMS",
         new_state="DISABLED",
         new_revision=2,
@@ -1069,6 +1086,7 @@ def test_admin_dependency_injection(db_session, fake_redis):
     def _set_sms(state):
         db_session.query(CommunicationChannelConfiguration).filter_by(channel="SMS").delete()
         config = CommunicationChannelConfiguration(
+            tenant_id="tenant1",
             channel="SMS",
             state=state,
             revision=1,
@@ -1117,6 +1135,7 @@ def test_sms_cache_aware_delivery(
     from app.models import (
         SMSDelivery,
         Technician,
+        CommunicationChannelConfiguration,
     )
     from app.services.ai.FieldOpsAI.repositories.communication_configuration_repository import (
         CommunicationConfigurationRepository,
@@ -1424,6 +1443,7 @@ def test_email_cache_aware_delivery(
 
         if config is None:
             config = CommunicationChannelConfiguration(
+                tenant_id="tenant1",
                 channel="EMAIL",
                 state=state,
                 revision=1,
@@ -1811,8 +1831,8 @@ def test_14_4_cross_process_behavior(fake_redis):
         
         # prime db with initial data
         from app.models import CommunicationChannelConfiguration
-        session1.add(CommunicationChannelConfiguration(channel="SMS", state="ENABLED", revision=1, updated_by="sys"))
-        session1.add(CommunicationChannelConfiguration(channel="EMAIL", state="ENABLED", revision=1, updated_by="sys"))
+        session1.add(CommunicationChannelConfiguration(tenant_id="tenant1",channel="SMS", state="ENABLED", revision=1, updated_by="sys"))
+        session1.add(CommunicationChannelConfiguration(tenant_id="tenant1",channel="EMAIL", state="ENABLED", revision=1, updated_by="sys"))
         session1.commit()
         
         # prime both caches on session2
@@ -1832,8 +1852,23 @@ def test_14_4_cross_process_behavior(fake_redis):
         
         session1.close()
         session2.close()
-    finally:
         engine.dispose()
+    finally:
+        try:
+            session1.close()
+        except:
+            pass
+
+        try:
+            session2.close()
+        except:
+            pass
+
+        engine.dispose()
+
+        import gc
+        gc.collect()
+
         os.remove(temp_path)
     
 def test_14_4_redis_failure_handling(db_session, fake_redis, monkeypatch):

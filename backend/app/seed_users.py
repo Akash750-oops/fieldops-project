@@ -2,7 +2,7 @@
 Seed default organizations and users for demo & testing.
 
 Created users:
-1. Super Admin: superadmin@fieldops.com / SuperAdmin@123
+1. Super Admin: superhead@fieldops.com / SuperAdmin@123
 2. Org Admin:   admin@fieldops.com / Admin@123456
 3. Dispatcher:  dispatcher@fieldops.com / Dispatcher@123456
 4. Technician:  tech@fieldops.com / Tech@123456

@@ -363,9 +363,9 @@ def test_channel_failure_stops_pipeline_immediately() -> None:
     )
 
 
-def test_length_failure_stops_after_second_checker() -> None:
+def test_truncated_sms_completes_guardrail_pipeline() -> None:
     """
-    Length failure occurs after channel validation passes.
+    SMS truncation prevents a length failure before guardrail validation.
     """
 
     decision = CommunicationDecision(
@@ -382,25 +382,11 @@ def test_length_failure_stops_after_second_checker() -> None:
         decision=decision,
     )
 
-    assert (
-        result.decision
-        == GuardrailDecision.FALLBACK
-    )
-
-    assert len(result.checks) == 2
-
-    assert tuple(
-        check.checker_name
-        for check in result.checks
-    ) == (
-        "channel_validator",
-        "length_validator",
-    )
-
-    assert (
-        result.violations[0].code
-        == "SMS_MESSAGE_TOO_LONG"
-    )
+    assert result.decision == GuardrailDecision.ALLOW
+    assert len(result.checks) == 7
+    assert result.violations == ()
+    assert len(decision.message) == 160
+    assert decision.message.endswith("...")
 
 
 # ==========================================================
@@ -445,7 +431,7 @@ def test_diagnostic_mode_collects_multiple_violations() -> None:
     )
 
     assert len(result.checks) == 7
-    assert "SMS_MESSAGE_TOO_LONG" in codes
+    assert "SMS_MESSAGE_TOO_LONG" not in codes
     assert "PROFANITY_DETECTED" in codes
 
 

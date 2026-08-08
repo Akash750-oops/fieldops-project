@@ -156,7 +156,7 @@ class NotificationDelivery(Base):
     id = Column(Integer, primary_key=True, index=True)
     tech_id = Column(String(36),ForeignKey("technicians.tech_id"),nullable=False)
     tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"),nullable=False,index=True)
-    job_id = Column(String(36),ForeignKey("jobs.id"),nullable=False,index=True)    
+    job_id = Column(Integer,ForeignKey("jobs.id"),nullable=False,index=True)    
     fcm_message_id = Column(String(255), nullable=True)
     status = Column(String(30), nullable=False, default="sent") # sent, delivered, failed
     error_message = Column(Text, nullable=True)
@@ -1181,7 +1181,7 @@ class CustomerPreferenceAudit(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     customer_profile_id = Column(String(36), ForeignKey("customer_profiles.id"), nullable=False)
-    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False)
     previous_revision = Column(Integer, nullable=False)
     new_revision = Column(Integer, nullable=False)
     changed_fields = Column(JSON, nullable=False)
