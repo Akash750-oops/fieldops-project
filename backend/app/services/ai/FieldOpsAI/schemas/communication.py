@@ -242,12 +242,23 @@ class EmailMessageOutput(BaseModel):
     subject: str
     text_body: str
     html_body: str | None = None
+    mime_message: str | None = Field(default=None, exclude=True)
+
+
+class MessageAction(BaseModel):
+    """A client-renderable action associated with a notification."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    label: str
+    action: str
+
 
 class PushMessageOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     channel: Literal["PUSH"] = "PUSH"
     title: str
     body: str
+    actions: tuple[MessageAction, ...] = ()
 
 class PortalMessageOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -255,6 +266,8 @@ class PortalMessageOutput(BaseModel):
     title: str | None = None
     body: str
     content_format: Literal["text", "html"] = "text"
+    actions: tuple[MessageAction, ...] = ()
+    payload: dict[str, Any] = Field(default_factory=dict)
 
 FormattedCommunicationOutput = Annotated[
     SMSMessageOutput

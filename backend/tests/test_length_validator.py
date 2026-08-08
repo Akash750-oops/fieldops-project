@@ -94,9 +94,9 @@ def test_sms_message_at_limit_passes() -> None:
     assert result.violations == ()
 
 
-def test_sms_message_over_limit_fails() -> None:
+def test_sms_message_over_limit_is_truncated_before_validation() -> None:
     """
-    An SMS containing 161 characters must fail.
+    An SMS containing 161 characters is truncated to the transport limit.
     """
 
     context = build_context(
@@ -117,33 +117,10 @@ def test_sms_message_over_limit_fails() -> None:
         decision=decision,
     )
 
-    assert result.passed is False
-    assert len(result.violations) == 1
-
-    violation = result.violations[0]
-
-    assert (
-        violation.code
-        == "SMS_MESSAGE_TOO_LONG"
-    )
-
-    assert (
-        violation.category
-        == GuardrailCategory.LENGTH
-    )
-
-    assert (
-        violation.severity
-        == GuardrailSeverity.ERROR
-    )
-
-    assert violation.field == "output"
-
-    assert violation.safe_metadata == {
-        "channel": "SMS",
-        "actual_length": 161,
-        "maximum_length": 160,
-    }
+    assert result.passed is True
+    assert result.violations == ()
+    assert len(decision.message) == 160
+    assert decision.message.endswith("...")
 
 
 # ==========================================================
@@ -251,9 +228,9 @@ def test_push_title_at_limit_passes() -> None:
     assert result.violations == ()
 
 
-def test_push_title_over_limit_fails() -> None:
+def test_push_title_over_limit_is_truncated_before_validation() -> None:
     """
-    A push title containing 51 characters must fail.
+    A push title containing 51 characters is truncated to the transport limit.
     """
 
     context = build_context(
@@ -274,22 +251,10 @@ def test_push_title_over_limit_fails() -> None:
         decision=decision,
     )
 
-    assert result.passed is False
-
-    violation = result.violations[0]
-
-    assert (
-        violation.code
-        == "PUSH_TITLE_TOO_LONG"
-    )
-
-    assert violation.field == "output"
-
-    assert violation.safe_metadata == {
-        "channel": "PUSH",
-        "actual_length": 51,
-        "maximum_length": 50,
-    }
+    assert result.passed is True
+    assert result.violations == ()
+    assert len(decision.title) == 50
+    assert decision.title.endswith("...")
 
 
 # ==========================================================

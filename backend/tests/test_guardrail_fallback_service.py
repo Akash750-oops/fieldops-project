@@ -518,11 +518,11 @@ def test_broken_database_template_uses_builtin(
     )
 
 
-def test_oversized_sms_database_template_uses_builtin(
+def test_oversized_sms_database_template_is_truncated(
     db_session: Session,
 ) -> None:
     """
-    An oversized database SMS is rejected.
+    An oversized database SMS is truncated to the transport limit.
     """
 
     add_template(
@@ -540,7 +540,7 @@ def test_oversized_sms_database_template_uses_builtin(
 
     assert (
         result.source
-        == FallbackTemplateSource.BUILTIN
+        == FallbackTemplateSource.DATABASE
     )
 
     assert (
@@ -549,6 +549,7 @@ def test_oversized_sms_database_template_uses_builtin(
         )
         <= 160
     )
+    assert result.decision.message.endswith("...")
 
 
 # ==========================================================
