@@ -49,6 +49,7 @@ You will receive one of the following events:
 - TECHNICIAN_REJECTED
 - TECHNICIAN_TIMEOUT
 
+
 ---
 
 ## Workflow Rules
@@ -125,7 +126,6 @@ If no ranked technicians remain, return:
   "status": "TIMEOUT"
 }
 ```
-
 ---
 
 ## Manual Review
