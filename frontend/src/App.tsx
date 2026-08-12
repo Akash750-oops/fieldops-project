@@ -29,6 +29,9 @@ import LoadingSpinner from "./components/ui/LoadingSpinner";
 
 // Lazy load page components
 const LoginPage = lazy(() => import("./pages/LoginPage"));
+const OrganizationOnboardingPage = lazy(
+  () => import("./pages/OrganizationOnboardingPage")
+);
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const JobsPage = lazy(() => import("./pages/JobsPage"));
 const TechDashboardPage = lazy(() => import("./pages/TechDashboardPage"));
@@ -1288,20 +1291,36 @@ function AppInner() {
 // Wrap with ToastProvider & Auth check at the root
 function AppContent() {
   const { isAuthenticated, loadFromStorage } = useAuthStore();
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     loadFromStorage();
   }, [loadFromStorage]);
 
-  if (!isAuthenticated) {
+  // Show organization onboarding page
+  if (!isAuthenticated && showOnboarding) {
     return (
-      <Suspense fallback={<LoadingSpinner message="Loading authentication..." fullPage />}>
-        <LoginPage />
+      <Suspense fallback={<LoadingSpinner />}>
+        <OrganizationOnboardingPage
+          onBackToLogin={() => setShowOnboarding(false)}
+        />
       </Suspense>
     );
   }
 
-  return <AppInner />;
+  // Show login page
+  if (!isAuthenticated) {
+    return (
+      <Suspense fallback={<LoadingSpinner />}>
+        <LoginPage
+          onCreateOrganization={() => setShowOnboarding(true)}
+        />
+      </Suspense>
+    );
+  }
+
+  // User is authenticated
+  return <AppInner/>;
 }
 
 function App() {
