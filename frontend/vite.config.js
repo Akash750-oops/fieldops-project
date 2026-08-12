@@ -11,5 +11,13 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    fileParallelism: false,
+    maxWorkers: 1,
+    threads: {
+      singleThread: true,
+    },
+    forks: {
+      singleFork: true,
+    }
   }
 })

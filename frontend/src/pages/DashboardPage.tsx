@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getDashboardStats, getJobs } from "../services/planningService";
 import NotificationBell from "../components/notifications/NotificationBell";
-import PermissionRequest from "../components/notifications/PermissionRequest";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
 import {
   Briefcase,
@@ -19,6 +18,7 @@ import {
   Droplet,
   Wrench,
   MoreHorizontal,
+  MoreVertical,
   TrendingUp,
   Check
 } from "lucide-react";
@@ -69,6 +69,7 @@ const styles = {
     background: "#F9FAFB",
     minHeight: "100vh",
     boxSizing: "border-box",
+    flexShrink: 0,
   } as React.CSSProperties,
 
   dashboardHeaderCard: {
@@ -122,10 +123,11 @@ const styles = {
   } as React.CSSProperties,
 
   dropdownThisWeek: {
-    padding: "8px 30px 8px 28px",
+    height: "32px",
+    padding: "0 28px 0 26px",
     borderRadius: "8px",
-    border: "1.5px solid #E3ECE7",
-    fontSize: "13px",
+    border: "1px solid #E2E8F0",
+    fontSize: "12px",
     fontWeight: 600,
     color: "#374151",
     background: "#FFFFFF",
@@ -136,7 +138,7 @@ const styles = {
     backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
     backgroundRepeat: "no-repeat",
     backgroundPosition: "right 8px center",
-    backgroundSize: "12px",
+    backgroundSize: "10px",
   } as React.CSSProperties,
 
   dashboardSearchBar: {
@@ -673,17 +675,113 @@ const styles = {
     borderRadius: "2px",
     transition: "all 0.2s ease",
   } as React.CSSProperties,
+
+  metricCardNew: {
+    position: "relative",
+    height: "68px",
+    display: "flex",
+    alignItems: "center",
+    cursor: "pointer",
+    background: "#FFFFFF",
+    border: "1px solid #E2E8F0",
+    borderRadius: "10px",
+    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04)",
+    overflow: "hidden",
+    padding: "6px 12px",
+    width: "100%",
+    boxSizing: "border-box",
+    textAlign: "left",
+    gap: "10px",
+  } as React.CSSProperties,
+
+  metricCardContentNew: {
+    display: "flex",
+    alignItems: "center",
+    width: "100%",
+    height: "100%",
+    gap: "10px",
+  } as React.CSSProperties,
+
+  iconContainer: {
+    width: "36px",
+    height: "36px",
+    borderRadius: "8px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.02)",
+  } as React.CSSProperties,
+
+  metricDetailsNew: {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minWidth: 0,
+    justifyContent: "center",
+    gap: "1px",
+  } as React.CSSProperties,
+
+  metricLabelRowNew: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+    lineHeight: 1,
+  } as React.CSSProperties,
+
+  metricLabelNew: {
+    fontSize: "9px",
+    fontWeight: 700,
+    color: "#64748B",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    whiteSpace: "nowrap",
+  } as React.CSSProperties,
+
+  metricValNew: {
+    fontSize: "18px",
+    fontWeight: 800,
+    color: "#0F172A",
+    margin: 0,
+    lineHeight: 1.1,
+  } as React.CSSProperties,
+
+  metricSubtextNew: {
+    fontSize: "9.5px",
+    color: "#64748B",
+    fontWeight: 500,
+    whiteSpace: "nowrap",
+  } as React.CSSProperties,
+
+  moreIconNew: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    color: "#94A3B8",
+    opacity: 0.8,
+    padding: "2px",
+    marginRight: "-2px",
+  } as React.CSSProperties,
 };
 
 const localCss = `
-  .metric-slanted-card-style {
-    transition: transform 0.2s ease, filter 0.2s ease !important;
+  .metric-new-card-style {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
   }
-  .metric-slanted-card-style:hover {
+  .metric-new-card-style:hover {
     transform: translateY(-2px) !important;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.05) !important;
+    border-color: #CBD5E1 !important;
   }
-  .metric-slanted-card-style:hover .bg-svg-style {
-    filter: drop-shadow(0 6px 14px rgba(47, 79, 62, 0.1)) !important;
+  .metric-accent-bar {
+    transform: scaleX(0.18);
+    transform-origin: left;
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+  .metric-new-card-style:hover .metric-accent-bar {
+    transform: scaleX(1) !important;
   }
   .footer-link-btn-style:hover {
     transform: translateX(3px) !important;
@@ -801,12 +899,12 @@ interface SegmentedProgressBarProps {
 
 const SegmentedProgressBar: React.FC<SegmentedProgressBarProps> = ({ percentage, colorClass }) => {
   const activeCount = Math.round(percentage / 10);
-  
+
   // Color mappings
   const getDotStyle = (isActive: boolean, type: string): React.CSSProperties => {
     let activeColor = "#828282";
     let inactiveColor = "rgba(130, 130, 130, 0.15)";
-    
+
     if (type === "fill-hvac") {
       activeColor = "#02B075";
       inactiveColor = "rgba(2, 176, 117, 0.15)";
@@ -820,7 +918,7 @@ const SegmentedProgressBar: React.FC<SegmentedProgressBarProps> = ({ percentage,
       activeColor = "#9B51E0";
       inactiveColor = "rgba(155, 81, 224, 0.15)";
     }
-    
+
     return {
       ...styles.segmentedBarDot,
       background: isActive ? activeColor : inactiveColor
@@ -870,9 +968,9 @@ const AnimatedGauge: React.FC<AnimatedGaugeProps> = ({ percentage, count, label,
     const animate = (currentTime: number) => {
       const elapsedTime = currentTime - startTime;
       const progress = Math.min(elapsedTime / duration, 1);
-      
+
       const easeProgress = progress * (2 - progress);
-      
+
       const currentVal = Math.round(easeProgress * end);
       setDisplayPct(currentVal);
 
@@ -931,6 +1029,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [statsError, setStatsError] = useState(false);
+  const [timeRange, setTimeRange] = useState("week");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -938,7 +1037,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
         setLoading(true);
         setStatsError(false);
         const [statsRes, jobsRes] = await Promise.all([
-          getDashboardStats(),
+          getDashboardStats(timeRange),
           getJobs()
         ]);
         if (statsRes && statsRes.data) {
@@ -955,7 +1054,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
       }
     };
     fetchData();
-  }, []);
+  }, [timeRange]);
 
   if (statsError) {
     return (
@@ -968,7 +1067,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
   }
 
   if (loading || stats === null) {
-    return <LoadingSpinner message="Assembling Operations Center Dashboard..." />;
+    return <LoadingSpinner message="Assembling Operations Center Dashboard..." fullPage={true} />;
   }
 
   const pendingCount = stats.jobs.pending;
@@ -1018,23 +1117,18 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
         </div>
 
         <div className="header-controls-responsive" style={styles.headerControlsArea}>
-          <PermissionRequest compact={true} />
           <div style={styles.dropdownCalendarWrap}>
             <Calendar size={14} style={styles.dropdownCalendarIcon} />
-            <select className="dropdown-this-week-style" style={styles.dropdownThisWeek} defaultValue="week">
+            <select
+              className="dropdown-this-week-style"
+              style={styles.dropdownThisWeek}
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value)}
+            >
               <option value="week">This Week</option>
               <option value="month">This Month</option>
+              <option value="all">All Time</option>
             </select>
-          </div>
-
-          <div style={styles.dashboardSearchBar}>
-            <span style={styles.dashboardSearchIcon}>🔍</span>
-            <input
-              type="text"
-              placeholder="Search jobs, technicians, locations..."
-              className="dashboard-search-input-style"
-              style={styles.dashboardSearchInput}
-            />
           </div>
 
           <NotificationBell
@@ -1048,197 +1142,239 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
       {/* ── Metrics Cards Row ── */}
       <div className="metrics-cards-grid-responsive" style={styles.metricsCardsGrid}>
         {/* Card 1: Total Jobs */}
-        <button
-          type="button"
-          className="metric-slanted-card-style"
-          style={styles.metricSlantedCard}
+        <div
+          role="button"
+          tabIndex={0}
+          className="metric-new-card-style"
+          style={styles.metricCardNew}
           onClick={() => onViewTab("jobs")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              onViewTab("jobs");
+            }
+          }}
         >
-          <svg className="bg-svg-style" style={styles.metricCardBgSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
-            <path
-              d="M 1,1.5 L 93,1.5 L 98.5,50 L 93,98.5 L 1,98.5 Z"
-              fill="#FFFFFF"
-              stroke="#E3ECE7"
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
-            />
-            <path
-              d="M 2.5,2 L 2.5,98"
-              stroke="#10B981"
-              strokeWidth="3.5"
-              strokeLinecap="square"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-          <div style={{ ...styles.metricCardContent, ...styles.padCardFirst }}>
-            <div style={{ ...styles.metricIconWrap, background: "#E6F7F0" }}>
-              <Briefcase size={20} color="#10B981" />
+          {/* Base track line */}
+          <div style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "3px",
+            background: "#F1F5F9",
+            borderTopLeftRadius: "10px",
+            borderTopRightRadius: "10px"
+          }} />
+          {/* Colored accent line with left-to-right hover scale animation */}
+          <div className="metric-accent-bar" style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "3px",
+            borderTopLeftRadius: "10px",
+            borderTopRightRadius: "10px",
+            background: "#10B981"
+          }} />
+          <div style={styles.metricCardContentNew}>
+            <div style={{ ...styles.iconContainer, background: "#10B981" }}>
+              <Briefcase size={16} color="#FFFFFF" />
             </div>
-            <div style={styles.metricDetails}>
-              <span style={styles.metricLabel}>Total Jobs</span>
-              <h2 style={styles.metricVal}>{totalJobsCount}</h2>
-              <div style={styles.metricStatRow}>
-                <span style={styles.statCompare}>{activeCount} active · {completedCount} done</span>
-              </div>
+            <div style={styles.metricDetailsNew}>
+              <span style={styles.metricLabelNew}>TOTAL JOBS</span>
+              <h2 style={styles.metricValNew}>{totalJobsCount}</h2>
+              <span style={styles.metricSubtextNew}>{activeCount} active • {completedCount} done</span>
             </div>
           </div>
-        </button>
+        </div>
 
         {/* Card 2: Active Jobs */}
-        <button
-          type="button"
-          className="metric-slanted-card-style"
-          style={styles.metricSlantedCard}
+        <div
+          role="button"
+          tabIndex={0}
+          className="metric-new-card-style"
+          style={styles.metricCardNew}
           onClick={() => onViewTab("planning")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              onViewTab("planning");
+            }
+          }}
         >
-          <svg className="bg-svg-style" style={styles.metricCardBgSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
-            <path
-              d="M 7,1.5 L 93,1.5 L 98.5,50 L 93,98.5 L 7,98.5 L 13,50 Z"
-              fill="#FFFFFF"
-              stroke="#E3ECE7"
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
-            />
-            <path
-              d="M 8,3 L 14,50 L 8,97"
-              stroke="#3B82F6"
-              strokeWidth="3.5"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-          <div style={{ ...styles.metricCardContent, ...styles.padCardMiddle }}>
-            <div style={{ ...styles.metricIconWrap, background: "#EBF3FF" }}>
-              <User size={20} color="#3B82F6" />
+          {/* Base track line */}
+          <div style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "3px",
+            background: "#F1F5F9",
+            borderTopLeftRadius: "10px",
+            borderTopRightRadius: "10px"
+          }} />
+          {/* Colored accent line with left-to-right hover scale animation */}
+          <div className="metric-accent-bar" style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "3px",
+            borderTopLeftRadius: "10px",
+            borderTopRightRadius: "10px",
+            background: "#3B82F6"
+          }} />
+          <div style={styles.metricCardContentNew}>
+            <div style={{ ...styles.iconContainer, background: "#3B82F6" }}>
+              <User size={16} color="#FFFFFF" />
             </div>
-            <div style={styles.metricDetails}>
-              <span style={styles.metricLabel}>Active Jobs</span>
-              <h2 style={styles.metricVal}>{activeCount}</h2>
-              <div style={styles.metricStatRow}>
-                <span style={styles.statCompare}>{activePct}% of total</span>
-              </div>
+            <div style={styles.metricDetailsNew}>
+              <span style={styles.metricLabelNew}>ACTIVE JOBS</span>
+              <h2 style={styles.metricValNew}>{activeCount}</h2>
+              <span style={styles.metricSubtextNew}>{activePct}% of total</span>
             </div>
           </div>
-        </button>
+        </div>
 
         {/* Card 3: In Progress */}
-        <button
-          type="button"
-          className="metric-slanted-card-style"
-          style={styles.metricSlantedCard}
+        <div
+          role="button"
+          tabIndex={0}
+          className="metric-new-card-style"
+          style={styles.metricCardNew}
           onClick={() => onViewTab("planning")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              onViewTab("planning");
+            }
+          }}
         >
-          <svg className="bg-svg-style" style={styles.metricCardBgSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
-            <path
-              d="M 7,1.5 L 93,1.5 L 98.5,50 L 93,98.5 L 7,98.5 L 13,50 Z"
-              fill="#FFFFFF"
-              stroke="#E3ECE7"
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
-            />
-            <path
-              d="M 8,3 L 14,50 L 8,97"
-              stroke="#F59E0B"
-              strokeWidth="3.5"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-          <div style={{ ...styles.metricCardContent, ...styles.padCardMiddle }}>
-            <div style={{ ...styles.metricIconWrap, background: "#FEF3C7" }}>
-              <Clock size={20} color="#F59E0B" />
+          {/* Base track line */}
+          <div style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "3px",
+            background: "#F1F5F9",
+            borderTopLeftRadius: "10px",
+            borderTopRightRadius: "10px"
+          }} />
+          {/* Colored accent line with left-to-right hover scale animation */}
+          <div className="metric-accent-bar" style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "3px",
+            borderTopLeftRadius: "10px",
+            borderTopRightRadius: "10px",
+            background: "#F59E0B"
+          }} />
+          <div style={styles.metricCardContentNew}>
+            <div style={{ ...styles.iconContainer, background: "#F59E0B" }}>
+              <Clock size={16} color="#FFFFFF" />
             </div>
-            <div style={styles.metricDetails}>
-              <span style={styles.metricLabel}>In Progress</span>
-              <h2 style={styles.metricVal}>{inProgressCount}</h2>
-              <div style={styles.metricStatRow}>
-                <span style={styles.statCompare}>{inProgressPct}% of total</span>
-              </div>
+            <div style={styles.metricDetailsNew}>
+              <span style={styles.metricLabelNew}>IN PROGRESS</span>
+              <h2 style={styles.metricValNew}>{inProgressCount}</h2>
+              <span style={styles.metricSubtextNew}>{inProgressPct}% of total</span>
             </div>
           </div>
-        </button>
+        </div>
 
         {/* Card 4: Completed */}
-        <button
-          type="button"
-          className="metric-slanted-card-style"
-          style={styles.metricSlantedCard}
+        <div
+          role="button"
+          tabIndex={0}
+          className="metric-new-card-style"
+          style={styles.metricCardNew}
           onClick={() => onViewTab("techboard")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              onViewTab("techboard");
+            }
+          }}
         >
-          <svg className="bg-svg-style" style={styles.metricCardBgSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
-            <path
-              d="M 7,1.5 L 93,1.5 L 98.5,50 L 93,98.5 L 7,98.5 L 13,50 Z"
-              fill="#FFFFFF"
-              stroke="#E3ECE7"
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
-            />
-            <path
-              d="M 8,3 L 14,50 L 8,97"
-              stroke="#8B5CF6"
-              strokeWidth="3.5"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-          <div style={{ ...styles.metricCardContent, ...styles.padCardMiddle }}>
-            <div style={{ ...styles.metricIconWrap, background: "#F5F3FF" }}>
-              <CheckCircle size={20} color="#8B5CF6" />
+          {/* Base track line */}
+          <div style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "3px",
+            background: "#F1F5F9",
+            borderTopLeftRadius: "10px",
+            borderTopRightRadius: "10px"
+          }} />
+          {/* Colored accent line with left-to-right hover scale animation */}
+          <div className="metric-accent-bar" style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "3px",
+            borderTopLeftRadius: "10px",
+            borderTopRightRadius: "10px",
+            background: "#8B5CF6"
+          }} />
+          <div style={styles.metricCardContentNew}>
+            <div style={{ ...styles.iconContainer, background: "#8B5CF6" }}>
+              <CheckCircle size={16} color="#FFFFFF" />
             </div>
-            <div style={styles.metricDetails}>
-              <span style={styles.metricLabel}>Completed</span>
-              <h2 style={styles.metricVal}>{completedCount}</h2>
-              <div style={styles.metricStatRow}>
-                <span style={styles.statCompare}>{completedPct}% of total</span>
-              </div>
+            <div style={styles.metricDetailsNew}>
+              <span style={styles.metricLabelNew}>COMPLETED</span>
+              <h2 style={styles.metricValNew}>{completedCount}</h2>
+              <span style={styles.metricSubtextNew}>{completedPct}% of total</span>
             </div>
           </div>
-        </button>
+        </div>
 
         {/* Card 5: Pending */}
-        <button
-          type="button"
-          className="metric-slanted-card-style"
-          style={styles.metricSlantedCard}
+        <div
+          role="button"
+          tabIndex={0}
+          className="metric-new-card-style"
+          style={styles.metricCardNew}
           onClick={() => onViewTab("planning")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              onViewTab("planning");
+            }
+          }}
         >
-          <svg className="bg-svg-style" style={styles.metricCardBgSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
-            <path
-              d="M 7,1.5 L 98.5,1.5 L 98.5,98.5 L 7,98.5 L 13,50 Z"
-              fill="#FFFFFF"
-              stroke="#E3ECE7"
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
-            />
-            <path
-              d="M 8,3 L 14,50 L 8,97"
-              stroke="#06B6D4"
-              strokeWidth="3.5"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-          <div style={{ ...styles.metricCardContent, ...styles.padCardLast }}>
-            <div style={{ ...styles.metricIconWrap, background: "#E0F7FA" }}>
-              <AlertCircle size={20} color="#06B6D4" />
+          {/* Base track line */}
+          <div style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "3px",
+            background: "#F1F5F9",
+            borderTopLeftRadius: "10px",
+            borderTopRightRadius: "10px"
+          }} />
+          {/* Colored accent line with left-to-right hover scale animation */}
+          <div className="metric-accent-bar" style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "3px",
+            borderTopLeftRadius: "10px",
+            borderTopRightRadius: "10px",
+            background: "#06B6D4"
+          }} />
+          <div style={styles.metricCardContentNew}>
+            <div style={{ ...styles.iconContainer, background: "#06B6D4" }}>
+              <AlertCircle size={16} color="#FFFFFF" />
             </div>
-            <div style={styles.metricDetails}>
-              <span style={styles.metricLabel}>Pending</span>
-              <h2 style={styles.metricVal}>{pendingCount}</h2>
-              <div style={styles.metricStatRow}>
-                <span style={styles.statCompare}>{pendingPct}% of total</span>
-              </div>
+            <div style={styles.metricDetailsNew}>
+              <span style={styles.metricLabelNew}>PENDING</span>
+              <h2 style={styles.metricValNew}>{pendingCount}</h2>
+              <span style={styles.metricSubtextNew}>{pendingPct}% of total</span>
             </div>
           </div>
-        </button>
+        </div>
       </div>
 
       {/* ── Main Content Cards ── */}
@@ -1248,8 +1384,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
           <div style={styles.opsCardHeader}>
             <h3 style={styles.opsCardHeaderH3}>JOBS OVERVIEW</h3>
             <div style={styles.dropdownCalendarWrap}>
-              <select style={styles.dropdownSmall} defaultValue="week">
+              <select
+                style={styles.dropdownSmall}
+                value={timeRange}
+                onChange={(e) => setTimeRange(e.target.value)}
+              >
                 <option value="week">This Week</option>
+                <option value="month">This Month</option>
+                <option value="all">All Time</option>
               </select>
             </div>
           </div>
@@ -1356,8 +1498,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
         <div style={styles.opsCard}>
           <div style={styles.opsCardHeader}>
             <h3 style={styles.opsCardHeaderH3}>TECHNICIAN AVAILABILITY</h3>
-            <select style={styles.dropdownSmall} defaultValue="week">
+            <select
+              style={styles.dropdownSmall}
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value)}
+            >
               <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="all">All Time</option>
             </select>
           </div>
           <div className="gauges-flex-row-responsive" style={{ ...styles.opsCardBody, ...styles.bodyTechAvailability }}>
@@ -1415,8 +1563,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewTab, unreadCount, isBellAni
         <div style={styles.opsCard}>
           <div style={styles.opsCardHeader}>
             <h3 style={styles.opsCardHeaderH3}>SERVICE CATEGORY SPLIT</h3>
-            <select style={styles.dropdownSmall} defaultValue="week">
+            <select
+              style={styles.dropdownSmall}
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value)}
+            >
               <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="all">All Time</option>
             </select>
           </div>
           <div style={{ ...styles.opsCardBody, ...styles.bodyServiceSplit }}>

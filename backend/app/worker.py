@@ -1,7 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import func
-import json
+
 
 from .database import SessionLocal
 from .models import Technician, AuditEvent, DispatcherNotification, InAppNotification, Job, SLAEscalation
@@ -147,7 +147,7 @@ def cleanup_old_notifications():
 def check_assignment_timers():
     db = SessionLocal()
     redis_client = get_redis_client()
-    if not redis_client:
+    if not redis_client or redis_client.ping() is None:
         db.close()
         return
 
@@ -166,7 +166,7 @@ def check_assignment_timers():
             
             timer_ttl = redis_client.ttl(timer_key) if hasattr(redis_client, 'ttl') else 0
             # handling if redis client returns None for ttl or -1/-2
-            if timer_ttl < 0:
+            if timer_ttl is None or timer_ttl < 0:
                 timer_ttl = 0
             
             tech = db.query(Technician).filter(Technician.technician_id == job.assigned_technician_id).first()
@@ -284,6 +284,65 @@ def check_cto_escalations():
         db.close()
 
 
+def create_monthly_partitions():
+    from sqlalchemy import text
+    db = SessionLocal()
+    try:
+        bind_engine = db.get_bind()
+        is_postgres = bind_engine.url.drivername.startswith("postgresql")
+        if is_postgres:
+            db.execute(text("""
+                CREATE OR REPLACE FUNCTION create_gps_ping_partition(target_date TIMESTAMPTZ)
+                RETURNS VOID AS $$
+                DECLARE
+                    partition_start DATE;
+                    partition_end DATE;
+                    partition_name TEXT;
+                    sql TEXT;
+                BEGIN
+                    partition_start := DATE_TRUNC('month', target_date)::DATE;
+                    partition_end := (partition_start + INTERVAL '1 month')::DATE;
+                    partition_name := 'gps_pings_' || TO_CHAR(partition_start, 'YYYY_MM');
+                    
+                    IF NOT EXISTS (
+                        SELECT 1 
+                        FROM pg_class c 
+                        JOIN pg_namespace n ON n.oid = c.relnamespace 
+                        WHERE c.relname = partition_name
+                    ) THEN
+                        BEGIN
+                            sql := 'CREATE TABLE ' || partition_name || ' PARTITION OF gps_pings ' ||
+                                   'FOR VALUES FROM (' || quote_literal(partition_start) || ') TO (' || quote_literal(partition_end) || ')';
+                            EXECUTE sql;
+                        EXCEPTION WHEN OTHERS THEN
+                            NULL;
+                        END;
+                    END IF;
+                END;
+                $$ LANGUAGE plpgsql;
+            """))
+            db.execute(text("SELECT create_gps_ping_partition(NOW());"))
+            db.execute(text("SELECT create_gps_ping_partition(NOW() + INTERVAL '1 month');"))
+            db.commit()
+            logger.info("Checked and auto-created GPS ping database partitions.")
+    except Exception as e:
+        logger.error(f"Error in background monthly partition creator: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def daily_gps_purge_scheduler_job():
+    from .tasks import execute_daily_gps_purge_sync
+    db = SessionLocal()
+    try:
+        execute_daily_gps_purge_sync(db)
+    except Exception as e:
+        logger.error(f"Error in background daily GPS purge job: {e}")
+    finally:
+        db.close()
+
+
 def start_scheduler():
     if not scheduler.running:
         scheduler.add_job(check_technician_heartbeats, 'interval', seconds=60, id='heartbeat_checker')
@@ -291,10 +350,17 @@ def start_scheduler():
         scheduler.add_job(check_assignment_timers, 'interval', seconds=5, id='timer_checker')
         scheduler.add_job(check_sla_escalations, 'interval', seconds=10, id='sla_escalation_checker')
         scheduler.add_job(check_cto_escalations, 'interval', seconds=30, id='cto_escalation_checker')
+        # Run monthly partition check on the 1st of every month
+        scheduler.add_job(create_monthly_partitions, 'cron', day=1, hour=0, minute=0, id='gps_partition_creator')
+        # Run daily GPS purge at 2 AM UTC
+        scheduler.add_job(daily_gps_purge_scheduler_job, 'cron', hour=2, minute=0, timezone='UTC', id='gps_daily_purger')
         scheduler.start()
         logger.info("Background heartbeat scheduler started.")
+        # Run once immediately on startup
+        create_monthly_partitions()
 
 def stop_scheduler():
     if scheduler.running:
         scheduler.shutdown()
         logger.info("Background heartbeat scheduler stopped.")
+

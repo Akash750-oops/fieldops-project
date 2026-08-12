@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, AlertOctagon, X, Calendar, Wrench } from "lucide-react";
+import { AlertTriangle, AlertOctagon, X } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 import { getAlerts, acknowledgeAlert } from "../../services/alertService";
 import ForceAssignButton from "./ForceAssignButton";
@@ -115,21 +115,43 @@ export default function AlertBanner({
       isFirstLoad.current = false;
     });
 
-    // Connect to WebSocket client
-    const socket: Socket = io(import.meta.env.VITE_SOCKET_URL, {
-      transports: ["websocket", "polling"]
+    // Guard: don't connect socket if URL is not configured
+    const socketUrl = import.meta.env.VITE_SOCKET_URL;
+    if (!socketUrl) {
+      console.warn("AlertBanner: VITE_SOCKET_URL not configured, skipping WebSocket connection.");
+      return;
+    }
+
+    // Connect to WebSocket client with limited reconnection to prevent browser freeze
+    let socket: Socket;
+    try {
+      socket = io(socketUrl, {
+        transports: ["websocket", "polling"],
+        reconnectionAttempts: 5,
+        reconnectionDelay: 2000,
+        timeout: 10000,
+      });
+    } catch (err) {
+      console.warn("AlertBanner: Failed to create socket connection", err);
+      return;
+    }
+
+    socket.on("connect_error", (err) => {
+      console.warn("AlertBanner: Socket connection error:", err.message);
     });
 
     socket.on("redispatch:alert", (data: any) => {
+      const count = data.attempt_number;
+      // Only trigger alerts and sound if it reaches threshold of 3 or more attempts
+      if (count >= 3) {
+        playAlertSound(count >= 5 ? "critical" : "warning");
+      }
+
       // Append or update the alert
       setAlerts(prev => {
         const existingIdx = prev.findIndex(a => a.job_id === data.job_id);
-        const count = data.attempt_number;
-        
-        // Only trigger alerts and sound if it reaches threshold of 3 or more attempts
+
         if (count >= 3) {
-          playAlertSound(count >= 5 ? "critical" : "warning");
-          
           const newAlert: RedispatchAlert = {
             alert_id: data.alert_id,
             job_id: data.job_id,
@@ -188,23 +210,21 @@ export default function AlertBanner({
           const isCritical = alert.attempt_count >= 5;
           return (
             <motion.div
-              key={alert.job_id}
+              key={alert.alert_id}
               initial={{ opacity: 0, y: -20, height: 0 }}
               animate={{ opacity: 1, y: 0, height: "auto" }}
               exit={{ opacity: 0, y: -20, height: 0 }}
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className={`overflow-hidden rounded-xl border shadow-sm ${
-                isCritical 
-                  ? "bg-rose-50 border-rose-200 text-rose-800" 
+              className={`overflow-hidden rounded-xl border shadow-sm ${isCritical
+                  ? "bg-rose-50 border-rose-200 text-rose-800"
                   : "bg-amber-50 border-amber-200 text-amber-800"
-              }`}
+                }`}
               style={{ fontFamily: "'Inter', sans-serif" }}
             >
               <div className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg shrink-0 ${
-                    isCritical ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"
-                  }`}>
+                  <div className={`p-2 rounded-lg shrink-0 ${isCritical ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"
+                    }`}>
                     {isCritical ? <AlertOctagon size={20} className="animate-bounce" /> : <AlertTriangle size={20} />}
                   </div>
                   <div>

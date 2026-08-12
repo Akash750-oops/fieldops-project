@@ -1,0 +1,113 @@
+# ==========================================================
+# FieldOps Commander AI Configuration
+# ==========================================================
+
+# ----------------------------------------------------------
+# Runtime Configuration
+# ----------------------------------------------------------
+runtime:
+  engine: openclaw              # vellum | openclaw
+  environment: development    # development | staging | production
+
+# ----------------------------------------------------------
+# AI Provider Configuration
+# ----------------------------------------------------------
+provider:
+  name: groq                  # groq | openai | anthropic | ollama
+  timeout: 5                  # seconds
+  max_retries: 2
+  fallback_order:
+    - groq
+
+  budget:
+    daily_token_limit: 1400000
+    requests_per_minute: 20
+    daily_request_limit: 1500
+    namespace_version: "v1"
+    atomic_strategy: "lua"
+    reservation_ttl_seconds: 3600
+    per_request:
+      sms: 80
+      email: 500
+      push: 200
+      portal: 200
+      sentiment: 10
+      general: 4096
+
+  cache:
+    enabled: true
+    dynamic_ttl_seconds: 60
+    static_ttl_seconds: 3600
+    max_response_bytes: 10485760
+    namespace_version: "v1"
+
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5
+    failure_window_seconds: 60
+    open_cooldown_seconds: 300
+    half_open_success_threshold: 3
+    half_open_max_concurrent_probes: 1
+    half_open_probe_ttl_seconds: 180
+    namespace_version: "v1"
+
+  health:
+    enabled: true
+    check_interval_seconds: 30
+    recovery_probe_seconds: 300
+    degraded_after_failures: 1
+    unhealthy_after_failures: 3
+    state_ttl_seconds: 900
+    namespace_version: "v1"
+
+
+
+# ----------------------------------------------------------
+# Model Configuration
+# ----------------------------------------------------------
+model:
+  name: llama-3.3-70b-versatile
+  temperature: 0.0
+  max_tokens: 4096
+
+# ----------------------------------------------------------
+# Prompt Configuration
+# ----------------------------------------------------------
+prompt:
+  include_identity: true
+  include_soul: true
+  include_knowledge: true
+
+# ----------------------------------------------------------
+# Logging Configuration
+# ----------------------------------------------------------
+logging:
+  enabled: true
+  level: INFO                 # DEBUG | INFO | WARNING | ERROR
+
+# ----------------------------------------------------------
+# AI Guardrails
+# ----------------------------------------------------------
+guardrails:
+  allow_general_chat: false
+  allow_code_generation: false
+  allow_external_knowledge: false
+  require_structured_output: true
+
+# ----------------------------------------------------------
+# Agent Runtime Defaults
+# ----------------------------------------------------------
+agents:
+  defaults:
+    agent_version: "1.0"
+    timeout_seconds: 30.0
+    max_retries: 2
+    enabled: true
+
+  planning: {}
+  dispatch: {}
+  monitoring: {}
+  sentiment: {}
+  communication:
+    timeout_seconds: 5.0
+  closure: {}

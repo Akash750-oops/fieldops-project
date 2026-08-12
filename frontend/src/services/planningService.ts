@@ -52,9 +52,14 @@ export const updateTechnicianAvailability = async (
 /**
  * Fetch pending jobs.
  */
-export const getPendingJobs = async (): Promise<any> => {
+export const getPendingJobs = async (params?: {
+  search?: string;
+  page?: number;
+  limit?: number;
+  active_filter?: string;
+}): Promise<any> => {
   try {
-    return await api.get("/jobs/pending");
+    return await api.get("/jobs/pending", { params });
   } catch (error) {
     handleApiError(error);
   }
@@ -63,9 +68,13 @@ export const getPendingJobs = async (): Promise<any> => {
 /**
  * Fetch planned assignments.
  */
-export const getPlannedAssignments = async (): Promise<any> => {
+export const getPlannedAssignments = async (params?: {
+  search?: string;
+  page?: number;
+  limit?: number;
+}): Promise<any> => {
   try {
-    return await api.get("/planned-assignments");
+    return await api.get("/planned-assignments", { params });
   } catch (error) {
     handleApiError(error);
   }
@@ -88,9 +97,11 @@ export const assignJob = async (jobId: string | number, technicianId: string | n
 /**
  * Fetch dashboard stats.
  */
-export const getDashboardStats = async (): Promise<any> => {
+export const getDashboardStats = async (timeRange?: string): Promise<any> => {
   try {
-    return await api.get("/jobs/stats");
+    return await api.get("/jobs/stats", {
+      params: timeRange ? { time_range: timeRange } : undefined
+    });
   } catch (error) {
     handleApiError(error);
   }
@@ -208,5 +219,48 @@ export const assignJobDirect = async (
     handleApiError(error);
   }
 };
+
+export interface JobClosureData {
+  work_summary: string;
+  before_images?: string[];
+  after_images: string[];
+  labour_cost: number;
+  material_cost: number;
+}
+
+/**
+  Submit job closure details.
+ */
+export const closeJob = async (jobId: string | number, data: JobClosureData): Promise<any> => {
+  try {
+    const response = await api.post(`/jobs/${jobId}/close`, data);
+    return response.data;
+  } catch (error: any) {
+    try {
+      const fallback = await api.post(`/api/technician/jobs/${jobId}/complete`, {
+        completion_notes: data.work_summary,
+        photos: data.after_images,
+        labour_cost: data.labour_cost,
+        material_cost: data.material_cost,
+      });
+      return fallback.data;
+    } catch (fallbackError) {
+      handleApiError(error);
+    }
+  }
+};
+
+/**
+  Fetch job closure details for a completed job.
+ */
+export const getJobClosure = async (jobId: string | number): Promise<any> => {
+  try {
+    const response = await api.get(`/jobs/${jobId}/closure`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error);
+  }
+};
+
 
 

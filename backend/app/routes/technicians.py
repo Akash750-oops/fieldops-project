@@ -1,23 +1,31 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Response, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from typing import List, Union
+from typing import List, Union, Optional
+from sqlalchemy import func
 
 from ..database import get_db
 from .. import models, schemas
 import uuid
+
+from app.auth.dependencies import get_current_user_or_tenant, AuthenticatedUser
 
 router = APIRouter(
     prefix="/technicians",
     tags=["Technicians"]
 )
 
-@router.post("/", response_model=Union[schemas.TechnicianResponse, List[schemas.TechnicianResponse]], status_code=status.HTTP_200_OK)
-def create_technician(technician: Union[schemas.TechnicianCreate, List[schemas.TechnicianCreate]], db: Session = Depends(get_db)):
+@router.post("", response_model=Union[schemas.TechnicianResponse, List[schemas.TechnicianResponse]], status_code=status.HTTP_200_OK)
+def create_technician(
+    technician: Union[schemas.TechnicianCreate, List[schemas.TechnicianCreate]],
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
+    db: Session = Depends(get_db)
+):
     """
     Register one or more new technicians.
     Prevents duplicate entries based on name and skill.
     """
+    user, tenant_id = user_tenant
     try:
         # Normalize to list for uniform processing
         tech_list = technician if isinstance(technician, list) else [technician]
@@ -27,7 +35,8 @@ def create_technician(technician: Union[schemas.TechnicianCreate, List[schemas.T
             # Check for duplicate
             existing = db.query(models.Technician).filter(
                 models.Technician.technician_name == tech_data.technician_name,
-                models.Technician.technician_skill == tech_data.technician_skill
+                models.Technician.technician_skill == tech_data.technician_skill,
+                models.Technician.tenant_id == tenant_id
             ).first()
             
             if existing:
@@ -44,7 +53,8 @@ def create_technician(technician: Union[schemas.TechnicianCreate, List[schemas.T
                 technician_name=tech_data.technician_name,
                 technician_skill=tech_data.technician_skill,
                 technician_location=tech_data.technician_location,
-                technician_status=tech_data.technician_status
+                technician_status=tech_data.technician_status,
+                tenant_id=tenant_id
             )
             db.add(new_tech)
             created_techs.append(new_tech)
@@ -77,17 +87,57 @@ def create_technician(technician: Union[schemas.TechnicianCreate, List[schemas.T
             detail=f"An unexpected error occurred: {str(e)}"
         )
 
-@router.get("/", response_model=List[schemas.TechnicianResponse])
-def get_all_technicians(db: Session = Depends(get_db)):
+@router.get("", response_model=List[schemas.TechnicianResponse])
+def get_all_technicians(
+    response: Response,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    zone: Optional[str] = None,
+    skill: Optional[str] = None,
+    page: Optional[int] = Query(None, ge=1),
+    limit: Optional[int] = Query(None, ge=1),
+    user_tenant: tuple[Optional[AuthenticatedUser], str] = Depends(get_current_user_or_tenant),
+    db: Session = Depends(get_db)
+):
     """
-    Retrieve all registered technicians.
+    Retrieve all registered technicians, optionally filtered.
     """
+    user, tenant_id = user_tenant
     try:
-        return db.query(models.Technician).all()
-    except SQLAlchemyError:
+        query = db.query(models.Technician)
+        if not user or not user.is_super_admin:
+            query = query.filter(models.Technician.tenant_id == tenant_id)
+        
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                (models.Technician.technician_name.ilike(search_pattern)) |
+                (models.Technician.technician_skill.ilike(search_pattern)) |
+                (models.Technician.technician_location.ilike(search_pattern))
+            )
+            
+        if status and status.upper() != "ALL":
+            query = query.filter(func.lower(models.Technician.technician_status) == status.lower())
+            
+        if zone and zone.upper() != "ALL":
+            query = query.filter(func.lower(models.Technician.technician_location) == zone.lower())
+            
+        if skill and skill.upper() != "ALL":
+            query = query.filter(func.lower(models.Technician.technician_skill) == skill.lower())
+            
+        total_count = query.count()
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+        
+        query = query.order_by(models.Technician.technician_id.desc())
+        if page and limit:
+            query = query.offset((page - 1) * limit).limit(limit)
+            
+        return query.all()
+    except SQLAlchemyError as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error while fetching technicians"
+            status_code=500,
+            detail=f"Database error while fetching technicians: {str(e)}"
         )
 
 @router.get("/workload", response_model=schemas.WorkloadResponse)
@@ -168,34 +218,64 @@ def validate_technician_workload_api(technician_id: int, db: Session = Depends(g
 
 
 @router.get("/available", response_model=List[schemas.AvailableTechnicianResponse])
-def get_available_technicians(db: Session = Depends(get_db)):
+def get_available_technicians(
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    db: Session = Depends(get_db)
+):
     """
-    Retrieve only available technicians with their workload details.
-    Excludes BUSY and OFFLINE technicians from the result entirely.
+    Retrieve available technicians for assignment.
+    Includes tenant isolation fallback and all candidate statuses so candidate selection is never empty.
     """
-    # Fetch technicians with AVAILABLE or ASSIGNED status (case-insensitive)
-    techs = db.query(models.Technician).filter(
+    query = db.query(models.Technician)
+    if x_tenant_id:
+        query = query.filter(
+            (models.Technician.tenant_id == x_tenant_id) |
+            (models.Technician.tenant_id == "__platform__") |
+            (models.Technician.tenant_id.is_(None))
+        )
+    
+    # Try fetching available or assigned technicians first
+    available_query = query.filter(
         models.Technician.technician_status.in_(["AVAILABLE", "ASSIGNED", "Available", "Assigned"])
-    ).all()
+    )
+    techs = available_query.all()
+    
+    # If no active/available technicians found, fallback to fetching all technicians
+    if not techs:
+        techs = query.all()
     
     result = []
-    
     for tech in techs:
-        # Eligible if under workload limit
-        is_eligible = tech.current_jobs < tech.max_jobs
-        
+        is_eligible = (tech.current_jobs < tech.max_jobs) and ((tech.technician_status or "").upper() in ["AVAILABLE", "ASSIGNED"])
         result.append({
             "technician_id": tech.technician_id,
             "technician": tech.technician_name,
             "skill": tech.technician_skill,
             "location": tech.technician_location,
             "status": tech.technician_status,
-            "current_jobs": tech.current_jobs,
-            "max_jobs": tech.max_jobs,
+            "current_jobs": tech.current_jobs or 0,
+            "max_jobs": tech.max_jobs or 5,
             "eligible_for_assignment": is_eligible
         })
         
     return result
+
+
+@router.get("/zones", response_model=List[str])
+def get_all_zones(db: Session = Depends(get_db)):
+    """
+    Retrieve all unique technician zones/locations.
+    """
+    try:
+        results = db.query(models.Technician.technician_location).distinct().all()
+        # Filter out empty or null locations, trim, and sort
+        zones = sorted(list(set(r[0].strip() for r in results if r[0] and r[0].strip())))
+        return zones
+    except SQLAlchemyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error while fetching zones: {str(e)}"
+        )
 
 
 @router.get("/{technician_id}", response_model=schemas.TechnicianResponse)
@@ -209,16 +289,21 @@ def get_technician_by_id(technician_id: int, db: Session = Depends(get_db)):
     return tech
 
 
-@router.put("/{technician_id}/availability")
+@router.put("/{id}/availability")
 def update_technician_availability(
-    technician_id: int,
+    id: str,
     update_data: schemas.TechnicianAvailabilityUpdate,
     db: Session = Depends(get_db)
 ):
     """
-    Update the availability status of a technician.
+    Update the availability status of a technician by their integer ID or string tech_id.
     """
-    tech = db.query(models.Technician).filter(models.Technician.technician_id == technician_id).first()
+    tech = None
+    if id.isdigit():
+        tech = db.query(models.Technician).filter(models.Technician.technician_id == int(id)).first()
+    if not tech:
+        tech = db.query(models.Technician).filter(models.Technician.tech_id == id).first()
+        
     if not tech:
         raise HTTPException(status_code=404, detail="Technician not found")
     
@@ -231,6 +316,7 @@ def update_technician_availability(
         "message": "Technician availability updated successfully",
         "technician": {
             "id": tech.technician_id,
+            "tech_id": tech.tech_id,
             "name": tech.technician_name,
             "technician_status": tech.technician_status
         }

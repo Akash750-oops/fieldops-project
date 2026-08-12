@@ -46,6 +46,7 @@ def update_technician_preferences(db: Session, tech_id: str, new_prefs: dict, up
     
     # Audit log
     audit = PreferenceAuditLog(
+        tenant_id=tech.tenant_id or "tenant-1",
         tech_id=tech_id,
         updated_by=updated_by,
         old_preferences=old_prefs,

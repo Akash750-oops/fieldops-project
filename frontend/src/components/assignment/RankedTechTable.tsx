@@ -14,7 +14,7 @@ import TopThreeHighlight, {
   MEDAL_CONFIG,
   MedalTier,
 } from './TopThreeHighlight';
-import { getScoreLevel, formatScore, ScoreBadge } from './ScoreDisplay';
+import { getScoreLevel, formatScore, ScoreBadge, CompactScorePanel } from './ScoreDisplay';
 import StatusBadge from '../ui/StatusBadge';
 
 export interface RankedTechTableProps {
@@ -24,12 +24,15 @@ export interface RankedTechTableProps {
     priority?: string;
     location?: string;
     issue_description?: string;
+    service_type?: string;
+    required_skill?: string;
   };
   candidates: RankedTechnician[];
   selectedTechId?: number;
   onSelect: (techId: number) => void;
   onAssign?: (techId: number) => void;
   onClose: () => void;
+  hideHeader?: boolean;
 }
 
 type SortField = 'score' | 'distance' | 'skill' | 'workload';
@@ -42,6 +45,7 @@ export default function RankedTechTable({
   onSelect,
   onAssign,
   onClose,
+  hideHeader = false,
 }: RankedTechTableProps) {
   // Sort and Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -64,6 +68,12 @@ export default function RankedTechTable({
   const otherCandidates = useMemo(() => {
     return rankedAll.slice(3);
   }, [rankedAll]);
+
+  // Selected candidate object containing scores
+  const selectedCandidate = useMemo(() => {
+    if (!selectedTechId) return null;
+    return candidates.find((c) => c.technician_id === selectedTechId) || null;
+  }, [candidates, selectedTechId]);
 
   // Extract unique skills for the filter dropdown
   const uniqueSkills = useMemo(() => {
@@ -164,33 +174,35 @@ export default function RankedTechTable({
       data-testid="ranked-tech-selection-panel"
     >
       {/* ── Panel Header (sticky) ── */}
-      <div className="sticky top-0 z-20 bg-white/90 backdrop-blur-xl border-b border-slate-200/80 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-200/50">
-            <User className="w-5 h-5 text-white" />
+      {!hideHeader && (
+        <div className="sticky top-0 z-20 bg-white/90 backdrop-blur-xl border-b border-slate-200/80 px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-200/50">
+              <User className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
+                <span>Candidate Selection</span>
+                <span className="text-[10px] px-2.5 py-1 rounded-lg bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 font-bold border border-slate-200/60">
+                  Job #{job.id}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Assigning technician for <strong className="text-slate-700">{job.customer_name}</strong>
+                {job.location && <span className="text-slate-400"> · {job.location}</span>}
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
-              <span>Candidate Selection</span>
-              <span className="text-[10px] px-2.5 py-1 rounded-lg bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 font-bold border border-slate-200/60">
-                Job #{job.id}
-              </span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Assigning technician for <strong className="text-slate-700">{job.customer_name}</strong>
-              {job.location && <span className="text-slate-400"> · {job.location}</span>}
-            </p>
-          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close candidate selection panel"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all focus:outline-none focus:ring-2 focus:ring-slate-400"
+            data-testid="panel-close-btn"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        <button
-          onClick={onClose}
-          aria-label="Close candidate selection panel"
-          className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all focus:outline-none focus:ring-2 focus:ring-slate-400"
-          data-testid="panel-close-btn"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
+      )}
 
       {/* ── Scrollable content area ── */}
       <div className="flex-1 overflow-y-auto">
@@ -203,8 +215,29 @@ export default function RankedTechTable({
             jobId={job.id}
             jobLabel={`Job #${job.id}`}
             onSelect={onSelect}
-            onClose={onClose}
+            hideCloseBtn={true}
           />
+        </div>
+      )}
+
+      {/* ── Selected Candidate Scoreboard ── */}
+      {selectedCandidate && (
+        <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-200/60">
+          <div className="max-w-[700px] mx-auto bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm">
+            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              ⭐ Score Details: <span className="text-slate-800">{selectedCandidate.technician_name}</span>
+            </h4>
+            <CompactScorePanel
+              composite_score={selectedCandidate.composite_score}
+              proximity_score={selectedCandidate.proximity_score}
+              skill_score={selectedCandidate.skill_score}
+              workload_score={selectedCandidate.workload_score}
+              distance_km={selectedCandidate.distance_km}
+              active_jobs={selectedCandidate.active_jobs}
+              max_capacity={selectedCandidate.max_capacity}
+              is_top_3={pinnedTop3.some(c => c.technician_id === selectedCandidate.technician_id)}
+            />
+          </div>
         </div>
       )}
 
@@ -260,7 +293,12 @@ export default function RankedTechTable({
             <option value="All">All Statuses</option>
             <option value="Available">Available</option>
             <option value="Busy">Busy</option>
+            <option value="Assigned">Assigned</option>
             <option value="Offline">Offline</option>
+            <option value="En Route">En Route</option>
+            <option value="On Site">On Site</option>
+            <option value="On Break">On Break</option>
+            <option value="Suspended">Suspended</option>
           </select>
         </div>
       </div>
@@ -326,6 +364,7 @@ export default function RankedTechTable({
               const tier = (idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'bronze') as MedalTier;
               const cfg = MEDAL_CONFIG[tier];
               const isSelected = selectedTechId === tech.technician_id;
+              const isUnavailable = ["busy", "offline"].includes((tech.technician_status || "").toLowerCase().trim());
 
               return (
                 <tr
@@ -386,24 +425,35 @@ export default function RankedTechTable({
                   <td className="px-6 py-4 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        onClick={() => onSelect(tech.technician_id)}
+                        onClick={() => !isUnavailable && onSelect(tech.technician_id)}
+                        disabled={isUnavailable}
                         className={[
                           'px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm focus:outline-none focus:ring-2',
-                          isSelected
+                          isUnavailable
+                            ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                            : isSelected
                             ? 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500'
                             : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 focus:ring-slate-300',
                         ].join(' ')}
                         aria-label={`Select ${tech.technician_name} for Job ${job.id}`}
                         data-testid={`table-pinned-select-${idx + 1}`}
+                        title={isUnavailable ? `Cannot select: Technician is ${tech.technician_status}` : undefined}
                       >
-                        {isSelected ? 'Selected' : 'Select'}
+                        {isUnavailable ? 'Unavailable' : isSelected ? 'Selected' : 'Select'}
                       </button>
                       {onAssign && (
                         <button
-                          onClick={() => onAssign(tech.technician_id)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm"
+                          onClick={() => !isUnavailable && onAssign(tech.technician_id)}
+                          disabled={isUnavailable}
+                          className={[
+                            'px-3 py-1.5 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 shadow-sm',
+                            isUnavailable
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
+                              : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 focus:ring-emerald-400'
+                          ].join(' ')}
                           aria-label={`Assign ${tech.technician_name} immediately`}
                           data-testid={`table-pinned-assign-${idx + 1}`}
+                          title={isUnavailable ? `Cannot assign: Technician is ${tech.technician_status}` : undefined}
                         >
                           Assign
                         </button>
@@ -429,6 +479,7 @@ export default function RankedTechTable({
             {filteredAndSortedOthers.map((tech, idx) => {
               const overallRank = idx + 4;
               const isSelected = selectedTechId === tech.technician_id;
+              const isUnavailable = ["busy", "offline"].includes((tech.technician_status || "").toLowerCase().trim());
 
               return (
                 <tr
@@ -479,24 +530,35 @@ export default function RankedTechTable({
                   <td className="px-6 py-4 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        onClick={() => onSelect(tech.technician_id)}
+                        onClick={() => !isUnavailable && onSelect(tech.technician_id)}
+                        disabled={isUnavailable}
                         className={[
                           'px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm focus:outline-none focus:ring-2',
-                          isSelected
+                          isUnavailable
+                            ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                            : isSelected
                             ? 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500'
                             : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 focus:ring-slate-300',
                         ].join(' ')}
                         aria-label={`Select ${tech.technician_name} for Job ${job.id}`}
                         data-testid={`table-other-select-${idx}`}
+                        title={isUnavailable ? `Cannot select: Technician is ${tech.technician_status}` : undefined}
                       >
-                        {isSelected ? 'Selected' : 'Select'}
+                        {isUnavailable ? 'Unavailable' : isSelected ? 'Selected' : 'Select'}
                       </button>
                       {onAssign && (
                         <button
-                          onClick={() => onAssign(tech.technician_id)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm"
+                          onClick={() => !isUnavailable && onAssign(tech.technician_id)}
+                          disabled={isUnavailable}
+                          className={[
+                            'px-3 py-1.5 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 shadow-sm',
+                            isUnavailable
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
+                              : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 focus:ring-emerald-400'
+                          ].join(' ')}
                           aria-label={`Assign ${tech.technician_name} immediately`}
                           data-testid={`table-other-assign-${idx}`}
+                          title={isUnavailable ? `Cannot assign: Technician is ${tech.technician_status}` : undefined}
                         >
                           Assign
                         </button>

@@ -16,17 +16,69 @@ except Exception as e:
     logger.warning(f"Could not initialize Firebase Admin SDK (it might need GOOGLE_APPLICATION_CREDENTIALS): {e}")
 
 async def send_job_assignment_notification(
-    db: Session, 
-    job_id: str, 
-    job_title: str, 
-    location: str, 
-    tech_ids: list[str], 
+    db: Session,
+    job_id: str,
+    tenant_id: str,
+    job_title: str,
+    location: str,
+    tech_ids: list[str],
     correlation_id: str = None,
-    max_retries: int = 3
+    max_retries: int = 3,
+    notification_title: str | None = None,
+    notification_body: str | None = None,
+    notification_type: str = "job_assignment",
+    priority: str = "HIGH",
 ) -> dict:
     
     correlation_id = correlation_id or str(uuid.uuid4())
     log_extra = {"correlation_id": correlation_id, "job_id": job_id}
+    safe_title = (
+        notification_title.strip()
+        if isinstance(
+            notification_title,
+            str,
+        )
+        and notification_title.strip()
+        else "FieldOps Update"
+    )
+
+    safe_body = (
+        notification_body.strip()
+        if isinstance(
+            notification_body,
+            str,
+        )
+        and notification_body.strip()
+        else "A FieldOps job has an update."
+    )
+
+    safe_notification_type = (
+        str(
+            notification_type
+        )
+        .strip()
+        .lower()
+    )
+
+    safe_priority = (
+        str(
+            priority
+        )
+        .strip()
+        .upper()
+    )
+
+    if not safe_notification_type:
+        raise ValueError(
+            "notification_type must not be empty."
+        )
+
+    # Final transport-level validation after placeholders have
+    # been restored.
+    if len(safe_title) > 50:
+        raise ValueError(
+            "Push title exceeds 50 characters."
+        )    
     
     techs = db.query(Technician).filter(Technician.tech_id.in_(tech_ids)).all()
     valid_techs = [t for t in techs if t.fcm_token]
@@ -52,22 +104,42 @@ async def send_job_assignment_notification(
     # Payload Construction
     data_payload = {
         "job_id": str(job_id),
-        "job_title": job_title,
-        "location": location,
-        "priority": "HIGH",
-        "accept_url": f"https://api.fieldops.io/v1/jobs/{job_id}/accept",
-        "reject_url": f"https://api.fieldops.io/v1/jobs/{job_id}/reject",
-        "type": "job_assignment",
-        "expires_in": "600"
+        "job_title": str(job_title),
+        "location": str(location),
+        "priority": safe_priority,
+        "type": safe_notification_type,
     }
 
+    # Assignment actions are included only for assignment events.
+    if safe_notification_type in {
+        "job_assignment",
+        "technician_job_assigned",
+    }:
+        data_payload.update(
+            {
+                "accept_url": (
+                    "https://api.fieldops.io/v1/jobs/"
+                    f"{job_id}/accept"
+                ),
+                "reject_url": (
+                    "https://api.fieldops.io/v1/jobs/"
+                    f"{job_id}/reject"
+                ),
+                "expires_in": "600",
+            }
+        )
+
     notification = messaging.Notification(
-        title="New Job Assignment",
-        body=f"{job_title} at {location}"
+        title=safe_title,
+        body=safe_body,
     )
 
     android_config = messaging.AndroidConfig(
-        priority="high",
+        priority=(
+            "high"
+            if safe_priority == "HIGH"
+            else "normal"
+        ),
         notification=messaging.AndroidNotification(
             channel_id="job_assignments",
             sound="default"
@@ -78,12 +150,20 @@ async def send_job_assignment_notification(
         payload=messaging.APNSPayload(
             aps=messaging.Aps(
                 alert=messaging.ApsAlert(
-                    title="New Job Assignment",
-                    body=f"{job_title} at {location}"
+                    title=safe_title,
+                    body=safe_body,
                 ),
                 badge=1,
                 sound="default",
-                category="JOB_ASSIGNMENT"
+                category=(
+                    "JOB_ASSIGNMENT"
+                    if safe_notification_type
+                    in {
+                        "job_assignment",
+                        "technician_job_assigned",
+                    }
+                    else "JOB_UPDATE"
+                )
             )
         )
     )
@@ -115,9 +195,10 @@ async def send_job_assignment_notification(
                 if resp.success:
                     sent_count += 1
                     delivery = NotificationDelivery(
-                        tech_id=tech_id, 
-                        job_id=str(job_id), 
-                        status="delivered", # Marked as delivered by FCM handoff
+                        tenant_id=tenant_id,
+                        tech_id=tech_id,
+                        job_id=str(job_id),
+                        status="delivered",
                         fcm_message_id=resp.message_id
                     )
                     db.add(delivery)
@@ -134,6 +215,7 @@ async def send_job_assignment_notification(
                             logger.info(f"Cleaned up invalid token for tech_id {tech_id}", extra=log_extra)
                         failed_count += 1
                         delivery = NotificationDelivery(
+                            tenant_id=tenant_id,
                             tech_id=tech_id, 
                             job_id=str(job_id), 
                             status="failed", 
@@ -148,9 +230,10 @@ async def send_job_assignment_notification(
                         if attempt == max_retries - 1:
                             failed_count += 1
                             delivery = NotificationDelivery(
-                                tech_id=tech_id, 
-                                job_id=str(job_id), 
-                                status="failed", 
+                                tenant_id=tenant_id,
+                                tech_id=tech_id,
+                                job_id=str(job_id),
+                                status="failed",
                                 error_message=str(resp.exception)
                             )
                             db.add(delivery)
@@ -173,9 +256,10 @@ async def send_job_assignment_notification(
                     failed_count += 1
                     tech_id = tech_map[token]
                     delivery = NotificationDelivery(
-                        tech_id=tech_id, 
-                        job_id=str(job_id), 
-                        status="failed", 
+                        tenant_id=tenant_id,
+                        tech_id=tech_id,
+                        job_id=str(job_id),
+                        status="failed",
                         error_message=str(e)
                     )
                     db.add(delivery)

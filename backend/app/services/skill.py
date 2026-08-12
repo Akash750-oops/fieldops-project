@@ -49,56 +49,24 @@ class SkillScoringService:
                     expanded.add(tax_skill.upper())
         return expanded
         
-    def calculate_skill_score(self, req_str: str, tech_str: str, db) -> Dict[str, Any]:
+    def calculate_skill_score(self, req_str: str, tech_str: str, db, service_type: str = "") -> Dict[str, Any]:
         """
         Calculate skill match score (0-100) with prerequisite validation.
         """
-        # Parse comma-separated strings to lists
-        req_list = [s.strip() for s in req_str.split(",")] if req_str and req_str.strip() else []
-        tech_list = [s.strip() for s in tech_str.split(",")] if tech_str and tech_str.strip() else []
+        from app.utils import is_skill_matching
         
-        if not req_list:
+        if is_skill_matching(tech_str, req_str, service_type):
             return {
                 "score": 100.0,
                 "qualified": True,
-                "matched_skills": [],
+                "matched_skills": [tech_str] if tech_str else [],
                 "missing_skills": []
             }
-            
-        # Normalize to uppercase
-        required = set(s.upper() for s in req_list if s)
-        held_raw = set(s.upper() for s in tech_list if s)
-        
-        taxonomy = self.get_taxonomy(db)
-        
-        # Expand technician skills based on equivalencies
-        held = self.expand_equivalents(held_raw, taxonomy)
-        
-        # Check prerequisites (BR-005)
-        for skill in required:
-            tax_data = taxonomy.get(skill, {})
-            prereqs = [p.upper() for p in tax_data.get("prerequisites", [])]
-            for prereq in prereqs:
-                if prereq not in held:
-                    logger.info(f"Technician disqualified due to missing prerequisite: {prereq} for {skill}")
-                    return {
-                        "score": 0.0,
-                        "qualified": False,
-                        "reason": f"Missing prerequisite: {prereq}",
-                        "matched_skills": [],
-                        "missing_skills": [prereq]
-                    }
-                    
-        # Calculate match percentage
-        matched = required & held
-        if not required:
-            score = 100.0
         else:
-            score = round(len(matched) / len(required) * 100, 2)
-            
-        return {
-            "score": score,
-            "qualified": score > 0,
-            "matched_skills": list(matched),
-            "missing_skills": list(required - held)
-        }
+            return {
+                "score": 0.0,
+                "qualified": False,
+                "reason": f"Skill mismatch: Technician provides '{tech_str}' but job requires '{req_str or service_type}'",
+                "matched_skills": [],
+                "missing_skills": [req_str] if req_str else []
+            }

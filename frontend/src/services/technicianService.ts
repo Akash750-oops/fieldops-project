@@ -6,7 +6,17 @@
 import api from "./api";
 
 /** Fetch all technicians */
-export const getAllTechnicians = (): Promise<any> => api.get("/technicians/");
+export const getAllTechnicians = (params?: {
+  search?: string;
+  status?: string;
+  zone?: string;
+  skill?: string;
+  page?: number;
+  limit?: number;
+}): Promise<any> => api.get("/technicians", { params });
+
+/** Fetch all unique zones */
+export const getUniqueZones = (): Promise<any> => api.get("/technicians/zones");
 
 /** Fetch available technicians with workload details */
 export const getAvailableTechnicians = (): Promise<any> => api.get("/technicians/available");
@@ -28,7 +38,7 @@ export const deleteTechnician = (technicianId: string | number): Promise<any> =>
 
 /** Create a technician */
 export const createTechnician = (technicianData: any): Promise<any> =>
-  api.post("/technicians/", technicianData);
+  api.post("/technicians", technicianData);
 
 /** Fetch notification preferences for a technician */
 export const getPreferences = (techId: string | number): Promise<any> =>

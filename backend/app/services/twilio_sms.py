@@ -23,7 +23,7 @@ if 'AC' in TWILIO_ACCOUNT_SID:
         twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         logger.info("Twilio client initialized.")
     except Exception as e:
-        logger.error(f"Failed to initialize Twilio client: {e}")
+        logger.error("Failed to initialize Twilio client.")
 
 def validate_phone_number(phone_number: str) -> bool:
     """Validate E.164 phone number format (e.g., +919876543210)"""
@@ -60,6 +60,28 @@ def generate_sms_template(job_title: str, address: str, priority: str, job_id: s
     )
     return message
 
+from .ai.FieldOpsAI.schemas.communication_configuration import CommunicationMessageCategory, CommunicationChannelDisabledError
+from .ai.FieldOpsAI.services.communication_configuration_service import CommunicationConfigurationService
+from .ai.FieldOpsAI.repositories.communication_configuration_repository import CommunicationConfigurationRepository
+from .ai.FieldOpsAI.services.customer_preference_service import CustomerPreferenceService
+from .ai.FieldOpsAI.repositories.customer_profile_repository import CustomerProfileRepository
+from .ai.FieldOpsAI.services.communication_delivery_policy_service import CommunicationDeliveryPolicyService
+
+def dispatch_twilio_message(to_phone: str, body: str) -> str:
+    """
+    The single authoritative Twilio transport boundary for both technicians and customers.
+    """
+    if not twilio_client:
+        return f"SMmock_{uuid.uuid4().hex[:12]}"
+        
+    response = twilio_client.messages.create(
+        body=body,
+        from_=TWILIO_PHONE_NUMBER,
+        to=to_phone,
+        status_callback="https://api.fieldops.io/v1/webhooks/twilio-status"
+    )
+    return response.sid
+
 def check_rate_limit(redis_client, tech_id: str) -> bool:
     """Check if the technician has exceeded 10 SMS per minute."""
     if not redis_client:
@@ -77,7 +99,7 @@ def check_rate_limit(redis_client, tech_id: str) -> bool:
         pipe.execute()
         return True
     except Exception as e:
-        logger.error(f"Redis rate limiting error: {e}")
+        logger.error("Redis rate limiting error occurred.")
         return True # fail open
 
 async def send_job_assignment_sms(
@@ -88,7 +110,9 @@ async def send_job_assignment_sms(
     priority: str,
     tech_ids: list[str],
     correlation_id: str = None,
-    max_retries: int = 3
+    max_retries: int = 3,
+    effective_message: str | None = None,
+    category: CommunicationMessageCategory = CommunicationMessageCategory.STANDARD,
 ) -> dict:
     correlation_id = correlation_id or str(uuid.uuid4())
     log_extra = {"correlation_id": correlation_id, "job_id": job_id}
@@ -100,9 +124,49 @@ async def send_job_assignment_sms(
     sent_count = 0
     failed_count = 0
     delivery_ids = []
+    blocked_count = 0
+    blocked_reasons: dict[str, int] = {}
     
-    message_body = generate_sms_template(job_title, location, priority, job_id)
+    if effective_message is None:
+        effective_message = generate_sms_template(
+            job_title,
+            location,
+            priority,
+            job_id,
+        )
+
+    else:
+        if not isinstance(
+            effective_message,
+            str,
+        ):
+            raise TypeError(
+                "effective_message must be text."
+            )
+
+        effective_message = (
+            effective_message.strip()
+        )
+
+    if not effective_message:
+        raise ValueError(
+            "SMS message must not be empty."
+        )
+
+    # Final transport-level validation after real placeholder
+    # values have been restored.
+    if len(effective_message) > 160:
+        raise ValueError(
+            "SMS message exceeds 160 characters."
+        )
     
+    # Enforce delivery policy before iterating over technicians
+    repo = CommunicationConfigurationRepository(db)
+    config_service = CommunicationConfigurationService(repo, db, redis_client=redis_client)
+    pref_repo = CustomerProfileRepository(db)
+    pref_service = CustomerPreferenceService(pref_repo)
+    policy_service = CommunicationDeliveryPolicyService(config_service, pref_service)
+
     for tech in techs:
         # Check Opt-out
         if tech.sms_opt_out:
@@ -119,13 +183,17 @@ async def send_job_assignment_sms(
             
         # Check Valid Phone Number
         if not validate_phone_number(tech.phone_number):
-            logger.warning(f"Skipping tech {tech.tech_id} (invalid/missing phone number: {tech.phone_number})", extra=log_extra)
+            logger.warning(
+                    "Technician SMS skipped because the phone "
+                    "number is invalid or missing.",
+                    extra=log_extra,
+                )
             failed_count += 1
             continue
             
         # Check Rate Limit
         if not check_rate_limit(redis_client, tech.tech_id):
-            logger.warning(f"Rate limit exceeded for tech {tech.tech_id}. Skipping SMS.", extra=log_extra)
+            logger.warning("Rate limit exceeded. Skipping SMS.", extra=log_extra)
             failed_count += 1
             continue
             
@@ -143,38 +211,57 @@ async def send_job_assignment_sms(
         success = False
         
         for attempt in range(max_retries):
-            try:
-                if not twilio_client:
-                    # Mock for local dev
-                    logger.info(f"Mock sending SMS to {tech.phone_number}: {message_body}", extra=log_extra)
-                    delivery.status = "sent"
-                    delivery.sms_sid = f"SMmock_{uuid.uuid4().hex[:12]}"
-                    success = True
-                    break
-
-                response = twilio_client.messages.create(
-                    body=message_body,
-                    from_=TWILIO_PHONE_NUMBER,
-                    to=tech.phone_number,
-                    status_callback="https://api.fieldops.io/v1/webhooks/twilio-status"
+            # Enforce delivery policy before every attempt
+            decision = policy_service.evaluate(
+                channel="SMS", 
+                category=category, 
+                recipient_type="TECHNICIAN",
+            )
+            if not decision.allowed:
+                delivery.error_message = (
+                    decision.final_reason_code
                 )
+
+                blocked_count += 1
+
+                blocked_reasons[
+                    decision.final_reason_code
+                ] = (
+                    blocked_reasons.get(
+                        decision.final_reason_code,
+                        0,
+                    )
+                    + 1
+                )
+
+                break
                 
+            try:
+                sms_sid = dispatch_twilio_message(to_phone=tech.phone_number, body=effective_message)
+                
+                if sms_sid.startswith("SMmock_"):
+                    logger.info(
+                            "Technician SMS delivery simulated.",
+                            extra={**log_extra, "delivery_id": delivery.id, "attempt": attempt, "operation": "simulate_sms"}
+                        )
+                else:
+                    logger.info("Sent SMS successfully", extra={**log_extra, "delivery_id": delivery.id, "attempt": attempt, "operation": "send_sms"})
+
                 delivery.status = "sent"
-                delivery.sms_sid = response.sid
+                delivery.sms_sid = sms_sid
                 success = True
-                logger.info(f"Sent SMS to {tech.tech_id} (SID: {response.sid})", extra=log_extra)
                 break
                 
             except TwilioRestException as e:
-                logger.error(f"Twilio API Error for {tech.tech_id}: {e}", extra=log_extra)
+                logger.error("Twilio API Error", extra={**log_extra, "delivery_id": delivery.id, "attempt": attempt, "operation": "send_sms", "status": e.status})
                 # If it's a 4xx error (like invalid number), don't retry
                 if e.status and 400 <= e.status < 500:
-                    delivery.error_message = str(e)
+                    delivery.error_message = f"Provider error: HTTP {e.status}"
                     break
                 # Otherwise backoff and retry
                 await asyncio.sleep(2 ** attempt)
-            except Exception as e:
-                logger.error(f"Unexpected error sending SMS to {tech.tech_id}: {e}", extra=log_extra)
+            except Exception:
+                logger.error("Unexpected error sending SMS", extra={**log_extra, "delivery_id": delivery.id, "attempt": attempt, "operation": "send_sms"})
                 await asyncio.sleep(2 ** attempt)
 
         if success:
@@ -191,5 +278,7 @@ async def send_job_assignment_sms(
     return {
         "sent": sent_count,
         "failed": failed_count,
-        "delivery_ids": delivery_ids
-    }
+        "blocked": blocked_count,
+        "blocked_reasons": blocked_reasons,
+        "delivery_ids": delivery_ids,
+}
