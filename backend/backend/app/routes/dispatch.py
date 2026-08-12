@@ -45,7 +45,9 @@ def technician_heartbeat(
     request: Request,
     payload: HeartbeatPayload = Body(default_factory=HeartbeatPayload),
     current_user: AuthenticatedUser = Depends(
-        require_role(UserRole.TECHNICIAN, UserRole.SUPER_ADMIN, UserRole.SUPER_ADMIN)
+
+        require_role(UserRole.TECHNICIAN, UserRole.SUPER_ADMIN)
+
     ),
     db: Session = Depends(get_db),
     redis_client = Depends(get_redis_client),
@@ -203,7 +205,6 @@ async def admin_override_assignment(
         require_role(
             UserRole.SUPER_ADMIN,
             UserRole.DISPATCHER,
-            UserRole.SUPER_ADMIN,
         )
     ),
     db: Session = Depends(get_db),

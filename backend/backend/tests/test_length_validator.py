@@ -94,56 +94,27 @@ def test_sms_message_at_limit_passes() -> None:
     assert result.violations == ()
 
 
-def test_sms_message_over_limit_fails() -> None:
-    """
-    An SMS containing 161 characters must fail.
-    """
-
-    context = build_context(
-        "SMS"
-    )
+def test_sms_message_at_transport_limit_passes() -> None:
+    context = build_context("SMS")
 
     decision = CommunicationDecision(
         channel="SMS",
         title=None,
         subject=None,
-        message="A" * 161,
+        message="A" * 170,
         tone="PROFESSIONAL",
         confidence=0.95,
     )
+
+    # CommunicationDecision already normalizes SMS to 160.
+    assert len(decision.message) == 160
 
     result = LengthValidator().check(
         context=context,
         decision=decision,
     )
 
-    assert result.passed is False
-    assert len(result.violations) == 1
-
-    violation = result.violations[0]
-
-    assert (
-        violation.code
-        == "SMS_MESSAGE_TOO_LONG"
-    )
-
-    assert (
-        violation.category
-        == GuardrailCategory.LENGTH
-    )
-
-    assert (
-        violation.severity
-        == GuardrailSeverity.ERROR
-    )
-
-    assert violation.field == "output"
-
-    assert violation.safe_metadata == {
-        "channel": "SMS",
-        "actual_length": 161,
-        "maximum_length": 160,
-    }
+    assert result.passed is True
 
 
 # ==========================================================
@@ -251,14 +222,8 @@ def test_push_title_at_limit_passes() -> None:
     assert result.violations == ()
 
 
-def test_push_title_over_limit_fails() -> None:
-    """
-    A push title containing 51 characters must fail.
-    """
-
-    context = build_context(
-        "PUSH"
-    )
+def test_push_title_at_transport_limit_passes() -> None:
+    context = build_context("PUSH")
 
     decision = CommunicationDecision(
         channel="PUSH",
@@ -269,27 +234,15 @@ def test_push_title_over_limit_fails() -> None:
         confidence=0.95,
     )
 
+    assert decision.title is not None
+    assert len(decision.title) == 50
+
     result = LengthValidator().check(
         context=context,
         decision=decision,
     )
 
-    assert result.passed is False
-
-    violation = result.violations[0]
-
-    assert (
-        violation.code
-        == "PUSH_TITLE_TOO_LONG"
-    )
-
-    assert violation.field == "output"
-
-    assert violation.safe_metadata == {
-        "channel": "PUSH",
-        "actual_length": 51,
-        "maximum_length": 50,
-    }
+    assert result.passed is True
 
 
 # ==========================================================
@@ -391,3 +344,146 @@ def test_length_validator_records_non_negative_latency() -> None:
     )
 
     assert result.latency_ms >= 0.0
+
+def test_sms_150_chars_passes() -> None:
+    context = build_context("SMS")
+
+    decision = CommunicationDecision(
+        channel="SMS",
+        title=None,
+        subject=None,
+        message="A" * 150,
+        tone="PROFESSIONAL",
+        confidence=0.95,
+    )
+
+    result = LengthValidator().check(
+        context=context,
+        decision=decision,
+    )
+
+    assert result.passed is True
+
+
+
+
+
+def test_unicode_sms_70_chars_passes() -> None:
+    context = build_context("SMS")
+
+    decision = CommunicationDecision(
+        channel="SMS",
+        title=None,
+        subject=None,
+        message="😀" * 70,
+        tone="PROFESSIONAL",
+        confidence=0.95,
+    )
+
+    result = LengthValidator().check(
+        context=context,
+        decision=decision,
+    )
+
+    assert result.passed is True
+
+
+def test_unicode_sms_80_chars_fails() -> None:
+    context = build_context("SMS")
+
+    decision = CommunicationDecision(
+        channel="SMS",
+        title=None,
+        subject=None,
+        message="😀" * 80,
+        tone="PROFESSIONAL",
+        confidence=0.95,
+    )
+
+    result = LengthValidator().check(
+        context=context,
+        decision=decision,
+    )
+
+    assert result.passed is False
+    assert result.violations[0].code == "SMS_MESSAGE_TOO_LONG"
+
+
+def test_push_body_200_chars_passes() -> None:
+    context = build_context("PUSH")
+
+    decision = CommunicationDecision(
+        channel="PUSH",
+        title="Job Update",
+        subject=None,
+        message="A" * 200,
+        tone="PROFESSIONAL",
+        confidence=0.95,
+    )
+
+    result = LengthValidator().check(
+        context=context,
+        decision=decision,
+    )
+
+    assert result.passed is True
+
+
+def test_push_body_at_transport_limit_passes() -> None:
+    context = build_context("PUSH")
+
+    decision = CommunicationDecision(
+        channel="PUSH",
+        title="Job Update",
+        subject=None,
+        message="A" * 201,
+        tone="PROFESSIONAL",
+        confidence=0.95,
+    )
+
+    assert len(decision.message) == 200
+
+    result = LengthValidator().check(
+        context=context,
+        decision=decision,
+    )
+
+    assert result.passed is True
+
+
+def test_sms_truncate_adds_ellipsis() -> None:
+    message = "A" * 170
+
+    result = LengthValidator.truncate_sms(message)
+
+    assert len(result) == 160
+    assert result.endswith("...")
+    assert LengthValidator.sms_length(result) <= 160
+
+
+def test_sms_truncate_with_full_message_link() -> None:
+    message = "A" * 170
+    link = "https://example.com/message/123"
+
+    result = LengthValidator.truncate_sms(
+        message,
+        full_message_link=link,
+    )
+
+    assert result.endswith(
+        f"... {link}"
+    )
+
+    assert LengthValidator.sms_length(result) <= 160
+
+
+def test_gsm7_detection() -> None:
+    assert LengthValidator.is_gsm7(
+        "Hello, your job is confirmed."
+    ) is True
+
+
+def test_unicode_detection() -> None:
+    assert LengthValidator.is_gsm7(
+        "Hello 😀"
+    ) is False

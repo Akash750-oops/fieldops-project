@@ -382,7 +382,6 @@ async def plan_job_assignment(
         require_role(
             UserRole.SUPER_ADMIN,
             UserRole.DISPATCHER,
-            UserRole.SUPER_ADMIN,
         )
     ),
     db: Session = Depends(get_db),
@@ -1030,7 +1029,6 @@ async def assign_job(
         require_role(
             UserRole.SUPER_ADMIN,
             UserRole.DISPATCHER,
-            UserRole.SUPER_ADMIN,
         )
     ),
     db: Session = Depends(get_db),
@@ -1739,7 +1737,6 @@ def get_sla_dashboard(
         require_role(
             UserRole.SUPER_ADMIN,
             UserRole.DISPATCHER,
-            UserRole.SUPER_ADMIN,
         )
     ),
     db: Session = Depends(get_db),
@@ -2040,7 +2037,6 @@ def get_job_closure_endpoint(
             UserRole.SUPER_ADMIN,
             UserRole.DISPATCHER,
             UserRole.TECHNICIAN,
-            UserRole.SUPER_ADMIN,
         )
     ),
     db: Session = Depends(get_db),

@@ -8,14 +8,18 @@ Converts safe rendered Jinja2 templates into strict channel-specific immutable o
 from __future__ import annotations
 
 import re
-import html
-from html.parser import HTMLParser
-from typing import Literal
+import html2text
+from premailer import transform
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from app.services.ai.FieldOpsAI.schemas.communication import (
     FormattedCommunicationOutput,
     SMSMessageOutput,
     EmailMessageOutput,
+    MessageAction,
     PushMessageOutput,
     PortalMessageOutput,
 )
@@ -41,40 +45,14 @@ class InvalidFormattedContentError(MessageOutputFormattingError):
     """Raised when the content is blank or contains prohibited characters."""
 
 
-class _PlainTextHTMLParser(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.text_parts: list[str] = []
-        self.ignore_tags = {"script", "style"}
-        self.current_ignore_count = 0
-        self.is_list = False
-        self.list_item_prefix = ""
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in self.ignore_tags:
-            self.current_ignore_count += 1
-        elif tag in ("p", "br", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li"):
-            # Ensure block elements start on a new line
-            self.text_parts.append("\n")
-            if tag == "li":
-                self.text_parts.append("- ")
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in self.ignore_tags:
-            self.current_ignore_count = max(0, self.current_ignore_count - 1)
-        elif tag in ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li"):
-            # Ensure block elements end on a new line
-            self.text_parts.append("\n")
-
-    def handle_data(self, data: str) -> None:
-        if self.current_ignore_count == 0:
-            self.text_parts.append(data)
-
-
 class MessageOutputFormatter:
     """
     Strict, purely functional formatter for communication channels.
     """
+
+    MAX_SMS_LENGTH = 160
+    MAX_PUSH_TITLE_LENGTH = 50
+    MAX_PUSH_BODY_LENGTH = 200
 
     @classmethod
     def format(
@@ -84,6 +62,7 @@ class MessageOutputFormatter:
         rendered_title: str | None,
         rendered_body: str,
         template_format: str,
+        actions: Sequence[MessageAction | Mapping[str, str]] | None = None,
     ) -> FormattedCommunicationOutput:
         """
         Convert safely rendered content into strict channel output.
@@ -108,15 +87,16 @@ class MessageOutputFormatter:
             
         # Dispatch to specific formatters
         if normalized_channel == "SMS":
-            return cls._format_sms(rendered_title, rendered_body, normalized_format)
-        elif normalized_channel == "EMAIL":
-            return cls._format_email(rendered_title, rendered_body, normalized_format)
-        elif normalized_channel == "PUSH":
-            return cls._format_push(rendered_title, rendered_body, normalized_format)
-        elif normalized_channel == "PORTAL":
-            return cls._format_portal(rendered_title, rendered_body, normalized_format)
-            
-        raise UnsupportedOutputChannelError("Message output could not be formatted for the requested channel.")
+            return SMSFormatter.format(rendered_body, normalized_format)
+        if normalized_channel == "EMAIL":
+            return EmailFormatter.format(rendered_title, rendered_body, normalized_format)
+        if normalized_channel == "PUSH":
+            return PushFormatter.format(
+                rendered_title, rendered_body, normalized_format, actions
+            )
+        return PortalFormatter.format(
+            rendered_title, rendered_body, normalized_format, actions
+        )
 
     @classmethod
     def _normalize_whitespace(
@@ -144,6 +124,13 @@ class MessageOutputFormatter:
         return text.strip()
 
     @classmethod
+    def _truncate(cls, text: str, limit: int) -> str:
+        if len(text) <= limit:
+            return text
+        return text[: limit - 3].rstrip() + "..."
+
+
+    @classmethod
     def _validate_subject_or_title(
         cls,
         title: str | None,
@@ -166,101 +153,129 @@ class MessageOutputFormatter:
             
         return normalized
 
-    @classmethod
-    def _format_sms(
-        cls,
-        title: str | None,
-        body: str,
-        format_type: str,
-    ) -> SMSMessageOutput:
+class SMSFormatter:
+    """Format rendered templates for the SMS transport."""
+
+    @staticmethod
+    def format(body: str, format_type: str) -> SMSMessageOutput:
         if format_type != "text":
             raise UnsupportedChannelFormatError("SMS requires text format.")
-            
-        normalized = cls._normalize_whitespace(body, collapse_lines=True)
-        if not normalized:
+        text = MessageOutputFormatter._truncate(
+            MessageOutputFormatter._normalize_whitespace(body, collapse_lines=True),
+            MessageOutputFormatter.MAX_SMS_LENGTH,
+        )
+        if not text:
             raise InvalidFormattedContentError("SMS text cannot be blank.")
-            
-        return SMSMessageOutput(text=normalized)
+        return SMSMessageOutput(text=text)
 
-    @classmethod
-    def _format_email(
-        cls,
-        title: str | None,
-        body: str,
-        format_type: str,
-    ) -> EmailMessageOutput:
-        subject = cls._validate_subject_or_title(title, "EMAIL", require=True)
-        
+
+class EmailFormatter:
+    """Format rendered templates as multipart email content."""
+
+    @staticmethod
+    def format(title: str | None, body: str, format_type: str) -> EmailMessageOutput:
+        subject = MessageOutputFormatter._validate_subject_or_title(title, "EMAIL")
         if format_type == "html":
-            html_body = body
-            if not html_body.strip():
-                raise InvalidFormattedContentError("Email HTML body cannot be blank.")
-                
-            parser = _PlainTextHTMLParser()
-            parser.feed(html_body)
-            raw_text = "".join(parser.text_parts)
-            text_body = html.unescape(raw_text)
-            
-            text_body = cls._normalize_whitespace(text_body, collapse_lines=False)
-            if not text_body:
-                raise InvalidFormattedContentError("Email plain-text alternative cannot be blank.")
-                
-            return EmailMessageOutput(
-                subject=subject,
-                text_body=text_body,
-                html_body=html_body,
+            html_body = transform(body)
+            converter = html2text.HTML2Text()
+            converter.ignore_links = False
+            converter.ignore_images = True
+            converter.body_width = 0
+            text_body = MessageOutputFormatter._normalize_whitespace(
+                converter.handle(html_body), collapse_lines=False
             )
         else:
-            text_body = cls._normalize_whitespace(body, collapse_lines=False)
-            if not text_body:
-                raise InvalidFormattedContentError("Email text body cannot be blank.")
-                
-            return EmailMessageOutput(
-                subject=subject,
-                text_body=text_body,
-                html_body=None,
-            )
+            html_body = None
+            text_body = MessageOutputFormatter._normalize_whitespace(body, collapse_lines=False)
+        if not text_body:
+            raise InvalidFormattedContentError("Email body cannot be blank.")
+        message = MIMEMultipart("alternative")
+        message["Subject"] = subject
+        message.attach(MIMEText(text_body, "plain", "utf-8"))
+        if html_body is not None:
+            message.attach(MIMEText(html_body, "html", "utf-8"))
+        return EmailMessageOutput(
+            subject=subject,
+            text_body=text_body,
+            html_body=html_body,
+            mime_message=message.as_string(),
+        )
 
-    @classmethod
-    def _format_push(
-        cls,
+
+def _format_actions(
+    actions: Sequence[MessageAction | Mapping[str, str]] | None,
+) -> tuple[MessageAction, ...]:
+    formatted: list[MessageAction] = []
+    for action in actions or ():
+        if isinstance(action, MessageAction):
+            raw_label, raw_action = action.label, action.action
+        else:
+            raw_label, raw_action = action.get("label"), action.get("action")
+        if not isinstance(raw_label, str) or not isinstance(raw_action, str):
+            raise InvalidFormattedContentError("Actions require string label and action values.")
+        label = MessageOutputFormatter._normalize_whitespace(raw_label, collapse_lines=True)
+        action_value = MessageOutputFormatter._normalize_whitespace(raw_action, collapse_lines=True)
+        if not label or not action_value:
+            raise InvalidFormattedContentError("Actions cannot be blank.")
+        formatted.append(MessageAction(label=label, action=action_value))
+    return tuple(formatted)
+
+
+class PushFormatter:
+    """Format compact push notifications and their optional actions."""
+
+    @staticmethod
+    def format(
         title: str | None,
         body: str,
         format_type: str,
+        actions: Sequence[MessageAction | Mapping[str, str]] | None = None,
     ) -> PushMessageOutput:
         if format_type != "text":
             raise UnsupportedChannelFormatError("PUSH requires text format.")
-            
-        valid_title = cls._validate_subject_or_title(title, "PUSH", require=True)
-        valid_body = cls._normalize_whitespace(body, collapse_lines=False)
-        
+        valid_title = MessageOutputFormatter._truncate(
+            MessageOutputFormatter._validate_subject_or_title(title, "PUSH"),
+            MessageOutputFormatter.MAX_PUSH_TITLE_LENGTH,
+        )
+        valid_body = MessageOutputFormatter._truncate(
+            MessageOutputFormatter._normalize_whitespace(body, collapse_lines=False),
+            MessageOutputFormatter.MAX_PUSH_BODY_LENGTH,
+        )
         if not valid_body:
             raise InvalidFormattedContentError("PUSH body cannot be blank.")
-            
-        return PushMessageOutput(title=valid_title, body=valid_body)
+        return PushMessageOutput(
+            title=valid_title, body=valid_body, actions=_format_actions(actions)
+        )
 
-    @classmethod
-    def _format_portal(
-        cls,
+
+class PortalFormatter:
+    """Format structured portal notifications without changing in-app delivery fields."""
+
+    @staticmethod
+    def format(
         title: str | None,
         body: str,
         format_type: str,
+        actions: Sequence[MessageAction | Mapping[str, str]] | None = None,
     ) -> PortalMessageOutput:
-        # Based on audit, currently portal might not require title for some notifications, but let's check.
-        # It says "When the current portal infrastructure requires a title, enforce it. When title is currently optional, preserve that behavior."
-        # Actually InAppNotification model does not have a title field usually, wait let me check InAppNotification.
-        # No, let's make title optional for portal unless the audit proved it's required.
-        valid_title = cls._validate_subject_or_title(title, "PORTAL", require=False)
-        
         if format_type != "text":
             raise UnsupportedChannelFormatError("PORTAL currently supports text format only.")
-            
-        valid_body = cls._normalize_whitespace(body, collapse_lines=False)
+        valid_body = MessageOutputFormatter._normalize_whitespace(body, collapse_lines=False)
         if not valid_body:
             raise InvalidFormattedContentError("PORTAL body cannot be blank.")
-        title = title.strip() if title else "FieldOps Update"
+        valid_title = MessageOutputFormatter._validate_subject_or_title(title, "PORTAL", require=False)
+        portal_title = valid_title or "FieldOps Update"
+        formatted_actions = _format_actions(actions)
+        payload = {
+            "title": portal_title,
+            "body": valid_body,
+            "content_format": "text",
+            "actions": [action.model_dump() for action in formatted_actions],
+        }
         return PortalMessageOutput(
-            title=title,
+            title=portal_title,
             body=valid_body,
-            content_format="text"
+            content_format="text",
+            actions=formatted_actions,
+            payload=payload,
         )

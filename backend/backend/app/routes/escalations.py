@@ -82,7 +82,6 @@ def extend_sla(
         require_role(
             UserRole.SUPER_ADMIN,
             UserRole.DISPATCHER,
-            UserRole.SUPER_ADMIN,
         )
     ),
     db: Session = Depends(get_db),
@@ -167,7 +166,6 @@ def cancel_job(
         require_role(
             UserRole.SUPER_ADMIN,
             UserRole.DISPATCHER,
-            UserRole.SUPER_ADMIN,
         )
     ),
     db: Session = Depends(get_db),
@@ -232,7 +230,6 @@ async def force_assign(
         require_role(
             UserRole.SUPER_ADMIN,
             UserRole.DISPATCHER,
-            UserRole.SUPER_ADMIN,
         )
     ),
     db: Session = Depends(get_db),

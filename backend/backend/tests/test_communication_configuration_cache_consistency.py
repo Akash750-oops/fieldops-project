@@ -59,6 +59,7 @@ def setup_db():
         session.query(CommunicationChannelConfiguration).delete()
         config_sms = CommunicationChannelConfiguration(
             id="1",
+            tenant_id="default",
             channel="SMS",
             state="ENABLED",
             revision=1,
@@ -68,6 +69,7 @@ def setup_db():
         )
         config_email = CommunicationChannelConfiguration(
             id="2",
+            tenant_id="default",
             channel="EMAIL",
             state="ENABLED",
             revision=1,
@@ -146,6 +148,7 @@ def _set_channel_state(session: Session, channel: str, state: str, revision: int
         if not config:
             config = CommunicationChannelConfiguration(
                 id=str(uuid.uuid4()),
+                tenant_id="default", 
                 channel=channel,
                 state=state,
                 revision=revision or 1,

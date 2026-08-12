@@ -351,6 +351,7 @@ class CommunicationConfigurationService:
             self.repository.update_state(config, new_state.value, actor_id)
 
             audit = CommunicationConfigurationAudit(
+                tenant_id=actor_tenant_id,
                 channel=channel,
                 previous_state=previous_state,
                 new_state=new_state.value,

@@ -298,6 +298,7 @@ async def start_organization_onboarding(
     "/onboarding/verify-otp",
     status_code=status.HTTP_200_OK,
 )
+
 async def verify_organization_otp(
     payload: VerifyOTPRequest,
     db: Session = Depends(get_db),
@@ -596,8 +597,10 @@ async def list_organizations(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     all_tenants: bool = Query(False, description="Platform admin only: view all tenants"),
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.SUPER_ADMIN)),
-    db: Session = Depends(get_db),
+current_user: AuthenticatedUser = Depends(
+    require_role(UserRole.SUPER_ADMIN)
+),
+     db: Session = Depends(get_db),
 ):
     """List organizations. Filtered by current user's tenant by default."""
     query = db.query(Organization).filter(Organization.deleted_at.is_(None))
