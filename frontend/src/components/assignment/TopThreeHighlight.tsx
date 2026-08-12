@@ -55,9 +55,8 @@ export interface TopThreeHighlightProps {
   jobId: number;
   jobLabel?: string;
   onSelect: (technicianId: number) => void;
-  onClose?: () => void;
+  onClose: () => void;
   onSelectOther?: () => void;
-  hideCloseBtn?: boolean;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -215,12 +214,12 @@ export function RankCard({ rank, medal, tech, reason, onSelect, animationDelay =
         ease: [0.25, 0.46, 0.45, 0.94],
       }}
       className={[
-        'relative flex flex-col gap-2.5 rounded-xl p-4 pt-6 border-2',
+        'relative flex flex-col gap-4 rounded-2xl px-5 pb-5 pt-7 border-2',
         cfg.bg,
         cfg.border,
-        `shadow-md ${cfg.glowColor}`,
-        'transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5',
-        rank === 1 ? 'ring-2 ring-amber-400/20' : '',
+        `shadow-lg ${cfg.glowColor}`,
+        'transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5',
+        rank === 1 ? 'ring-2 ring-amber-400/30' : '',
       ].join(' ')}
     >
       {/* ── Rank badge (top-left) ── */}
@@ -245,10 +244,10 @@ export function RankCard({ rank, medal, tech, reason, onSelect, animationDelay =
       )}
 
       {/* ── Header row: avatar + name + score ── */}
-      <div className="flex items-start gap-3 mt-1">
+      <div className="flex items-start gap-3.5 mt-2">
         {/* Avatar */}
         <div
-          className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br ${cfg.gradient} text-white font-black text-base shadow-sm ml-1`}
+          className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br ${cfg.gradient} text-white font-black text-lg shadow-md ml-5`}
           aria-hidden="true"
         >
           {tech.technician_name.charAt(0).toUpperCase()}
@@ -256,11 +255,11 @@ export function RankCard({ rank, medal, tech, reason, onSelect, animationDelay =
 
         {/* Name + skill + status */}
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-extrabold text-slate-800 truncate leading-tight">
+          <p className="text-sm font-extrabold text-slate-800 truncate leading-tight">
             {tech.technician_name}
           </p>
-          <p className="text-[10px] text-slate-500 truncate mt-0.5">{tech.technician_skill}</p>
-          <div className="mt-1">
+          <p className="text-[11px] text-slate-500 truncate mt-0.5">{tech.technician_skill}</p>
+          <div className="mt-1.5">
             <StatusBadge status={tech.technician_status as any} size="sm" data-testid={`status-pill-${tech.technician_status.toLowerCase()}`} />
           </div>
         </div>
@@ -268,7 +267,7 @@ export function RankCard({ rank, medal, tech, reason, onSelect, animationDelay =
         {/* Composite score */}
         <div className="flex-shrink-0 text-right">
           <ScoreBadge score={tech.composite_score} label="Score" />
-          <p className={`text-[9px] mt-0.5 font-semibold ${cfg.textAccent}`}>
+          <p className={`text-[10px] mt-1 font-semibold ${cfg.textAccent}`}>
             {level === 'high' ? 'Excellent' : level === 'medium' ? 'Good' : 'Fair'}
           </p>
         </div>
@@ -276,19 +275,19 @@ export function RankCard({ rank, medal, tech, reason, onSelect, animationDelay =
 
       {/* ── Recommendation reason chip ── */}
       <div
-        className={`flex items-center gap-1 px-2 py-1 rounded-md bg-white/70 border ${cfg.border} backdrop-blur-sm`}
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/70 border ${cfg.border} backdrop-blur-sm`}
         data-testid={`reason-chip-${rank}`}
       >
         <span className={cfg.textAccent}>
           <ReasonIcon reason={reason} />
         </span>
-        <span className={`text-[11px] font-semibold ${cfg.textAccent}`} data-testid={`reason-text-${rank}`}>
+        <span className={`text-xs font-semibold ${cfg.textAccent}`} data-testid={`reason-text-${rank}`}>
           {reason}
         </span>
       </div>
 
       {/* ── Mini stat row ── */}
-      <div className="grid grid-cols-3 gap-1.5 text-center">
+      <div className="grid grid-cols-3 gap-2 text-center">
         {[
           { label: 'Skill', value: tech.skill_score },
           { label: 'Proximity', value: tech.proximity_score },
@@ -297,22 +296,22 @@ export function RankCard({ rank, medal, tech, reason, onSelect, animationDelay =
           const lv = getScoreLevel(value);
           const color = lv === 'high' ? 'text-emerald-600' : lv === 'medium' ? 'text-amber-600' : 'text-rose-600';
           return (
-            <div key={label} className="flex flex-col items-center gap-0.5 bg-white/70 rounded-lg py-1 px-1 border border-white/80 shadow-sm">
-              <span className={`text-sm font-black tabular-nums ${color}`}>{formatScore(value)}</span>
-              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+            <div key={label} className="flex flex-col items-center gap-1 bg-white/70 rounded-xl py-2 px-1.5 border border-white/80 shadow-sm">
+              <span className={`text-base font-black tabular-nums ${color}`}>{formatScore(value)}</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
             </div>
           );
         })}
       </div>
 
       {/* ── Meta row: distance + workload ── */}
-      <div className="flex items-center gap-2 text-[11px] text-slate-500 px-1">
-        <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 border border-sky-100">
-          <MapPin className="w-3 h-3 text-sky-500" aria-hidden="true" />
+      <div className="flex items-center gap-3 text-xs text-slate-500 px-1">
+        <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-100">
+          <MapPin className="w-3.5 h-3.5 text-sky-500" aria-hidden="true" />
           <span className="font-bold text-sky-700">{tech.distance_km.toFixed(1)} km</span>
         </span>
-        <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-100">
-          <Briefcase className="w-3 h-3 text-slate-400" aria-hidden="true" />
+        <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-100">
+          <Briefcase className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
           <span className="font-bold text-slate-600">{tech.active_jobs}/{tech.max_capacity} jobs</span>
         </span>
       </div>
@@ -325,15 +324,15 @@ export function RankCard({ rank, medal, tech, reason, onSelect, animationDelay =
         aria-label={`Select ${tech.technician_name} for this job`}
         data-testid={`select-btn-${rank}`}
         className={[
-          'w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg',
-          'text-white text-xs font-extrabold tracking-wide',
+          'w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl',
+          'text-white text-sm font-extrabold tracking-wide',
           `bg-gradient-to-r ${cfg.gradient}`,
-          'shadow-sm transition-all duration-200 hover:shadow-md',
+          'shadow-md transition-all duration-200 hover:shadow-lg',
           'focus:outline-none focus:ring-2 focus:ring-offset-2',
           rank === 1 ? 'focus:ring-amber-400' : rank === 2 ? 'focus:ring-slate-400' : 'focus:ring-orange-400',
         ].join(' ')}
       >
-        <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+        <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
         Select {tech.technician_name.split(' ')[0]}
       </motion.button>
     </motion.div>
@@ -351,7 +350,6 @@ export default function TopThreeHighlight({
   onSelect,
   onClose,
   onSelectOther,
-  hideCloseBtn,
 }: TopThreeHighlightProps) {
   // Ensure sorted descending by composite_score, cap at 3
   const ranked = useMemo(
@@ -377,26 +375,26 @@ export default function TopThreeHighlight({
         aria-label="Top 3 Recommended Technicians"
         data-testid="top-three-highlight"
       >
-        <div className="rounded-xl border border-amber-200/80 bg-gradient-to-br from-white via-amber-50/10 to-white shadow-md p-4 mb-2">
+        <div className="rounded-2xl border-2 border-amber-200/80 bg-gradient-to-br from-white via-amber-50/20 to-white shadow-xl shadow-amber-100/30 p-6 mb-5">
 
           {/* ── Section header ── */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 shadow-md">
-                <Star className="w-4 h-4 text-white fill-white" aria-hidden="true" />
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-300/40">
+                <Star className="w-5 h-5 text-white fill-white" aria-hidden="true" />
               </div>
               <div>
-                <h3 className="text-xs font-black text-slate-800 leading-tight">
+                <h3 className="text-sm font-black text-slate-800 leading-tight">
                   Top 3 Recommended
                 </h3>
                 {jobLabel && (
-                  <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
+                  <p className="text-[11px] text-slate-400 leading-tight mt-0.5">
                     for {jobLabel}
                   </p>
                 )}
               </div>
               <span
-                className="ml-1 inline-flex items-center px-2 py-0.5 rounded-md bg-amber-100/80 text-amber-700 text-[9px] font-bold border border-amber-200/80"
+                className="ml-1 inline-flex items-center px-2.5 py-1 rounded-lg bg-amber-100/80 text-amber-700 text-[10px] font-bold border border-amber-200/80"
                 data-testid="top-3-section-badge"
               >
                 AI Ranked
@@ -404,29 +402,25 @@ export default function TopThreeHighlight({
             </div>
 
             {/* Close / Select Other */}
-            <div className="flex items-center gap-1.5">
-              {onSelectOther && (
-                <button
-                  onClick={onSelectOther}
-                  aria-label="Select other technician"
-                  data-testid="select-other-btn"
-                  className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700 px-2 py-1 rounded-lg hover:bg-slate-100 transition-all"
-                >
-                  <User className="w-3 h-3" aria-hidden="true" />
-                  Select Other
-                  <ChevronDown className="w-3 h-3" aria-hidden="true" />
-                </button>
-              )}
-              {onClose && !hideCloseBtn && (
-                <button
-                  onClick={onClose}
-                  aria-label="Close recommendations panel"
-                  data-testid="close-btn"
-                  className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
-                >
-                  <X className="w-3.5 h-3.5" aria-hidden="true" />
-                </button>
-              )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onSelectOther || onClose}
+                aria-label="Select other technician"
+                data-testid="select-other-btn"
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700 px-3 py-2 rounded-xl hover:bg-slate-100 transition-all"
+              >
+                <User className="w-3.5 h-3.5" aria-hidden="true" />
+                Select Other
+                <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
+              <button
+                onClick={onClose}
+                aria-label="Close recommendations panel"
+                data-testid="close-btn"
+                className="flex items-center justify-center w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
+              >
+                <X className="w-4 h-4" aria-hidden="true" />
+              </button>
             </div>
           </div>
 
@@ -434,7 +428,7 @@ export default function TopThreeHighlight({
           <div
             role="list"
             aria-label="Ranked technician recommendations"
-            className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3 pt-1"
+            className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-5 pt-2"
           >
             {ranked.map((tech, idx) => {
               const tier = TIER_ORDER[idx];
@@ -454,7 +448,7 @@ export default function TopThreeHighlight({
           </div>
 
           {/* ── Footer note ── */}
-          <p className="mt-2 text-center text-[9px] text-slate-400">
+          <p className="mt-4 text-center text-[10px] text-slate-400">
             Scores based on skill match · proximity · current workload · Dispatcher can override at any time
           </p>
         </div>

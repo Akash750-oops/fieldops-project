@@ -188,8 +188,6 @@ def test_escalation_force_assign_timer(setup_db):
     db = setup_db
     
     tech = Technician(
-
-
         tech_id="tech-abc",
         technician_name="Bob Mechanic",
         technician_skill="Plumbing",

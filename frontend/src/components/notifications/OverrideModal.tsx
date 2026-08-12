@@ -192,7 +192,7 @@ export default function OverrideModal({
         setTimeout(() => {
           onSuccess();
           onClose();
-        }, 1000);
+        }, 1500);
       }
     } catch (err: any) {
       const msg = err.response?.data?.detail || err.message || "Failed to commit manual assignment.";

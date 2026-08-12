@@ -16,7 +16,6 @@ import {
   Search,
   Loader2,
   Inbox,
-  Share2,
 } from "lucide-react";
 
 import { getDispatchQueue } from "../../services/dispatchQueueService";
@@ -65,7 +64,7 @@ const CopyJobIdButton = ({ jobId }: { jobId: string }) => {
     e.stopPropagation();
     navigator.clipboard.writeText(jobId).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 1000);
+      setTimeout(() => setCopied(false), 1500);
     });
   };
 
@@ -85,65 +84,6 @@ const CopyJobIdButton = ({ jobId }: { jobId: string }) => {
       aria-label={`Copy Job ID ${jobId}`}
     >
       {copied ? <Check size={12} /> : <Copy size={12} />}
-    </button>
-  );
-};
-
-/* ─── Share Tracking Button ─────────────────────────────────────────────────── */
-
-const ShareTrackingLinkButton = ({ jobId }: { jobId: string }) => {
-  const [copied, setCopied] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
-
-  const handleShare = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setLoading(true);
-    try {
-      const response = await fetch(`http://localhost:8000/api/v1/jobs/${jobId}/share`, {
-        method: "POST",
-        headers: {
-          "X-Tenant-ID": "tenant-1",
-          "Authorization": "Bearer dev-dispatcher-token"
-        }
-      });
-      if (!response.ok) throw new Error("Failed to generate share link");
-      const data = await response.json();
-      await navigator.clipboard.writeText(data.share_url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error(err);
-      alert("Could not generate tracking link");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const btnStyle = {
-    ...tableStyles.copyBtn,
-    backgroundColor: isHovered ? "#DDEEE5" : "transparent",
-    color: copied ? "#10B981" : loading ? "#9CA3AF" : (isHovered ? "#2F4F3E" : "#7AAE8A"),
-    marginLeft: "4px"
-  };
-
-  return (
-    <button
-      style={btnStyle}
-      disabled={loading}
-      onClick={handleShare}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      title={copied ? "Tracking link copied!" : "Copy customer shareable tracking link"}
-      aria-label={`Share tracking link for Job ${jobId}`}
-    >
-      {copied ? (
-        <Check size={12} />
-      ) : loading ? (
-        <Loader2 size={12} className="animate-spin" />
-      ) : (
-        <Share2 size={12} />
-      )}
     </button>
   );
 };
@@ -317,7 +257,6 @@ const DispatchQueueTable = ({ onCountChange }: DispatchQueueTableProps) => {
               {truncateId(row.original.job_id)}
             </span>
             <CopyJobIdButton jobId={row.original.job_id} />
-            <ShareTrackingLinkButton jobId={row.original.job_id} />
           </div>
         ),
       },

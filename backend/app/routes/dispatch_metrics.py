@@ -105,8 +105,8 @@ def get_dispatch_metrics(
         Job.status.in_(["QUEUED", "ASSIGNED"])
     ).count()
 
-    # Re-dispatched = jobs with attempt_count > 1
-    jobs_redispatched = base_query.filter(Job.attempt_count > 1).count()
+    # Re-dispatched = jobs with attempt_count > 0
+    jobs_redispatched = base_query.filter(Job.attempt_count > 0).count()
 
     # ── Yesterday Counts ─────────────────────────────────────────────────
     y_dispatched = yesterday_query.filter(Job.status != "QUEUED").count()
@@ -116,7 +116,7 @@ def get_dispatch_metrics(
         Job.sla_deadline < yesterday_end,
         Job.status.in_(["QUEUED", "ASSIGNED"])
     ).count()
-    y_redispatched = yesterday_query.filter(Job.attempt_count > 1).count()
+    y_redispatched = yesterday_query.filter(Job.attempt_count > 0).count()
 
     # ── Status/Priority Breakdowns (legacy fields) ───────────────────────
     status_counts = db.query(Job.status, func.count(Job.id)).filter(

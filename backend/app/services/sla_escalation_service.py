@@ -23,7 +23,6 @@ class SLAEscalationService:
         job.status = "ESCALATED"
         
         escalation = SLAEscalation(
-            tenant_id=getattr(job, "tenant_id", None) or "default",
             job_id=job.id,
             manager_notified_at=now,
             status="ESCALATED"

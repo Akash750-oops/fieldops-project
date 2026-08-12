@@ -158,22 +158,10 @@ if (typeof document !== 'undefined') {
   document.head.appendChild(styleEl);
 }
 
-import CustomerTrackingPage from './pages/CustomerTrackingPage';
-
 const container = document.getElementById('root');
 if (container) {
-  const path = window.location.pathname;
-  const isTrackingRoute = path.startsWith('/track/');
-  const trackingToken = isTrackingRoute ? path.split('/track/')[1] : null;
-
-  if (isTrackingRoute && trackingToken) {
-    createRoot(container).render(
-      <CustomerTrackingPage token={trackingToken} />
-    );
-  } else {
-    createRoot(container).render(
-      <App />
-    );
-  }
+  createRoot(container).render(
+    <App />
+  );
 }
 

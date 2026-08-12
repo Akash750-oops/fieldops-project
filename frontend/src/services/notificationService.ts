@@ -147,27 +147,17 @@ export interface SocketHandlers {
 
 export const connectNotificationSocket = (tokenOrTechnicianId: string | number, handlers: SocketHandlers = {}): Socket => {
   const techId = tokenOrTechnicianId;
-
-  if (!SOCKET_URL) {
-    console.warn("notificationService: VITE_SOCKET_URL not configured, creating no-op socket.");
-  }
-
-  const socket = io(SOCKET_URL || "http://localhost:8000", {
+  const socket = io(SOCKET_URL, {
     query: { tech_id: String(techId) },
     reconnection: true,
-    reconnectionAttempts: 5,
+    reconnectionAttempts: 10,
     reconnectionDelay: 2000,
-    timeout: 10000,
     transports: ["websocket", "polling"]
   });
 
   socket.on("connect", () => {
     console.log("Socket connected, room technician:", techId);
     if (handlers.onConnect) handlers.onConnect();
-  });
-
-  socket.on("connect_error", (err) => {
-    console.warn("notificationService: Socket connection error:", err.message);
   });
 
   socket.on("disconnect", (reason: string) => {
