@@ -36,9 +36,9 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    width: "32px",
-    height: "32px",
-    borderRadius: "8px",
+    width: "44px",
+    height: "44px",
+    borderRadius: "50%",
     cursor: "pointer",
     outline: "none",
     transition: "all 0.2s ease-in-out",
@@ -47,17 +47,17 @@ const styles = {
 
   badge: {
     position: "absolute",
-    top: "-5px",
-    right: "-5px",
+    top: "2px",
+    right: "2px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    minWidth: "16px",
-    height: "16px",
-    padding: "0 3px",
-    fontSize: "9px",
+    minWidth: "18px",
+    height: "18px",
+    padding: "0 4px",
+    fontSize: "10px",
     fontWeight: 700,
-    borderRadius: "8px",
+    borderRadius: "9px",
     border: "2px solid #ffffff",
     transition: "background-color 0.2s ease",
   } as React.CSSProperties,
@@ -132,7 +132,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
           transition={{ duration: 0.5 }}
           style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
         >
-          <Bell size={16} />
+          <Bell size={20} />
         </motion.div>
         
         <span

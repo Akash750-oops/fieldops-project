@@ -61,18 +61,8 @@ const buildSparklinePoints = (values: number[], width = 72, height = 40) => {
 
   const max = Math.max(...values);
   const min = Math.min(...values);
+  const range = max - min || 1;
 
-  if (max === min) {
-    return values
-      .map((_, index) => {
-        const x = 4 + (index / (values.length - 1 || 1)) * (width - 8);
-        const y = height / 2;
-        return `${x},${y}`;
-      })
-      .join(" ");
-  }
-
-  const range = max - min;
   return values
     .map((v, index) => {
       const x = 4 + (index / (values.length - 1 || 1)) * (width - 8);
@@ -107,22 +97,22 @@ const MetricCard = ({
       whileHover={{ scale: 1.01 }}
       whileTap={{ scale: 0.99 }}
       aria-label={`${label}. Current value ${value}. Click to filter dispatch queue.`}
-      className={`w-full overflow-hidden flex items-center gap-2 rounded-2xl border bg-white px-2.5 py-2 text-left shadow-sm transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${classes.card}`}
+      className={`w-full overflow-hidden flex items-center gap-2 rounded-2xl border bg-white px-3 py-2.5 text-left shadow-sm transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${classes.card}`}
     >
       {/* Left section: Icon + Label & Trend — shrinks to fit available space */}
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <div
           className={`flex h-8 w-8 flex-none items-center justify-center rounded-xl ${classes.iconBg}`}
         >
-          <Icon size={14} />
+          <Icon size={15} />
         </div>
 
         <div className="flex flex-col min-w-0">
-          <p className="text-[11.5px] font-bold text-gray-900 truncate leading-tight">{label}</p>
+          <p className="text-xs font-bold text-gray-900 truncate leading-tight">{label}</p>
           <div className="mt-0.5 flex items-center gap-0.5">
             {changePct !== null ? (
               <span
-                className={`inline-flex items-center gap-0.5 text-[9.5px] font-semibold whitespace-nowrap ${
+                className={`inline-flex items-center gap-0.5 text-[10px] font-semibold whitespace-nowrap ${
                   isTrendUp ? "text-green-600" : "text-red-600"
                 }`}
               >
@@ -130,24 +120,24 @@ const MetricCard = ({
                 {Math.abs(changePct).toFixed(1)}%
               </span>
             ) : (
-              <span className="text-[9.5px] font-semibold text-gray-500 whitespace-nowrap">No trend</span>
+              <span className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">No trend</span>
             )}
           </div>
         </div>
       </div>
 
       {/* Divider */}
-      <div className="h-6 w-px bg-gray-200 flex-none" />
+      <div className="h-7 w-px bg-gray-200 flex-none" />
 
       {/* Right section: Number + Sparkline — fixed size, never shrinks */}
       <div className="flex items-center gap-2 flex-none">
-        <h3 className={`text-lg font-bold tracking-tight leading-none ${classes.number}`}>
+        <h3 className={`text-xl font-bold tracking-tight leading-none ${classes.number}`}>
           {formatMetricNumber(value)}
         </h3>
 
-        {/* Sparkline — medium compact box with rounded corners and tinted bg */}
+        {/* Sparkline — larger box with rounded corners and tinted bg */}
         <div
-          className={`h-8 w-14 flex-none overflow-hidden rounded-xl ${
+          className={`h-11 w-20 flex-none overflow-hidden rounded-xl ${
             color === "blue" ? "bg-blue-50/60" :
             color === "yellow" ? "bg-amber-50/60" :
             color === "red" ? "bg-red-50/60" :

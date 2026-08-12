@@ -1,12 +1,8 @@
 import React, { useEffect, useState } from "react";
 import api from "../services/api";
-import { Eye, Pencil, Trash2, ExternalLink, Copy, Check, Share2, Loader2, CheckCircle2 } from "lucide-react";
+import { Eye, Pencil, Trash2 } from "lucide-react";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
 import EmptyState from "../components/ui/EmptyState";
-import JobStatusTimeline from "../components/customer-tracking/JobStatusTimeline";
-import useAuthStore from "../store/authStore";
-import { getJobClosure } from "../services/planningService";
-import { JobClosureModal } from "../components/jobs/JobClosureModal";
 
 const JOBS_PAGE_SIZE = 8;
 
@@ -20,17 +16,7 @@ interface JobFormData {
   preferred_service_date: string;
   status: string;
   required_skill?: string;
-  tenant_id: string;
-  sla_deadline?: string;
-  attempt_count?: number;
 }
-
-const getActiveTenantId = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("tenant_id") || "tenant-1";
-  }
-  return "tenant-1";
-};
 
 const initialFormData: JobFormData = {
   customer_name: "",
@@ -42,9 +28,6 @@ const initialFormData: JobFormData = {
   preferred_service_date: "",
   status: "active",
   required_skill: "",
-  tenant_id: getActiveTenantId(),
-  sla_deadline: "",
-  attempt_count: 0,
 };
 
 interface Job {
@@ -58,10 +41,7 @@ interface Job {
   preferred_service_date?: string;
   status: string;
   required_skill?: string;
-  completed_at?: string;
-  completed_by?: string;
 }
-
 
 const priorities = [
   { label: "Critical", value: "CRITICAL" },
@@ -85,28 +65,12 @@ function normalizeP(p: string): string {
   return priorityMap[up] || up;
 }
 
-const formatServiceType = (type: string) => {
-  if (!type) return "";
-  return type
-    .replace(/_/g, " ")
-    .toLowerCase()
-    .split(" ")
-    .map(word => {
-      const uppercaseAcronyms = ["hvac", "cctv", "ac", "sla", "ip", "it"];
-      if (uppercaseAcronyms.includes(word)) {
-        return word.toUpperCase();
-      }
-      return word.charAt(0).toUpperCase() + word.slice(1);
-    })
-    .join(" ");
-};
-
 const getPriorityStyle = (priority: string): React.CSSProperties => {
   const p = (priority || "").toUpperCase();
   const base = {
-    fontSize: "9px",
+    fontSize: "10px",
     fontWeight: 700,
-    padding: "2px 6px",
+    padding: "3px 8px",
     borderRadius: "20px",
     textTransform: "uppercase",
     letterSpacing: "0.03em",
@@ -123,47 +87,8 @@ interface PopupState {
   show: boolean;
   title: string;
   message: string;
-  jobId?: string;
+  jobId: string | number;
 }
-
-const CopyJobIdButton = ({ jobId }: { jobId: string | number }) => {
-  const [copied, setCopied] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
-
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(String(jobId)).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1000);
-    });
-  };
-
-  return (
-    <button
-      onClick={handleCopy}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      title={copied ? "Copied!" : "Copy Job ID"}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: "22px",
-        height: "22px",
-        borderRadius: "4px",
-        border: "none",
-        cursor: "pointer",
-        transition: "all 0.2s",
-        backgroundColor: isHovered ? "#DDEEE5" : "transparent",
-        color: copied ? "#10B981" : (isHovered ? "#2F4F3E" : "#9CA3AF"),
-      }}
-    >
-      {copied ? <Check size={12} /> : <Copy size={12} />}
-    </button>
-  );
-};
-
-
 
 function JobCreationForm() {
   const [formData, setFormData] = useState<JobFormData>(initialFormData);
@@ -190,44 +115,61 @@ function JobCreationForm() {
   // State variables for list rendering and filtering
   const [jobs, setJobs] = useState<Job[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [debSearchTerm, setDebSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [priorityFilter, setPriorityFilter] = useState("ALL");
   const [serviceFilter, setServiceFilter] = useState("ALL");
-  const [serviceTypesList, setServiceTypesList] = useState<Array<{ value: string; label: string }>>([]);
   const [jobsPage, setJobsPage] = useState(1);
-  const [totalJobsCount, setTotalJobsCount] = useState(0);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebSearchTerm(searchTerm);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
 
   useEffect(() => {
     setJobsPage(1);
-  }, [debSearchTerm, statusFilter, priorityFilter, serviceFilter]);
+  }, [searchTerm, statusFilter, priorityFilter, serviceFilter]);
 
-
+  const getFilterServiceTypes = () => {
+    const seenNormal = new Set<string>();
+    const result: Array<{ value: string; label: string }> = [];
+    jobs.forEach(j => {
+      if (j.service_type) {
+        const val = j.service_type;
+        const normalized = val.toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim();
+        if (!seenNormal.has(normalized)) {
+          seenNormal.add(normalized);
+          const predefined = serviceTypes.find(s => (s.value || "").toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim() === normalized);
+          result.push({
+            value: predefined ? predefined.value : val,
+            label: predefined ? predefined.label : val.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
+          });
+        }
+      }
+    });
+    return result;
+  };
 
   const getFormServiceTypes = () => {
     const list = [...serviceTypes];
-    if (formData.service_type) {
-      const seenNormal = new Set<string>(list.map(s => (s.value || "").toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim()));
-      const val = formData.service_type;
+    const seenNormal = new Set<string>(list.map(s => (s.value || "").toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim()));
+
+    const tryAdd = (val?: string) => {
+      if (!val) return;
       const normalized = val.toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim();
       if (!seenNormal.has(normalized)) {
+        seenNormal.add(normalized);
         const label = val.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
         list.push({ label, value: val });
       }
+    };
+
+    jobs.forEach(j => {
+      if (j.service_type) {
+        tryAdd(j.service_type);
+      }
+    });
+
+    if (formData.service_type) {
+      tryAdd(formData.service_type);
     }
+
     return list;
   };
-
-  const { user } = useAuthStore();
-  const userRole = (user?.role || localStorage.getItem("user_role") || "").toLowerCase();
-  const isTechnician = userRole === "technician";
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingJobId, setEditingJobId] = useState<string | number | null>(null);
@@ -236,68 +178,11 @@ function JobCreationForm() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewJob, setViewJob] = useState<Job | null>(null);
 
-  const [isClosureModalOpen, setIsClosureModalOpen] = useState(false);
-  const [closureDetails, setClosureDetails] = useState<any>(null);
-
-  useEffect(() => {
-    if (viewJob) {
-      if (viewJob.status?.toUpperCase() === "COMPLETED") {
-        getJobClosure(viewJob.id)
-          .then((data) => setClosureDetails(data))
-          .catch(() => setClosureDetails(null));
-      } else {
-        setClosureDetails(null);
-      }
-    } else {
-      setClosureDetails(null);
-    }
-  }, [viewJob]);
-
-  const handleClosureSuccess = () => {
-    if (viewJob) {
-      const updatedJob = { ...viewJob, status: "COMPLETED" };
-      setViewJob(updatedJob);
-      getJobClosure(viewJob.id).then((data) => setClosureDetails(data)).catch(() => {});
-    }
-    fetchJobs();
-  };
-
-
-  const fetchServiceTypes = async () => {
-    try {
-      const response = await api.get("/jobs/service-types");
-      const mapped = response.data.map((st: string) => {
-        const predefined = serviceTypes.find(s => (s.value || "").toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim() === st.toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim());
-        return {
-          value: predefined ? predefined.value : st,
-          label: predefined ? predefined.label : st.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
-        };
-      });
-      setServiceTypesList(mapped);
-    } catch (error) {
-      console.error("Failed to fetch unique service types:", error);
-    }
-  };
-
   const fetchJobs = async () => {
     try {
       setJobsLoading(true);
-      const params: any = {
-        page: jobsPage,
-        limit: JOBS_PAGE_SIZE
-      };
-      if (debSearchTerm) params.search = debSearchTerm;
-      if (statusFilter && statusFilter !== "ALL") params.status = statusFilter;
-      if (priorityFilter && priorityFilter !== "ALL") params.priority = priorityFilter;
-      if (serviceFilter && serviceFilter !== "ALL") params.service_type = serviceFilter;
-
-      const [response] = await Promise.all([
-        api.get("/jobs", { params }),
-        new Promise(resolve => setTimeout(resolve, 1000))
-      ]);
+      const response = await api.get("/jobs");
       setJobs(response.data);
-      const totalHeader = response.headers["x-total-count"] || response.headers["X-Total-Count"];
-      setTotalJobsCount(totalHeader ? parseInt(totalHeader, 10) : response.data.length);
     } catch (error) {
       console.error(error);
       setApiError("Unable to fetch jobs. Please check backend API.");
@@ -306,13 +191,7 @@ function JobCreationForm() {
     }
   };
 
-  useEffect(() => {
-    fetchServiceTypes();
-  }, []);
-
-  useEffect(() => {
-    fetchJobs();
-  }, [debSearchTerm, statusFilter, priorityFilter, serviceFilter, jobsPage]);
+  useEffect(() => { fetchJobs(); }, []);
 
   const validateForm = () => {
     const newErrors: Partial<Record<keyof JobFormData, string>> = {};
@@ -367,9 +246,6 @@ function JobCreationForm() {
       preferred_service_date: job.preferred_service_date || "",
       status: jobStatus,
       required_skill: job.required_skill || "",
-      tenant_id: (job as any).tenant_id || "tenant-1",
-      sla_deadline: (job as any).sla_deadline ? new Date((job as any).sla_deadline).toISOString().slice(0, 16) : "",
-      attempt_count: (job as any).attempt_count !== undefined ? (job as any).attempt_count : 0,
     });
     setIsFormOpen(true);
   };
@@ -391,50 +267,18 @@ function JobCreationForm() {
     if (!validateForm()) return;
     try {
       setLoading(true);
-      const payload = {
-        ...formData,
-        sla_deadline: formData.sla_deadline && formData.sla_deadline.trim() ? formData.sla_deadline : null,
-        required_skill: formData.required_skill && formData.required_skill.trim() ? formData.required_skill : null,
-        attempt_count: formData.attempt_count !== undefined ? Number(formData.attempt_count) : 0,
-      };
-
       if (isEditing && editingJobId !== null) {
-        const response = await api.put(`/jobs/${editingJobId}`, payload);
+        const response = await api.put(`/jobs/${editingJobId}`, formData);
         setPopup({ show: true, title: "Job Updated Successfully", message: "The job details have been updated successfully.", jobId: response.data?.id ?? editingJobId });
-        resetForm();
-        fetchJobs();
       } else {
-        const response = await api.post("/jobs", payload);
+        const response = await api.post("/jobs", formData);
         setPopup({ show: true, title: "Job Created Successfully", message: "Your job request has been submitted successfully.", jobId: response.data?.id ?? "" });
-        resetForm();
-        setJobsPage(1);
-        setSearchTerm("");
-        setDebSearchTerm("");
-        setStatusFilter("ALL");
-        setPriorityFilter("ALL");
-        setServiceFilter("ALL");
-        if (debSearchTerm === "" && statusFilter === "ALL" && priorityFilter === "ALL" && serviceFilter === "ALL") {
-          fetchJobs();
-        }
       }
-      fetchServiceTypes();
+      resetForm();
+      fetchJobs();
     } catch (error: any) {
       console.error(error);
-      let errorMsg = "Unable to save job. Please check backend API.";
-      if (error.response?.data) {
-        const data = error.response.data;
-        if (data.error && data.error !== "Bad request") {
-          errorMsg = data.error;
-        } else if (data.detail && Array.isArray(data.detail)) {
-          errorMsg = data.detail.map((d: any) => {
-            const field = d.loc && d.loc.length > 0 ? d.loc[d.loc.length - 1] : "field";
-            const formattedField = String(field).replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-            return `${formattedField}: ${d.msg}`;
-          }).join(", ");
-        } else if (data.detail) {
-          errorMsg = data.detail;
-        }
-      }
+      const errorMsg = error.response?.data?.error || error.response?.data?.detail || "Unable to save job. Please check backend API.";
       setApiError(errorMsg);
     } finally {
       setLoading(false);
@@ -450,7 +294,6 @@ function JobCreationForm() {
       await api.delete(`/jobs/${id}`);
       setPopup({ show: true, title: "Job Deleted", message: "The job has been removed successfully.", jobId: id });
       fetchJobs();
-      fetchServiceTypes();
     } catch (error) {
       console.error(error);
       setApiError("Unable to delete job. Please check backend API.");
@@ -459,18 +302,43 @@ function JobCreationForm() {
     }
   };
 
-  const filteredJobs = jobs;
+  const filteredJobs = jobs
+    .filter(j => {
+      if (statusFilter === "ALL") return true;
+      const jobStatus = (j.status || "active").toLowerCase().trim().replace(" ", "");
+      const filterStatus = statusFilter.toLowerCase().trim().replace(" ", "");
+      const normJS = jobStatus === "canceled" ? "cancelled" : jobStatus;
+      const normFS = filterStatus === "canceled" ? "cancelled" : filterStatus;
+      return normJS === normFS;
+    })
+    .filter(j => {
+      if (priorityFilter === "ALL") return true;
+      return normalizeP(j.priority) === priorityFilter;
+    })
+    .filter(j => {
+      if (serviceFilter === "ALL") return true;
+      const norm = (val?: string) => (val || "").toUpperCase().replace(/_/g, " ").replace(/\s+/g, " ").trim();
+      return norm(j.service_type) === norm(serviceFilter);
+    })
+    .filter(j => {
+      const s = searchTerm.toLowerCase();
+      return (
+        (j.customer_name && j.customer_name.toLowerCase().includes(s)) ||
+        (j.location && j.location.toLowerCase().includes(s)) ||
+        (j.issue_description && j.issue_description.toLowerCase().includes(s))
+      );
+    });
 
-  const jobsTotalPages = Math.max(1, Math.ceil(totalJobsCount / JOBS_PAGE_SIZE));
+  const jobsTotalPages = Math.max(1, Math.ceil(filteredJobs.length / JOBS_PAGE_SIZE));
   const safeJobsPage = Math.min(jobsPage, jobsTotalPages);
-  const paginatedJobs = jobs;
+  const paginatedJobs = filteredJobs.slice((safeJobsPage - 1) * JOBS_PAGE_SIZE, safeJobsPage * JOBS_PAGE_SIZE);
 
   useEffect(() => {
-    const total = Math.max(1, Math.ceil(totalJobsCount / JOBS_PAGE_SIZE));
+    const total = Math.max(1, Math.ceil(filteredJobs.length / JOBS_PAGE_SIZE));
     if (jobsPage > total) {
       setJobsPage(total);
     }
-  }, [totalJobsCount, jobsPage]);
+  }, [filteredJobs.length, jobsPage]);
 
   const getJobsPageNums = () => {
     const nums: number[] = [];
@@ -497,7 +365,6 @@ function JobCreationForm() {
       borderRadius: "20px",
       textTransform: "capitalize",
       display: "inline-block",
-      whiteSpace: "nowrap",
     } as React.CSSProperties;
     if (s === "inprogress" || s === "in progress") return { ...base, background: "#FEF3DC", color: "#7A5120" };
     if (s === "completed") return { ...base, background: "#E8F0FE", color: "#2F5090" };
@@ -507,15 +374,6 @@ function JobCreationForm() {
 
   return (
     <div style={styles.jobsPage}>
-      <style>{`
-        @keyframes jobsFadeInRow {
-          from { opacity: 0; transform: translateY(4px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .jobs-table-body tr {
-          animation: jobsFadeInRow 0.25s ease-out forwards;
-        }
-      `}</style>
       {/* Success Popup */}
       {popup.show && (
         <div style={styles.popupOverlay}>
@@ -582,6 +440,22 @@ function JobCreationForm() {
               />
             </div>
             <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>Status</label>
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                onFocus={() => setFocusedInput('statusFilter')}
+                onBlur={() => setFocusedInput(null)}
+                style={focusedInput === 'statusFilter' ? { ...styles.filterInput, ...styles.filterInputFocus } : styles.filterInput}
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="in progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div style={styles.filterGroup}>
               <label style={styles.filterLabel}>Priority</label>
               <select
                 value={priorityFilter}
@@ -607,65 +481,37 @@ function JobCreationForm() {
                 style={focusedInput === 'serviceFilter' ? { ...styles.filterInput, ...styles.filterInputFocus } : styles.filterInput}
               >
                 <option value="ALL">All Services</option>
-                {serviceTypesList.map(st => (
+                {getFilterServiceTypes().map(st => (
                   <option key={st.value} value={st.value}>
                     {st.label}
                   </option>
                 ))}
               </select>
             </div>
-            <div style={styles.filterGroup}>
-              <label style={styles.filterLabel}>Status</label>
-              <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                onFocus={() => setFocusedInput('statusFilter')}
-                onBlur={() => setFocusedInput(null)}
-                style={focusedInput === 'statusFilter' ? { ...styles.filterInput, ...styles.filterInputFocus } : styles.filterInput}
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="active">Active (Unassigned)</option>
-                <option value="QUEUED">Queued</option>
-                <option value="ASSIGNED">Assigned</option>
-                <option value="EN_ROUTE">En Route</option>
-                <option value="ON_SITE">On Site</option>
-                <option value="in progress">In Progress</option>
-                <option value="ESCALATED">Escalated</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
           </div>
 
           {/* Jobs Count */}
-          <p style={styles.resultsCount}>
-            Showing <strong>{totalJobsCount === 0 ? 0 : (safeJobsPage - 1) * JOBS_PAGE_SIZE + 1}–{Math.min(safeJobsPage * JOBS_PAGE_SIZE, totalJobsCount)}</strong> of <strong>{totalJobsCount}</strong> job{totalJobsCount !== 1 ? "s" : ""} found
-          </p>
+          <p style={styles.resultsCount}>{filteredJobs.length} job{filteredJobs.length !== 1 ? "s" : ""} found</p>
 
           {/* Job Table */}
-          <div style={{
-            ...styles.tableContainer,
-            display: "flex",
-            flexDirection: "column",
-            ...(jobsLoading ? { justifyContent: "center", alignItems: "center", minHeight: "350px", flex: 1 } : {})
-          }}>
+          <div style={styles.tableContainer}>
             {jobsLoading ? (
               <LoadingSpinner message="Loading jobs..." />
             ) : filteredJobs.length === 0 ? (
               <EmptyState
                 title={
                   (searchTerm && searchTerm.trim()) ||
-                    statusFilter !== "ALL" ||
-                    priorityFilter !== "ALL" ||
-                    serviceFilter !== "ALL"
+                  statusFilter !== "ALL" ||
+                  priorityFilter !== "ALL" ||
+                  serviceFilter !== "ALL"
                     ? "No jobs match your filters"
                     : "No jobs found"
                 }
                 description={
                   (searchTerm && searchTerm.trim()) ||
-                    statusFilter !== "ALL" ||
-                    priorityFilter !== "ALL" ||
-                    serviceFilter !== "ALL"
+                  statusFilter !== "ALL" ||
+                  priorityFilter !== "ALL" ||
+                  serviceFilter !== "ALL"
                     ? "Try adjusting your search terms or filters."
                     : "Get started by creating your first job request."
                 }
@@ -703,17 +549,17 @@ function JobCreationForm() {
               <table style={styles.dashboardTable}>
                 <thead>
                   <tr>
-                    <th style={{ ...styles.th, width: "8%" }}>Job ID</th>
-                    <th style={{ ...styles.th, width: "20%" }}>Customer</th>
-                    <th style={{ ...styles.th, width: "13%" }}>Location</th>
-                    <th style={{ ...styles.th, width: "8%" }}>Priority</th>
-                    <th style={{ ...styles.th, width: "15%" }}>Service Type</th>
-                    <th style={{ ...styles.th, width: "11%" }}>Preferred Date</th>
-                    <th style={{ ...styles.th, width: "10%" }}>Status</th>
-                    <th style={{ ...styles.th, width: "15%" }}>Actions</th>
+                    <th style={styles.th}>Job ID</th>
+                    <th style={styles.th}>Customer</th>
+                    <th style={styles.th}>Location</th>
+                    <th style={styles.th}>Priority</th>
+                    <th style={styles.th}>Service Type</th>
+                    <th style={styles.th}>Preferred Date</th>
+                    <th style={styles.th}>Status</th>
+                    <th style={styles.th}>Actions</th>
                   </tr>
                 </thead>
-                <tbody key={safeJobsPage} className="jobs-table-body">
+                <tbody>
                   {paginatedJobs.map(job => (
                     <tr
                       key={job.id}
@@ -721,65 +567,26 @@ function JobCreationForm() {
                       onMouseEnter={() => setHoveredRow(job.id)}
                       onMouseLeave={() => setHoveredRow(null)}
                     >
-                      <td style={{ ...styles.td, ...styles.jobIdCell, width: "8%" }}>
-                        <span style={{ fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace", color: "#5C9470", fontWeight: 700 }}>
-                          {job.id}
-                        </span>
-                        <CopyJobIdButton jobId={job.id} />
-                      </td>
-                      <td style={{ ...styles.td, ...styles.customerCell, width: "20%", maxWidth: 0 }}>
-                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={job.customer_name}>
-                          <strong>{job.customer_name}</strong>
-                        </div>
+                      <td style={{ ...styles.td, ...styles.jobIdCell }}>#{job.id}</td>
+                      <td style={{ ...styles.td, ...styles.customerCell }}>
+                        <div><strong>{job.customer_name}</strong></div>
                         {job.issue_description && (
-                          <div style={styles.issueSub} title={job.issue_description}>{job.issue_description}</div>
+                          <div style={styles.issueSub}>{job.issue_description}</div>
                         )}
                       </td>
-                      <td style={{ ...styles.td, width: "13%", maxWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px", width: "100%", overflow: "hidden" }}>
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }} title={job.location}>
-                            {job.location}
-                          </span>
-                          <a
-                            href={`https://maps.google.com/?q=${encodeURIComponent(job.location)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              color: "#9CA3AF",
-                              display: "flex",
-                              alignItems: "center",
-                              transition: "color 0.2s",
-                              flexShrink: 0
-                            }}
-                            title="Open in Maps"
-                            onClick={(e) => e.stopPropagation()}
-                            onMouseEnter={(e) => e.currentTarget.style.color = "#5C9470"}
-                            onMouseLeave={(e) => e.currentTarget.style.color = "#9CA3AF"}
-                          >
-                            <ExternalLink size={12} />
-                          </a>
-                        </div>
-                      </td>
-                      <td style={{ ...styles.td, width: "8%" }}>
+                      <td style={styles.td}>{job.location}</td>
+                      <td style={styles.td}>
                         <span style={getPriorityStyle(job.priority)}>
                           {normalizeP(job.priority)}
                         </span>
                       </td>
-                      <td style={{ ...styles.td, width: "15%", maxWidth: 0 }}>
-                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={formatServiceType(job.service_type)}>
-                          {formatServiceType(job.service_type)}
-                        </div>
-                      </td>
-                      <td style={{ ...styles.td, width: "11%", maxWidth: 0 }}>
-                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={job.preferred_service_date}>
-                          {job.preferred_service_date}
-                        </div>
-                      </td>
-                      <td style={{ ...styles.td, width: "10%" }}>
+                      <td style={styles.td}>{job.service_type?.replace(/_/g, " ")}</td>
+                      <td style={styles.td}>{job.preferred_service_date}</td>
+                      <td style={styles.td}>
                         <span style={getStatusStyle(job.status)}>{formatStatus(job.status)}</span>
                       </td>
                       <td style={styles.td}>
-                        <div style={{ display: "flex", gap: "12px" }}>
+                        <div style={{ display: "flex", gap: "6px" }}>
                           <button
                             style={{ ...styles.iconActionBtn, color: "#16a34a" }}
                             onClick={() => setViewJob(job)}
@@ -816,7 +623,7 @@ function JobCreationForm() {
           {!jobsLoading && (
             <div style={styles.jobsPagination}>
               <span style={styles.jobsPageInfo}>
-                Page <strong style={{ color: "#2F4F3E" }}>{safeJobsPage}</strong> of <strong style={{ color: "#2F4F3E" }}>{jobsTotalPages}</strong> · {totalJobsCount} results
+                Page <strong style={{ color: "#2F4F3E" }}>{safeJobsPage}</strong> of <strong style={{ color: "#2F4F3E" }}>{jobsTotalPages}</strong> · {filteredJobs.length} results
               </span>
               <div style={styles.jobsPageControls}>
                 <button
@@ -876,114 +683,30 @@ function JobCreationForm() {
       {/* View Job Modal */}
       {viewJob && (
         <div style={styles.popupOverlay} onClick={() => setViewJob(null)}>
-          <div style={{ ...styles.viewJobModal, maxWidth: "850px" }} onClick={e => e.stopPropagation()}>
+          <div style={styles.viewJobModal} onClick={e => e.stopPropagation()}>
             <div style={styles.viewModalHeader}>
-              <h3 style={styles.viewModalHeaderTitle}>Job Details & Status History</h3>
+              <h3 style={styles.viewModalHeaderTitle}>Job Details</h3>
               <button onClick={() => setViewJob(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#6b7280' }}>×</button>
             </div>
-            <div style={{ display: "flex", flexDirection: "row", flexWrap: "wrap", width: "100%" }}>
-              {/* Left Column: Details */}
-              <div style={{ flex: 1, minWidth: "300px", padding: "18px 22px 22px", display: "flex", flexDirection: "column", gap: "10px", borderRight: "1px solid #E3ECE7" }}>
-                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Job ID</span><span style={styles.viewValue}>#{viewJob.id}</span></div>
-                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Customer</span><span style={styles.viewValue}>{viewJob.customer_name}</span></div>
-                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Location</span><span style={styles.viewValue}>{viewJob.location}</span></div>
-                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Priority</span><span style={getPriorityStyle(viewJob.priority)}>{normalizeP(viewJob.priority)}</span></div>
-                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Service Type</span><span style={styles.viewValue}>{viewJob.service_type?.replace(/_/g, ' ')}</span></div>
-                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Contact</span><span style={styles.viewValue}>{viewJob.contact_number}</span></div>
-                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Preferred Date</span><span style={styles.viewValue}>{viewJob.preferred_service_date}</span></div>
-                <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Status</span><span style={getStatusStyle(viewJob.status)}>{formatStatus(viewJob.status)}</span></div>
-                {viewJob.issue_description && (
-                  <div style={{ ...styles.viewDetailRow, flexDirection: "column", gap: "4px" }}>
-                    <span style={styles.viewLabel}>Issue</span>
-                    <span style={styles.viewValue}>{viewJob.issue_description}</span>
-                  </div>
-                )}
-
-                {/* Complete Job Button (Visible if status !== COMPLETED and logged user is Technician) */}
-                {viewJob.status?.toUpperCase() !== "COMPLETED" && (
-                  <button
-                    type="button"
-                    onClick={() => setIsClosureModalOpen(true)}
-                    disabled={!isTechnician}
-                    style={{
-                      marginTop: "12px",
-                      padding: "10px 16px",
-                      backgroundColor: isTechnician ? "#166534" : "#94a3b8",
-                      color: "#ffffff",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontWeight: 600,
-                      fontSize: "14px",
-                      cursor: isTechnician ? "pointer" : "not-allowed",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "6px"
-                    }}
-                    title={!isTechnician ? "Only logged-in technicians can complete jobs" : "Complete Job"}
-                  >
-                    <CheckCircle2 size={16} /> Complete Job
-                  </button>
-                )}
-
-                {/* Closure Summary Details */}
-                {(viewJob.status?.toUpperCase() === "COMPLETED" || closureDetails) && (
-                  <div style={{ marginTop: "14px", padding: "12px", backgroundColor: "#f0fdf4", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
-                    <h4 style={{ fontSize: "13px", fontWeight: 700, color: "#166534", marginBottom: "6px" }}>Closure Summary</h4>
-                    <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Completed By</span><span style={styles.viewValue}>{closureDetails?.technician_id || viewJob.completed_by || "Technician"}</span></div>
-                    <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Completed Time</span><span style={styles.viewValue}>{closureDetails?.completed_at ? new Date(closureDetails.completed_at).toLocaleString() : (viewJob.completed_at ? new Date(viewJob.completed_at).toLocaleString() : "N/A")}</span></div>
-                    {closureDetails?.work_summary && (
-                      <div style={{ ...styles.viewDetailRow, flexDirection: "column", gap: "2px", marginTop: "4px" }}>
-                        <span style={styles.viewLabel}>Work Summary</span>
-                        <span style={styles.viewValue}>{closureDetails.work_summary}</span>
-                      </div>
-                    )}
-                    {closureDetails?.before_images && closureDetails.before_images.length > 0 && (
-                      <div style={{ marginTop: "6px" }}>
-                        <span style={styles.viewLabel}>Before Images</span>
-                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "2px" }}>
-                          {closureDetails.before_images.map((img: string, i: number) => (
-                            <span key={i} style={{ fontSize: "11px", background: "#e2e8f0", padding: "2px 6px", borderRadius: "4px" }}>{img}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {closureDetails?.after_images && closureDetails.after_images.length > 0 && (
-                      <div style={{ marginTop: "6px" }}>
-                        <span style={styles.viewLabel}>After Images</span>
-                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "2px" }}>
-                          {closureDetails.after_images.map((img: string, i: number) => (
-                            <span key={i} style={{ fontSize: "11px", background: "#dcfce7", color: "#166534", padding: "2px 6px", borderRadius: "4px" }}>{img}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", gap: "8px", marginTop: "8px", paddingTop: "6px", borderTop: "1px dashed #cbd5e1", fontSize: "12px" }}>
-                      <div><span style={styles.viewLabel}>Labour: </span><strong>${closureDetails?.labour_cost ?? 0}</strong></div>
-                      <div><span style={styles.viewLabel}>Material: </span><strong>${closureDetails?.material_cost ?? 0}</strong></div>
-                      <div><span style={styles.viewLabel}>Subtotal: </span><strong style={{ color: "#166534" }}>${closureDetails?.subtotal ?? 0}</strong></div>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              {/* Right Column: Interactive vertical Timeline */}
-              <div style={{ flex: 1, minWidth: "300px", padding: "18px 22px 22px" }} className="flex flex-col">
-                <JobStatusTimeline jobId={viewJob.id} currentStatus={viewJob.status} />
-              </div>
+            <div style={styles.viewModalBody}>
+              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Job ID</span><span style={styles.viewValue}>#{viewJob.id}</span></div>
+              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Customer</span><span style={styles.viewValue}>{viewJob.customer_name}</span></div>
+              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Location</span><span style={styles.viewValue}>{viewJob.location}</span></div>
+              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Priority</span><span style={getPriorityStyle(viewJob.priority)}>{normalizeP(viewJob.priority)}</span></div>
+              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Service Type</span><span style={styles.viewValue}>{viewJob.service_type?.replace(/_/g, ' ')}</span></div>
+              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Contact</span><span style={styles.viewValue}>{viewJob.contact_number}</span></div>
+              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Preferred Date</span><span style={styles.viewValue}>{viewJob.preferred_service_date}</span></div>
+              <div style={styles.viewDetailRow}><span style={styles.viewLabel}>Status</span><span style={getStatusStyle(viewJob.status)}>{formatStatus(viewJob.status)}</span></div>
+              {viewJob.issue_description && (
+                <div style={{ ...styles.viewDetailRow, flexDirection: "column", gap: "4px" }}>
+                  <span style={styles.viewLabel}>Issue</span>
+                  <span style={styles.viewValue}>{viewJob.issue_description}</span>
+                </div>
+              )}
             </div>
-
-            {/* Job Closure Modal */}
-            <JobClosureModal
-              jobId={viewJob.id}
-              isOpen={isClosureModalOpen}
-              onClose={() => setIsClosureModalOpen(false)}
-              onSuccess={handleClosureSuccess}
-            />
           </div>
         </div>
       )}
-
 
       {/* Sliding Sidebar for Job Form — rendered outside main div to avoid overflow:hidden clipping */}
       <div style={{
@@ -1091,66 +814,24 @@ function JobCreationForm() {
               {errors.preferred_service_date && <span style={styles.fieldError}>{errors.preferred_service_date}</span>}
             </div>
 
-            <div style={styles.formGroup}>
-              <label style={styles.formLabel}>Status <span style={styles.req}>*</span></label>
-              <select
-                name="status"
-                value={formData.status}
-                onChange={handleChange}
-                onFocus={() => setFocusedInput('status')}
-                onBlur={() => setFocusedInput(null)}
-                style={getInputStyle('status')}
-              >
-                <option value="active">Active</option>
-                <option value="QUEUED">Queued (Dispatch Queue)</option>
-                <option value="ESCALATED">Escalated (SLA Escalations)</option>
-                <option value="in progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-
-            <div style={styles.formGroup}>
-              <label style={styles.formLabel}>
-                Tenant ID <span style={styles.req}>*</span>{" "}
-                <span style={{ fontSize: "11px", color: "#6B7280", fontWeight: 400 }}>(Active Session)</span>
-              </label>
-              <input
-                type="text"
-                name="tenant_id"
-                value={formData.tenant_id}
-                readOnly
-                style={{ ...getInputStyle('tenant_id'), background: "#EEF2F6", cursor: "not-allowed" }}
-              />
-            </div>
-
-            <div style={styles.formGroup}>
-              <label style={styles.formLabel}>SLA Deadline (Optional)</label>
-              <input
-                type="datetime-local"
-                name="sla_deadline"
-                value={formData.sla_deadline || ""}
-                onChange={handleChange}
-                onFocus={() => setFocusedInput('sla_deadline')}
-                onBlur={() => setFocusedInput(null)}
-                style={getInputStyle('sla_deadline')}
-              />
-            </div>
-
-            <div style={styles.formGroup}>
-              <label style={styles.formLabel}>Attempt Count (Optional)</label>
-              <input
-                type="number"
-                name="attempt_count"
-                value={formData.attempt_count ?? 0}
-                onChange={handleChange}
-                onFocus={() => setFocusedInput('attempt_count')}
-                onBlur={() => setFocusedInput(null)}
-                min={0}
-                placeholder="0"
-                style={getInputStyle('attempt_count')}
-              />
-            </div>
+            {isEditing && (
+              <div style={styles.formGroup}>
+                <label style={styles.formLabel}>Status <span style={styles.req}>*</span></label>
+                <select
+                  name="status"
+                  value={formData.status}
+                  onChange={handleChange}
+                  onFocus={() => setFocusedInput('status')}
+                  onBlur={() => setFocusedInput(null)}
+                  style={getInputStyle('status')}
+                >
+                  <option value="active">Active</option>
+                  <option value="in progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+            )}
 
             <div style={styles.formGroup}>
               <label style={styles.formLabel}>Issue Description <span style={styles.req}>*</span></label>
@@ -1174,8 +855,8 @@ function JobCreationForm() {
                   loading
                     ? { ...styles.btnPrimary, background: '#A8CDB5', cursor: 'not-allowed', boxShadow: 'none' }
                     : hoveredBtn === 'submit'
-                      ? { ...styles.btnPrimary, background: '#5C9470' }
-                      : styles.btnPrimary
+                    ? { ...styles.btnPrimary, background: '#5C9470' }
+                    : styles.btnPrimary
                 }
                 disabled={loading}
                 onMouseEnter={() => setHoveredBtn('submit')}
@@ -1205,14 +886,11 @@ const styles = {
   jobsPage: {
     fontFamily: "'Inter', sans-serif",
     background: "#EEF4F1",
-    height: "100%",
-    maxHeight: "100%",
-    padding: "10px 14px",
+    minHeight: "100vh",
+    padding: "14px",
     color: "#1F2933",
     display: "flex",
     flexDirection: "column",
-    boxSizing: "border-box",
-    overflow: "hidden",
   } as React.CSSProperties,
   popupOverlay: {
     position: "fixed",
@@ -1245,11 +923,6 @@ const styles = {
     fontWeight: 800,
     margin: "0 auto 14px",
   } as React.CSSProperties,
-  jobIdCell: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-  } as React.CSSProperties,
   jobIdBox: {
     background: "#F6FAF8",
     borderRadius: "6px",
@@ -1272,38 +945,32 @@ const styles = {
     transition: "background .2s",
   } as React.CSSProperties,
   mainContentRow: {
-    display: "flex",
-    flexDirection: "column",
-    flex: 1,
-    overflow: "hidden",
-    boxSizing: "border-box",
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "20px",
+    alignItems: "start",
   } as React.CSSProperties,
   contentCard: {
     background: "#FFFFFF",
     borderRadius: "12px",
-    padding: "8px 16px",
+    padding: "22px",
     boxShadow: "0 1px 4px rgba(47, 79, 62, 0.07)",
     border: "1px solid #E3ECE7",
-    display: "flex",
-    flexDirection: "column",
-    flex: 1,
-    overflow: "hidden",
-    boxSizing: "border-box",
   } as React.CSSProperties,
   cardHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: "8px",
-    marginBottom: "6px",
-    paddingBottom: "6px",
+    gap: "12px",
+    marginBottom: "16px",
+    paddingBottom: "14px",
     borderBottom: "1px solid #E3ECE7",
   } as React.CSSProperties,
   cardSubtitle: {
     fontSize: "12px",
     color: "#6B7280",
-    margin: "1px 0 0 0",
+    marginTop: "3px",
   } as React.CSSProperties,
   headerActionsRow: {
     display: "flex",
@@ -1336,13 +1003,13 @@ const styles = {
   filtersRow: {
     display: "grid",
     gridTemplateColumns: "2fr 1fr 1fr 1fr",
-    gap: "8px",
-    marginBottom: "4px",
+    gap: "10px",
+    marginBottom: "14px",
   } as React.CSSProperties,
   filterGroup: {
     display: "flex",
     flexDirection: "column",
-    gap: "2px",
+    gap: "4px",
   } as React.CSSProperties,
   filterLabel: {
     fontSize: "10px",
@@ -1352,7 +1019,7 @@ const styles = {
     letterSpacing: ".05em",
   } as React.CSSProperties,
   filterInput: {
-    padding: "5px 8px",
+    padding: "7px 10px",
     border: "1.5px solid #E3ECE7",
     borderRadius: "8px",
     fontSize: "12px",
@@ -1369,24 +1036,18 @@ const styles = {
     fontSize: "11px",
     color: "#6B7280",
     fontWeight: 500,
-    marginBottom: "4px",
+    marginBottom: "10px",
   } as React.CSSProperties,
   tableContainer: {
-    overflowX: "hidden",
-    overflowY: "hidden",
-    flex: 1,
-    minHeight: 0,
-    boxSizing: "border-box",
+    overflowX: "auto",
   } as React.CSSProperties,
   dashboardTable: {
     width: "100%",
     borderCollapse: "collapse",
-    tableLayout: "fixed",
   } as React.CSSProperties,
   th: {
     background: "#F6FAF8",
-    padding: "0 10px",
-    height: "32px",
+    padding: "8px 10px",
     textAlign: "left",
     fontSize: "9.5px",
     fontWeight: 700,
@@ -1394,12 +1055,9 @@ const styles = {
     textTransform: "uppercase",
     letterSpacing: "0.05em",
     borderBottom: "1px solid #E3ECE7",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
   } as React.CSSProperties,
   td: {
-    padding: "4px 10px",
+    padding: "8px 10px",
     fontSize: "11.5px",
     color: "#1F2933",
     borderBottom: "1px solid #F0F6F2",
@@ -1419,9 +1077,6 @@ const styles = {
     color: "#6B7280",
     fontWeight: 400,
     marginTop: "2px",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
   } as React.CSSProperties,
   viewJobModal: {
     background: "#FFFFFF",
@@ -1605,11 +1260,11 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "6px 0 0 0",
+    padding: "14px 0 0 0",
     borderTop: "1px solid #E3ECE7",
     flexWrap: "wrap",
-    gap: "6px",
-    marginTop: "6px",
+    gap: "8px",
+    marginTop: "14px",
   } as React.CSSProperties,
   jobsPageInfo: {
     fontSize: "11px",
@@ -1622,11 +1277,11 @@ const styles = {
     gap: "6px",
   } as React.CSSProperties,
   jobsPageBtn: {
-    padding: "3px 8px",
+    padding: "5px 12px",
     background: "#FFFFFF",
     border: "1.5px solid #E3ECE7",
-    borderRadius: "6px",
-    fontSize: "10px",
+    borderRadius: "7px",
+    fontSize: "11px",
     fontWeight: 600,
     color: "#2F4F3E",
     cursor: "pointer",
@@ -1637,16 +1292,15 @@ const styles = {
     gap: "4px",
   } as React.CSSProperties,
   jobsPageNum: {
-    width: "22px",
-    height: "22px",
-    borderRadius: "6px",
+    width: "26px",
+    height: "26px",
+    borderRadius: "7px",
     border: "1.5px solid #E3ECE7",
     background: "#FFFFFF",
-    fontSize: "10px",
+    fontSize: "11px",
     fontWeight: 600,
     color: "#6B7280",
     cursor: "pointer",
-    padding: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",

@@ -74,13 +74,12 @@ const styles = {
     fontWeight: "600",
     border: "0",
     fontFamily: "'Inter', sans-serif",
-    whiteSpace: "nowrap",
   } as React.CSSProperties,
   
   sizes: {
-    sm: { fontSize: "11px", padding: "2px 6px", borderRadius: "4px", gap: "4px" },
-    md: { fontSize: "12px", padding: "3px 8px", borderRadius: "4px", gap: "6px" },
-    lg: { fontSize: "14px", padding: "4px 10px", borderRadius: "4px", gap: "6px" },
+    sm: { fontSize: "12px", padding: "2px 8px", borderRadius: "4px", gap: "4px" },
+    md: { fontSize: "14px", padding: "4px 10px", borderRadius: "4px", gap: "6px" },
+    lg: { fontSize: "16px", padding: "6px 12px", borderRadius: "4px", gap: "8px" },
   },
   
   risk: {

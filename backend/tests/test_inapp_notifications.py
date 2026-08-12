@@ -176,7 +176,7 @@ def test_pagination(client, db_session, auth_headers):
     response3 = client.get(f"/technicians/{tech.tech_id}/notifications?limit=10&offset=20", headers=auth_headers())
     assert len(response3.json()["notifications"]) == 5
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_websocket_realtime(monkeypatch):
     captured_payloads = []
     

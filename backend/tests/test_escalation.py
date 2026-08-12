@@ -247,9 +247,7 @@ def test_audit_log_full_chain(setup_db):
     check_cto_escalations()
     
     # Verify Audit Logs
-    audits = db.query(AuditEvent).filter(
-        AuditEvent.event_type.in_(["SLA_ESCALATION", "CTO_ESCALATION"])
-    ).order_by(AuditEvent.created_at.asc()).all()
+    audits = db.query(AuditEvent).order_by(AuditEvent.created_at.asc()).all()
     
     assert len(audits) == 2
     assert audits[0].event_type == "SLA_ESCALATION"

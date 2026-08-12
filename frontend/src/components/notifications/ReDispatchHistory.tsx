@@ -577,28 +577,9 @@ export default function ReDispatchHistory({
   useEffect(() => {
     fetchHistory();
 
-    // Guard: don't connect socket if URL is not configured
-    const socketUrl = import.meta.env.VITE_SOCKET_URL;
-    if (!socketUrl) {
-      return;
-    }
-
-    // Setup Socket.IO listener for real-time updates with limited reconnection
-    let socket: Socket;
-    try {
-      socket = io(socketUrl, {
-        transports: ["websocket", "polling"],
-        reconnectionAttempts: 5,
-        reconnectionDelay: 2000,
-        timeout: 10000,
-      });
-    } catch (err) {
-      console.warn("ReDispatchHistory: Failed to create socket connection", err);
-      return;
-    }
-
-    socket.on("connect_error", (err) => {
-      console.warn("ReDispatchHistory: Socket connection error:", err.message);
+    // Setup Socket.IO listener for real-time updates
+    const socket: Socket = io(import.meta.env.VITE_SOCKET_URL, {
+      transports: ["websocket", "polling"]
     });
 
     socket.on("redispatch:alert", (data: any) => {
@@ -1094,7 +1075,7 @@ export default function ReDispatchHistory({
                             onClick={() => {
                               navigator.clipboard.writeText(String(jobId));
                               setCopiedJobId(true);
-                              setTimeout(() => setCopiedJobId(false), 1000);
+                              setTimeout(() => setCopiedJobId(false), 1500);
                               addToast({
                                 type: "success",
                                 title: "Copied!",
