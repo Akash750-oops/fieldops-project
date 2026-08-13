@@ -41,7 +41,8 @@ def setup_db():
         technician_location="North Zone",
         technician_status="Available",
         current_jobs=0,
-        max_jobs=5
+        max_jobs=5,
+        tenant_id="tenant-1"
     )
     db.add(tech)
     db.commit()
@@ -50,6 +51,7 @@ def setup_db():
     jobs = [
         Job(
             id=101,
+            tenant_id="tenant-1",
             customer_name="John Doe",
             status="active",
             priority="CRITICAL",
@@ -62,6 +64,7 @@ def setup_db():
         ),
         Job(
             id=102,
+            tenant_id="tenant-1",
             customer_name="Jane Smith",
             status="in progress",
             priority="HIGH",
@@ -74,6 +77,7 @@ def setup_db():
         ),
         Job(
             id=103,
+            tenant_id="tenant-1",
             customer_name="Bob Johnson",
             status="completed",
             priority="MEDIUM",
@@ -86,6 +90,7 @@ def setup_db():
         ),
         Job(
             id=104,
+            tenant_id="tenant-1",
             customer_name="Dave Adams",
             status="cancelled",
             priority="LOW",

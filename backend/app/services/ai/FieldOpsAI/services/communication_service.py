@@ -100,6 +100,9 @@ from app.services.ai.guardrails.tone_validator import (
     ToneValidator,
 )
 
+from app.services.ai.FieldOpsAI.schemas.communication_configuration import (
+    CommunicationChannelDisabledError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -443,6 +446,9 @@ class CommunicationService:
                         "invalid response type."
                     )
 
+            except CommunicationChannelDisabledError:
+                raise
+
             except Exception:
                 # Do not log the exception message. Provider or
                 # parsing exceptions may contain generated text.
@@ -456,15 +462,13 @@ class CommunicationService:
                 )
 
                 return self._process_fallback(
-                    sanitized_context=(
-                        sanitized_context
-                    ),
+                    sanitized_context=sanitized_context,
                     placeholder_map=placeholder_map,
-                    original_guardrail_result=(
-                        generation_failure
-                    ),
+                    original_guardrail_result=generation_failure,
                     original_decision=None,
                 )
+
+                
 
             # ----------------------------------------------
             # Validate AI output
