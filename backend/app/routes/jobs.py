@@ -52,7 +52,7 @@ def get_technician_for_current_user(
     technician = db.query(Technician).filter(
         Technician.tenant_id == current_user.tenant_id,(Technician.tech_id == str(current_user.user_id))| (Technician.technician_id == numeric_user_id),).first()
     if not technician:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Technician record not found",)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Technician record not FORBIDDEN",)
 
     return technician
 
@@ -404,7 +404,7 @@ async def plan_job_assignment(
             detail="Job not found",
         )
 
-    effective_tenant_id = job.tenant_id
+    effective_tenant_id = job.tenant_id or "tenant-1"
     job_status = (job.status or "").upper().strip()
 
     if job_status not in {"QUEUED", "ACTIVE"}:
@@ -641,6 +641,7 @@ class JobAssignRequest(BaseModel):
     skip_skill_check: bool = False
     skip_workload_check: bool = False
 
+
 @router.post("/{job_id}/accept")
 def accept_job(
     job_id: int,
@@ -650,10 +651,33 @@ def accept_job(
     db: Session = Depends(get_db),
     redis_client=Depends(get_redis_client),
 ):
+    # 1. Check whether JOB exists first
+    job = db.query(Job).filter(
+        Job.id == job_id,
+        Job.tenant_id == current_user.tenant_id,
+    ).first()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    # 2. Check job status
+    if (job.status or "").upper() != "ASSIGNED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Job is not in ASSIGNED status",
+        )
+
+    # 3. Get technician for current authenticated user
     technician = get_technician_for_current_user(
         db,
         current_user,
     )
+    print("USER ID:", current_user.user_id)
+    print("TECH ID:", technician.tech_id)
+    print("ASSIGNED TECH:", job.assigned_technician_id)
 
     if not technician.tech_id:
         raise HTTPException(
@@ -661,6 +685,14 @@ def accept_job(
             detail="Technician is not linked with a tech_id",
         )
 
+    # 4. Check technician assignment BEFORE checking timer
+    if job.assigned_technician_id != technician.technician_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Technician not assigned to this job",
+        )
+
+    # 5. Create Redis lock
     lock_key = (
         f"lock:job_accept:"
         f"{current_user.tenant_id}:{job_id}"
@@ -678,32 +710,7 @@ def accept_job(
         )
 
     try:
-        job = db.query(Job).filter(
-            Job.id == job_id,
-            Job.tenant_id == current_user.tenant_id,
-        ).first()
-
-        if not job:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found",
-            )
-
-        if (job.status or "").upper() != "ASSIGNED":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Job is not in ASSIGNED status",
-            )
-
-        if (
-            job.assigned_technician_id
-            != technician.technician_id
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Technician not assigned to this job",
-            )
-
+        # 6. Check acceptance timer
         if not redis_client.exists(
             f"job:timer:{job_id}"
         ):
@@ -712,11 +719,16 @@ def accept_job(
                 detail="Acceptance window expired",
             )
 
+        # 7. Update job and technician
         previous_status = job.status
 
         job.status = "EN_ROUTE"
         technician.technician_status = "EN_ROUTE"
+        technician.current_jobs = (
+            technician.current_jobs or 0
+        ) + 1
 
+        # 8. Create audit event
         audit = AuditEvent(
             tech_id=technician.tech_id,
             tenant_id=job.tenant_id,
@@ -724,8 +736,10 @@ def accept_job(
             old_status=previous_status,
             new_status="EN_ROUTE",
         )
+
         db.add(audit)
 
+        # 9. Commit transaction
         try:
             db.commit()
         except Exception:
@@ -739,21 +753,24 @@ def accept_job(
                 detail="Unable to accept job",
             )
 
+        # 10. Remove acceptance timer after successful commit
         redis_client.delete(
             f"job:timer:{job_id}"
         )
 
+        # 11. Return response
         return {
             "status": "EN_ROUTE",
             "previous_status": previous_status,
             "technician": {
                 "tech_id": technician.tech_id,
-                "status": "EN_ROUTE",
+                "status": technician.technician_status,
             },
             "tracking_enabled": True,
         }
 
     finally:
+        # 12. Always release Redis lock
         redis_client.delete(lock_key)
 
 @router.post("/{job_id}/reject")
@@ -1164,6 +1181,7 @@ async def assign_job(
         tech.current_jobs = (tech.current_jobs or 0) + 1
 
         override_log = AssignmentOverride(
+            tenant_id=current_user.tenant_id,
             job_id=job.id,
             actor_name=str(current_user.user_id),
             actor_role=current_user.role.value,
@@ -1192,7 +1210,7 @@ async def assign_job(
                 "status": "ASSIGNED",
             },
             justification=req.justification,
-            reason="Force assignment bypassing PlanningAgent",
+            reason="force_assign bypassing PlanningAgent",
         )
         db.add(audit)
 

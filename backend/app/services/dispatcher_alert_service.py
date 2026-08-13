@@ -52,7 +52,7 @@ class DispatcherAlertService:
         
         alert = DispatcherAlert(
             id=alert_id,
-            tenant_id=job.organization_id,
+            tenant_id=job.tenant_id,
             type="repeated_redispatch",
             severity=severity,
             job_id=job.id,

@@ -396,7 +396,7 @@ def test_migration_verification():
         script = alembic.script.ScriptDirectory.from_config(alembic_cfg)
         heads = script.get_heads()
         assert len(heads) == 1
-        assert heads[0] == "1ad86b0a4f3f"
+        assert heads[0] == "a7b892c8d632"
         
         from sqlalchemy import inspect
         insp = inspect(engine_mig)

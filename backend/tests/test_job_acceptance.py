@@ -2,10 +2,12 @@ import pytest
 from fastapi.testclient import TestClient
 from datetime import datetime, timezone
 import json
-
+from fastapi import Header
 from app.main import app
 from app.models import Job, Technician, AuditEvent
 from app.database import Base, get_db
+from app.auth.dependencies import get_current_user, AuthenticatedUser
+from app.auth.rbac import UserRole
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
@@ -42,6 +44,11 @@ class MockRedis:
             del self.data[key]
             return 1
         return 0
+    def expire(self, key, seconds):
+        return key in self.data
+    def incr(self, key):
+        self.data[key] = int(self.data.get(key, 0)) + 1
+        return self.data[key]
 
 mock_redis = MockRedis()
 
@@ -72,10 +79,24 @@ def setup_db():
 @pytest.fixture(autouse=True)
 def apply_overrides():
     app.dependency_overrides[get_db] = override_get_db
-    if "override_get_redis" in globals():
-        app.dependency_overrides[get_redis_client] = override_get_redis
+    app.dependency_overrides[get_redis_client] = override_get_redis
+    app.dependency_overrides[get_current_user] = override_current_user
+
     yield
+
     app.dependency_overrides.clear()
+
+async def override_current_user(
+    authorization: str = Header(None),
+):
+    token = authorization.replace("Bearer ", "") if authorization else ""
+
+    return AuthenticatedUser(
+        user_id=token,
+        tenant_id="tenant-1",
+        role=UserRole.TECHNICIAN,
+        jti="test-jti",
+    )
 
 def test_accept_succeeds_for_valid_assigned_job(setup_db):
     db = setup_db
@@ -86,7 +107,8 @@ def test_accept_succeeds_for_valid_assigned_job(setup_db):
         technician_skill="Plumbing",
         technician_location="0,0",
         technician_status="AVAILABLE",
-        current_jobs=0
+        current_jobs=0,
+        tenant_id="tenant-1",
     )
     db.add(tech)
     db.commit()
@@ -101,7 +123,8 @@ def test_accept_succeeds_for_valid_assigned_job(setup_db):
         contact_number="1234567890",
         preferred_service_date=datetime.now().date(),
         status="ASSIGNED",
-        assigned_technician_id=tech.technician_id
+        assigned_technician_id=tech.technician_id,
+        tenant_id="tenant-1",
     )
     db.add(job)
     db.commit()
@@ -117,6 +140,8 @@ def test_accept_succeeds_for_valid_assigned_job(setup_db):
             "X-Tenant-ID": "tenant-1"
         }
     )
+    print("STATUS:", response.status_code)
+    print("RESPONSE:", response.text)
     
     assert response.status_code == 200
     data = response.json()
@@ -157,7 +182,7 @@ def test_accept_400_not_assigned_status(setup_db):
     job = Job(
         customer_name="Alice", location="1,1", issue_description="Leak",
         priority="HIGH", service_type="Plumbing", contact_number="1234567890",
-        preferred_service_date=datetime.now().date(), status="QUEUED"
+        preferred_service_date=datetime.now().date(), status="QUEUED",tenant_id="tenant-1",
     )
     db.add(job)
     db.commit()
@@ -177,16 +202,28 @@ def test_accept_403_wrong_technician(setup_db):
     db = setup_db
     tech = Technician(
         tech_id="tech-123", technician_name="John", technician_skill="Plumbing",
-        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0
+        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0,
+        tenant_id="tenant-1",
     )
+
+    wrong_tech = Technician(
+    tech_id="wrong-tech",
+    technician_name="Wrong Technician",
+    technician_skill="Plumbing",
+    technician_location="0,0",
+    technician_status="AVAILABLE",
+    current_jobs=0,
+    tenant_id="tenant-1",
+)
     db.add(tech)
+    db.add(wrong_tech)
     db.commit()
     
     job = Job(
         customer_name="Alice", location="1,1", issue_description="Leak",
         priority="HIGH", service_type="Plumbing", contact_number="1234567890",
         preferred_service_date=datetime.now().date(), status="ASSIGNED",
-        assigned_technician_id=1
+        assigned_technician_id=tech.technician_id,tenant_id="tenant-1",
     )
     db.add(job)
     db.commit()
@@ -205,7 +242,8 @@ def test_accept_423_expired_window(setup_db):
     db = setup_db
     tech = Technician(
         tech_id="tech-123", technician_name="John", technician_skill="Plumbing",
-        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0
+        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0,
+        tenant_id="tenant-1",
     )
     db.add(tech)
     db.commit()
@@ -214,7 +252,7 @@ def test_accept_423_expired_window(setup_db):
         customer_name="Alice", location="1,1", issue_description="Leak",
         priority="HIGH", service_type="Plumbing", contact_number="1234567890",
         preferred_service_date=datetime.now().date(), status="ASSIGNED",
-        assigned_technician_id=1
+        assigned_technician_id=tech.technician_id,tenant_id="tenant-1",
     )
     db.add(job)
     db.commit()
@@ -234,7 +272,8 @@ def test_accept_409_concurrent_modification(setup_db):
     db = setup_db
     tech = Technician(
         tech_id="tech-123", technician_name="John", technician_skill="Plumbing",
-        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0
+        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0,
+        tenant_id="tenant-1",
     )
     db.add(tech)
     db.commit()
@@ -243,7 +282,7 @@ def test_accept_409_concurrent_modification(setup_db):
         customer_name="Alice", location="1,1", issue_description="Leak",
         priority="HIGH", service_type="Plumbing", contact_number="1234567890",
         preferred_service_date=datetime.now().date(), status="ASSIGNED",
-        assigned_technician_id=1
+        assigned_technician_id=tech.technician_id,tenant_id="tenant-1",
     )
     db.add(job)
     db.commit()
@@ -251,7 +290,7 @@ def test_accept_409_concurrent_modification(setup_db):
     mock_redis.set(f"job:timer:{job.id}", "1")
     
     # Simulate concurrent lock
-    mock_redis.set(f"lock:job_accept:{job.id}", "locked", nx=True)
+    mock_redis.set(f"lock:job_accept:tenant-1:{job.id}", "locked", nx=True)
     
     response = client.post(
         f"/jobs/{job.id}/accept",

@@ -1,7 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
-from datetime import datetime, timezone
+from datetime import datetime
 
+from app.auth.dependencies import get_current_user, AuthenticatedUser
+from app.auth.rbac import UserRole
 from app.main import app
 from app.models import Job, Technician, AuditEvent, DispatcherNotification, User
 from app.database import Base, get_db
@@ -11,55 +13,99 @@ from sqlalchemy.orm import sessionmaker
 from app.redis_client import get_redis_client
 from app.auth.jwt_handler import create_access_token
 
-# Setup test DB
+from fakeredis import FakeRedis
+
+
+# ============================================================
+# Test Database
+# ============================================================
+
 SQLALCHEMY_DATABASE_URL = "sqlite://"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+
+TestingSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+)
+
 
 def override_get_db():
+    db = TestingSessionLocal()
     try:
-        db = TestingSessionLocal()
         yield db
     finally:
         db.close()
 
-client = TestClient(app)
 
-from fakeredis import FakeRedis
+# ============================================================
+# Fake Redis
+# ============================================================
 
 mock_redis = FakeRedis(decode_responses=True)
+
 
 def override_get_redis():
     return mock_redis
 
 
+# ============================================================
+# Test Client
+# ============================================================
+
+client = TestClient(app)
+
+
+# ============================================================
+# Database Fixture
+# ============================================================
+
 @pytest.fixture(autouse=True)
 def setup_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+
     db = TestingSessionLocal()
-    
-    # Cleanup
-    db.query(DispatcherNotification).delete()
-    db.query(AuditEvent).delete()
-    db.query(Job).delete()
-    db.query(Technician).delete()
-    db.commit()
-    
-    # Reset mock redis
+
     mock_redis.flushall()
-    
+
     yield db
+
     db.close()
+
+
+# ============================================================
+# Authentication Override
+# ============================================================
+
+async def override_get_current_user():
+    return AuthenticatedUser(
+        user_id="tech-123",
+        tenant_id="tenant-1",
+        role=UserRole.TECHNICIAN,
+        jti="test-jti",
+    )
 
 
 @pytest.fixture(autouse=True)
 def apply_overrides():
     app.dependency_overrides[get_db] = override_get_db
-    if "override_get_redis" in globals():
-        app.dependency_overrides[get_redis_client] = override_get_redis
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_redis_client] = override_get_redis
+
     yield
+
     app.dependency_overrides.clear()
+
+
+# ============================================================
+# 1. Successful rejection
+# ============================================================
 
 def test_reject_succeeds_with_valid_reason(setup_db):
     db = setup_db
@@ -95,9 +141,11 @@ def test_reject_succeeds_with_valid_reason(setup_db):
         tenant_id="tenant-1",
     )
 
+
     db.add(tech)
     db.commit()
     db.refresh(tech)
+
 
     job = Job(
         customer_name="Alice",
@@ -111,11 +159,13 @@ def test_reject_succeeds_with_valid_reason(setup_db):
         assigned_technician_id=tech.technician_id,
         tenant_id="tenant-1"
     )
+
     db.add(job)
     db.commit()
     db.refresh(job)
-    
+
     reason_text = "Customer is way too far away from me"
+
     response = client.post(
         f"/jobs/{job.id}/reject",
         headers={
@@ -124,32 +174,61 @@ def test_reject_succeeds_with_valid_reason(setup_db):
         },
         json={"reason": reason_text}
     )
-    
+
+    print("STATUS:", response.status_code)
+    print("BODY:", response.text)
+
     assert response.status_code == 200
+
     data = response.json()
+
     assert data["status"] == "QUEUED"
     assert data["rejection"]["reason"] == reason_text
     assert data["cooldown"]["duration_seconds"] == 120
     assert data["re_dispatch"]["triggered"] is True
-    
+
     # Verify DB state
     db.refresh(job)
     db.refresh(tech)
+
     assert job.status == "QUEUED"
     assert tech.current_jobs == 0
     assert tech.technician_status == "AVAILABLE"
-    
+
     # Verify Redis cooldown
-    assert mock_redis.exists(f"job:cooldown:{job.id}:tech-123")
-    
+    assert mock_redis.exists(
+        f"job:cooldown:{job.id}:tech-123"
+    )
+
     # Verify Audit Event
-    audit = db.query(AuditEvent).filter(AuditEvent.tech_id == "tech-123", AuditEvent.event_type == "JOB_REJECTED").first()
+    audit = (
+        db.query(AuditEvent)
+        .filter(
+            AuditEvent.tech_id == "tech-123",
+            AuditEvent.event_type == "JOB_REJECTED",
+        )
+        .first()
+    )
+
     assert audit is not None
     assert audit.reason == reason_text
-    
-    # Verify Notification
-    notif = db.query(DispatcherNotification).filter(DispatcherNotification.tech_id == "tech-123").first()
+
+    # Verify Dispatcher Notification
+    notif = (
+        db.query(DispatcherNotification)
+        .filter(
+            DispatcherNotification.tech_id == "tech-123"
+        )
+        .first()
+    )
+
+    assert notif is not None
     assert reason_text in notif.message
+
+
+# ============================================================
+# 2. Reason too short
+# ============================================================
 
 def test_reject_400_reason_too_short(setup_db):
     db = setup_db
@@ -182,7 +261,13 @@ def test_reject_400_reason_too_short(setup_db):
         },
         json={"reason": "short"}
     )
-    assert response.status_code == 400 # Pydantic validation error
+
+    assert response.status_code == 400
+
+
+# ============================================================
+# 3. Job not found
+# ============================================================
 
 def test_reject_404_job_not_found(setup_db):
     db = setup_db
@@ -218,6 +303,11 @@ def test_reject_404_job_not_found(setup_db):
 
 
     assert response.status_code == 404
+
+
+# ============================================================
+# 4. Wrong technician
+# ============================================================
 
 def test_reject_403_wrong_technician(setup_db):
     db = setup_db
@@ -287,17 +377,49 @@ def test_reject_403_wrong_technician(setup_db):
         tenant_id="tenant-1"
     )
 
+
     db.add(job)
     db.commit()
     db.refresh(job)
 
+    # IMPORTANT:
+    # The current authentication override returns tech-123.
+    # Therefore the Authorization header itself cannot change
+    # current_user to wrong-tech.
+    #
+    # To test the actual authorization logic, temporarily override
+    # the dependency with wrong-tech for this request.
+
+    async def override_wrong_technician():
+        return AuthenticatedUser(
+            user_id="wrong-tech",
+            tenant_id="tenant-1",
+            role=UserRole.TECHNICIAN,
+            jti="wrong-tech-jti",
+        )
+
+    app.dependency_overrides[get_current_user] = override_wrong_technician
+
+    db.refresh(job)
+
     response = client.post(
         f"/jobs/{job.id}/reject",
+        headers={
+            "Authorization": "Bearer wrong-tech",
+            "X-Tenant-ID": "tenant-1",
+        },
+        json={
+            "reason": "Customer is way too far away from me"
+        },
         headers={
             "Authorization": f"Bearer {access_token}",
             "X-Tenant-ID": "tenant-1"
         },
         json={"reason": "Customer is way too far away from me"}
     )
+
+    print("STATUS:", response.status_code)
+    print("BODY:", response.text)
+
 
     assert response.status_code == 403

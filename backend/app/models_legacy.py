@@ -855,7 +855,7 @@ class CommunicationChannelConfiguration(Base):
     organization=relationship("Organization",back_populates="communication_channel_configurations")
 
     __table_args__ = (
-        UniqueConstraint("channel", name="uq_communication_channel_configuration_channel"),
+        UniqueConstraint("tenant_id","channel", name="uq_communication_channel_configuration_channel"),
         CheckConstraint("state IN ('ENABLED', 'DISABLED', 'EMERGENCY_ONLY')", name="ck_communication_channel_state"),
         CheckConstraint("revision >= 1", name="ck_communication_channel_revision"),
     )
