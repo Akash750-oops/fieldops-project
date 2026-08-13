@@ -206,6 +206,7 @@ def test_cto_escalation_after_15min(setup_db):
     
     # Manager notified 16 minutes ago, no response
     escalation = SLAEscalation(
+        tenant_id="test-tenant",
         job_id=job.id,
         manager_notified_at=now - timedelta(minutes=16),
         status="ESCALATED"

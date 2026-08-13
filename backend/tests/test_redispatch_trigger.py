@@ -5,9 +5,10 @@ from unittest.mock import patch
 from fakeredis import FakeRedis
 from freezegun import freeze_time
 from contextlib import contextmanager
-
+from app.auth.jwt_handler import create_access_token
 from app.main import app
 from app.models import Job, Technician, AuditEvent, DispatcherNotification
+from app.models.user import User
 from app.database import Base, get_db
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -61,14 +62,802 @@ def setup_db():
     # Reset fake redis
     fake_redis.flushall()
     
-    yield db
-    Base.metadata.drop_all(bind=engine)
+    try:
+        yield db
+    finally:
+        db.close()
+        Base.metadata.drop_all(bind=engine)
 
 @patch("app.routes.jobs.with_job_lock", side_effect=dummy_job_lock)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def test_rejection_triggers_redispatch(mock_lock, setup_db):
     db = setup_db
+    user = User(
+    id="tech-123",
+    email="tech123@test.com",
+    password_hash="test-password",
+    first_name="John",
+    last_name="Technician",
+    role="technician",
+    tenant_id="tenant-1",
+    is_active=True,
+    )
+    db.add(user)
+    db.commit()
     tech = Technician(
-        tech_id="tech-123", technician_name="John", technician_status="BUSY", current_jobs=1,
+        tech_id="tech-123", tenant_id="tenant-1",technician_name="John", technician_status="BUSY", current_jobs=1,
         technician_skill="Plumbing", technician_location="0,0"
     )
     db.add(tech)
@@ -76,17 +865,22 @@ def test_rejection_triggers_redispatch(mock_lock, setup_db):
     db.refresh(tech)
     
     job = Job(
-        customer_name="Alice", location="1,1", issue_description="Leak",
+        tenant_id="tenant-1",customer_name="Alice", location="1,1", issue_description="Leak",
         priority="P4", service_type="Plumbing", contact_number="123",
         preferred_service_date=datetime.now().date(), status="ASSIGNED",
         assigned_technician_id=tech.technician_id
     )
     db.add(job)
     db.commit()
+    token = create_access_token(
+    user_id="tech-123",
+    tenant_id="tenant-1",
+    role="technician",
+    )
     
     response = client.post(
         f"/jobs/{job.id}/reject",
-        headers={"Authorization": "Bearer tech-123", "X-Tenant-ID": "tenant-1"},
+        headers={"Authorization": f"Bearer {token}", "X-Tenant-ID": "tenant-1"},
         json={"reason": "Customer too far"}
     )
     
@@ -111,7 +905,7 @@ def test_timeout_triggers_redispatch(setup_db):
     db.refresh(tech)
     
     job = Job(
-        customer_name="Alice", location="1,1", issue_description="Leak",
+        tenant_id="tenant-1",customer_name="Alice", location="1,1", issue_description="Leak",
         priority="P4", service_type="Plumbing", contact_number="123",
         preferred_service_date=datetime.now().date(), status="ASSIGNED",
         assigned_technician_id=tech.technician_id,
@@ -141,7 +935,7 @@ def test_offline_triggers_redispatch(setup_db):
     db.refresh(tech)
     
     job = Job(
-        customer_name="Alice", location="1,1", issue_description="Leak",
+        tenant_id="tenant-1",customer_name="Alice", location="1,1", issue_description="Leak",
         priority="P1", service_type="Plumbing", contact_number="123",
         preferred_service_date=datetime.now().date(), status="ASSIGNED",
         assigned_technician_id=tech.technician_id
@@ -158,7 +952,7 @@ def test_offline_triggers_redispatch(setup_db):
 def test_status_assigned_to_queued(setup_db):
     db = setup_db
     job = Job(
-        customer_name="Alice", location="1,1", issue_description="Leak",
+        tenant_id="tenant-1",customer_name="Alice", location="1,1", issue_description="Leak",
         priority="P4", service_type="Plumbing", contact_number="123",
         preferred_service_date=datetime.now().date(), status="ASSIGNED"
     )
@@ -173,7 +967,7 @@ def test_status_assigned_to_queued(setup_db):
 def test_priority_bump_applied(setup_db):
     db = setup_db
     job = Job(
-        customer_name="Alice", location="1,1", issue_description="Leak",
+        tenant_id="tenant-1",customer_name="Alice", location="1,1", issue_description="Leak",
         priority="P4", service_type="Plumbing", contact_number="123",
         preferred_service_date=datetime.now().date(), status="ASSIGNED"
     )
@@ -191,7 +985,7 @@ def test_priority_bump_applied(setup_db):
 def test_attempt_count_incremented(setup_db):
     db = setup_db
     job = Job(
-        customer_name="Alice", location="1,1", issue_description="Leak",
+        tenant_id="tenant-1",customer_name="Alice", location="1,1", issue_description="Leak",
         priority="P4", service_type="Plumbing", contact_number="123",
         preferred_service_date=datetime.now().date(), status="ASSIGNED",
         attempt_count=2
@@ -211,9 +1005,9 @@ def test_queue_position_by_priority(setup_db):
     base_time = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     
     jobs = [
-        Job(priority="P3", status="ASSIGNED", created_at=base_time, customer_name="N", location="L", issue_description="I", service_type="T", contact_number="1", preferred_service_date=base_time.date()),
-        Job(priority="P1", status="ASSIGNED", created_at=base_time, customer_name="N", location="L", issue_description="I", service_type="T", contact_number="1", preferred_service_date=base_time.date()),
-        Job(priority="P2", status="ASSIGNED", created_at=base_time, customer_name="N", location="L", issue_description="I", service_type="T", contact_number="1", preferred_service_date=base_time.date())
+        Job(tenant_id="tenant-1",priority="P3", status="ASSIGNED", created_at=base_time, customer_name="N", location="L", issue_description="I", service_type="T", contact_number="1", preferred_service_date=base_time.date()),
+        Job(tenant_id="tenant-1",priority="P1", status="ASSIGNED", created_at=base_time, customer_name="N", location="L", issue_description="I", service_type="T", contact_number="1", preferred_service_date=base_time.date()),
+        Job(tenant_id="tenant-1",priority="P2", status="ASSIGNED", created_at=base_time, customer_name="N", location="L", issue_description="I", service_type="T", contact_number="1", preferred_service_date=base_time.date())
     ]
     db.add_all(jobs)
     db.commit()
@@ -243,7 +1037,7 @@ def test_no_trigger_for_accepted(setup_db):
     db.refresh(tech)
     
     job = Job(
-        customer_name="Alice", location="1,1", issue_description="Leak",
+        tenant_id="tenant-1",customer_name="Alice", location="1,1", issue_description="Leak",
         priority="P4", service_type="Plumbing", contact_number="123",
         preferred_service_date=datetime.now().date(), status="EN_ROUTE",
         assigned_technician_id=tech.technician_id

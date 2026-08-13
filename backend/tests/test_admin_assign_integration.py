@@ -5,9 +5,18 @@ import json
 import uuid
 from contextlib import contextmanager
 from unittest.mock import patch
-
+from app.auth.jwt_handler import create_access_token
 from app.main import app
-from app.models import Job, Technician, AuditEvent, SLAEscalation, AssignmentOverride, OverrideAuditEvent
+from app.models import (
+    Job,
+    Technician,
+    User,
+    Organization,
+    AuditEvent,
+    SLAEscalation,
+    AssignmentOverride,
+    OverrideAuditEvent,
+)
 from app.database import Base, get_db
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
@@ -31,30 +40,51 @@ client = TestClient(app)
 class MockRedis:
     def __init__(self):
         self.data = {}
-        
+
     def set(self, key, value, nx=False, ex=None):
         if nx and key in self.data:
             return False
         self.data[key] = value
         return True
-        
+
     def setex(self, key, time, value):
         self.data[key] = value
         return True
-        
+
     def get(self, key):
         return self.data.get(key)
-        
+
     def exists(self, key):
         return key in self.data
-        
+
     def delete(self, key):
         if key in self.data:
             del self.data[key]
             return 1
         return 0
 
+    def incr(self, key, amount=1):
+        current = self.data.get(key, 0)
+
+        try:
+            current = int(current)
+        except (TypeError, ValueError):
+            current = 0
+
+        current += amount
+        self.data[key] = current
+        return current
+    def expire(self, key, time):
+        return key in self.data
+
 mock_redis = MockRedis()
+
+def get_test_token():
+    return create_access_token(
+        user_id="test-admin",
+        tenant_id="tenant-1",
+        role="admin",
+    )
 
 def override_get_redis():
     return mock_redis
@@ -73,6 +103,31 @@ def setup_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
+
+    organization = Organization(
+        id="tenant-1",
+        name="Test Organization",
+        slug="test-organization",
+    )
+    
+    db.add(organization)
+    db.commit()
+
+    test_user = User(
+        id="test-admin",
+        email="test-admin@example.com",
+        password_hash="test-password",
+        first_name="Test",
+        last_name="Admin",
+        role="admin",
+        tenant_id="tenant-1",
+        is_active=True,
+        is_email_verified=True,
+    )
+
+    db.add(test_user)
+    db.commit()
+
     
     db.query(AuditEvent).delete()
     db.query(Job).delete()
@@ -100,7 +155,7 @@ def test_technicians_metrics_routing(setup_db):
     
     response = client.get(
         "/technicians/metrics",
-        headers={"Authorization": "Bearer admin", "X-Tenant-ID": "tenant-1"}
+        headers={"Authorization": f"Bearer {get_test_token()}", "X-Tenant-ID": "tenant-1"}
     )
     
     assert response.status_code == 200
@@ -112,6 +167,7 @@ def test_jobs_assign_skill_and_workload_validation(setup_db):
     # 1. Create a tech with skill Plumbing and workload 3/3
     tech = Technician(
         tech_id="tech-xyz",
+        tenant_id="tenant-1",
         technician_name="John Plumber",
         technician_skill="Plumbing",
         technician_location="0,0",
@@ -125,6 +181,7 @@ def test_jobs_assign_skill_and_workload_validation(setup_db):
     
     # 2. Create a job requiring HVAC
     job = Job(
+        tenant_id="tenant-1",
         customer_name="Alice",
         location="1,1",
         issue_description="AC leak",
@@ -142,7 +199,7 @@ def test_jobs_assign_skill_and_workload_validation(setup_db):
     # Check 1: Should fail skill verification if skip_skill_check is False
     resp1 = client.post(
         f"/jobs/{job.id}/assign",
-        headers={"Authorization": "Bearer admin", "X-Tenant-ID": "tenant-1"},
+        headers={"Authorization": f"Bearer {get_test_token()}", "X-Tenant-ID": "tenant-1"},
         json={
             "tech_id": "tech-xyz",
             "justification": "This is a dummy justification with at least 20 chars.",
@@ -156,7 +213,7 @@ def test_jobs_assign_skill_and_workload_validation(setup_db):
     # Check 2: Should fail workload check if skip_workload_check is False
     resp2 = client.post(
         f"/jobs/{job.id}/assign",
-        headers={"Authorization": "Bearer admin", "X-Tenant-ID": "tenant-1"},
+        headers={"Authorization": f"Bearer {get_test_token()}", "X-Tenant-ID": "tenant-1"},
         json={
             "tech_id": "tech-xyz",
             "justification": "This is a dummy justification with at least 20 chars.",
@@ -170,7 +227,7 @@ def test_jobs_assign_skill_and_workload_validation(setup_db):
     # Check 3: Should succeed if both checks are bypassed or skipped
     resp3 = client.post(
         f"/jobs/{job.id}/assign",
-        headers={"Authorization": "Bearer admin", "X-Tenant-ID": "tenant-1"},
+        headers={"Authorization": f"Bearer {get_test_token()}", "X-Tenant-ID": "tenant-1"},
         json={
             "tech_id": "tech-xyz",
             "justification": "This is a dummy justification with at least 20 chars.",
@@ -191,6 +248,7 @@ def test_escalation_force_assign_timer(setup_db):
 
 
         tech_id="tech-abc",
+        tenant_id="tenant-1",
         technician_name="Bob Mechanic",
         technician_skill="Plumbing",
         technician_location="0,0",
@@ -200,6 +258,7 @@ def test_escalation_force_assign_timer(setup_db):
     db.add(tech)
     
     job = Job(
+        tenant_id="tenant-1",
         customer_name="Charlie",
         location="1,1",
         issue_description="Leak",
@@ -214,6 +273,7 @@ def test_escalation_force_assign_timer(setup_db):
     db.refresh(job)
     
     esc = SLAEscalation(
+        tenant_id="tenant-1",
         job_id=job.id,
         status="ESCALATED",
         manager_notified_at=datetime.now(timezone.utc)
@@ -223,12 +283,15 @@ def test_escalation_force_assign_timer(setup_db):
     
     response = client.post(
         f"/escalations/{job.id}/force-assign",
-        headers={"Authorization": "Bearer admin", "X-Tenant-ID": "tenant-1"},
+        headers={"Authorization": f"Bearer {get_test_token()}", "X-Tenant-ID": "tenant-1"},
         json={
             "tech_id": "tech-abc",
             "reason": "Expert tech needed immediately"
         }
     )
+    print("STATUS:", response.status_code)
+    print("RESPONSE:", response.text)
+
     
     assert response.status_code == 200
     assert response.json()["message"] == "Job force-assigned successfully"

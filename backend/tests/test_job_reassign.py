@@ -38,26 +38,33 @@ def override_get_db():
 client = TestClient(app)
 
 
+
 class MockRedis:
     def __init__(self):
         self.data = {}
+
 
     def set(self, key, value, nx=False, ex=None):
         if nx and key in self.data:
             return False
 
+
         self.data[key] = value
         return True
+
 
     def setex(self, key, time, value):
         self.data[key] = value
         return True
 
+
     def get(self, key):
         return self.data.get(key)
 
+
     def exists(self, key):
         return key in self.data
+
 
     def delete(self, key):
         if key in self.data:

@@ -147,6 +147,18 @@ class ManagedPromptTemplateRegistry:
             status=payload.status,
             is_active=True
         )
+        print("EXISTING:", [
+            {
+                "id": x.id,
+                "name": x.name,
+                "type": x.type,
+                "channel": x.channel,
+                "locale": x.locale,
+                "agent_type": x.agent_type,
+                "is_active": x.is_active,
+            }
+            for x in existing
+        ])
         if existing:
             raise ConflictError("Active template with same attributes already exists.")
 

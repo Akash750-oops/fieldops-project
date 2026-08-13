@@ -5,7 +5,7 @@ from unittest.mock import patch
 from fakeredis import FakeRedis
 from freezegun import freeze_time
 from contextlib import contextmanager
-
+from app.models.user import User
 from app.main import app
 from app.models import Job, Technician, AuditEvent, DispatcherNotification
 from app.database import Base, get_db
@@ -16,6 +16,14 @@ from app.redis_client import get_redis_client
 from app.services.exclusion_service import ExclusionService
 from app.services.cooldown_service import CooldownService
 from app.services.re_dispatch_queue import ReDispatchQueueService
+from app.auth.jwt_handler import create_access_token
+from app.models.organization import Organization
+
+
+
+
+
+
 
 # Setup test DB
 SQLALCHEMY_DATABASE_URL = "sqlite://"
@@ -33,6 +41,13 @@ client = TestClient(app)
 
 fake_redis = FakeRedis(decode_responses=True)
 
+def create_test_token():
+    return create_access_token(
+        user_id="test-user",
+        tenant_id="tenant-1",
+        role="dispatcher",
+    )
+
 def override_get_redis():
     return fake_redis
 
@@ -43,16 +58,31 @@ def dummy_job_lock(*args, **kwargs):
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
-    
+    test_user = User(
+        id="test-user",
+        email="test@example.com",
+        password_hash="test-password",
+        first_name="Test",
+        last_name="User",
+        role="dispatcher",
+        tenant_id="tenant-1",
+        is_active=True,
+        is_email_verified=True,
+    )
+    db.add(test_user)
+    db.commit()
+    print("TEST USER:", db.query(User).filter(User.id == "test-user").first())
     # Cleanup
     db.query(DispatcherNotification).delete()
     db.query(AuditEvent).delete()
     db.query(Job).delete()
     db.query(Technician).delete()
     db.commit()
+    
     
     # Reset fake redis
     fake_redis.flushall()
@@ -117,11 +147,17 @@ def test_timeout_tech_excluded(setup_db):
     tech_id = "tech-4"
     
     job = Job(
-        customer_name="Customer", location="0,0", issue_description="Issue",
-        priority="P1", service_type="Service", contact_number="123",
-        preferred_service_date=datetime.now().date(), status="ASSIGNED",
-        created_at=datetime.now(timezone.utc)
-    )
+    customer_name="Customer",
+    location="0,0",
+    issue_description="Issue",
+    priority="P4",
+    service_type="Service",
+    contact_number="123",
+    preferred_service_date=datetime.now().date(),
+    status="ASSIGNED",
+    created_at=datetime.now(timezone.utc),
+    tenant_id="tenant-1"
+)
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -141,7 +177,7 @@ def test_offline_tech_excluded(setup_db):
     
     job = Job(
         customer_name="Customer", location="0,0", issue_description="Issue",
-        priority="P1", service_type="Service", contact_number="123",
+        priority="P1", service_type="Service", contact_number="123",tenant_id="tenant-1",
         preferred_service_date=datetime.now().date(), status="ASSIGNED",
         created_at=datetime.now(timezone.utc)
     )
@@ -159,15 +195,24 @@ def test_offline_tech_excluded(setup_db):
 @patch("app.routes.jobs.with_job_lock", side_effect=dummy_job_lock)
 def test_exclusion_checked_in_planning(mock_lock, setup_db):
     db = setup_db
+    organization = Organization(
+    id="tenant-1",
+    name="Test Organization",
+    slug="test-organization",
+    status="ACTIVE",
+    )
+
+    db.add(organization)
+    db.commit()
     
-    tech1 = Technician(tech_id="tech-1", technician_name="Alice", technician_status="AVAILABLE", technician_skill="Skill", technician_location="0,0")
-    tech2 = Technician(tech_id="tech-2", technician_name="Bob", technician_status="AVAILABLE", technician_skill="Skill", technician_location="0,0")
+    tech1 = Technician(tech_id="tech-1",tenant_id="tenant-1",technician_name="Alice", technician_status="AVAILABLE", technician_skill="Skill", technician_location="0,0")
+    tech2 = Technician(tech_id="tech-2",tenant_id="tenant-1",technician_name="Bob", technician_status="AVAILABLE", technician_skill="Skill", technician_location="0,0")
     db.add_all([tech1, tech2])
     db.commit()
     
     job = Job(
         customer_name="Customer", location="0,0", issue_description="Issue",
-        priority="P1", service_type="Service", contact_number="123",
+        priority="P1", service_type="Service", contact_number="123",tenant_id="tenant-1",
         preferred_service_date=datetime.now().date(), status="QUEUED",
         required_skill="Skill"
     )
@@ -176,14 +221,16 @@ def test_exclusion_checked_in_planning(mock_lock, setup_db):
     
     # Exclude Tech 1
     ExclusionService.add_exclusion(fake_redis, str(job.id), "tech-1", "Rejected previously")
-    
+    token = create_test_token()
     response = client.post(
         f"/jobs/{job.id}/plan",
-        headers={"X-Tenant-ID": "tenant-1", "Authorization": "Bearer some-token"}
+        headers={"X-Tenant-ID": "tenant-1", "Authorization": f"Bearer {token}"},
     )
     
     assert response.status_code == 200, response.text
     data = response.json()
+    print("\nPLAN RESPONSE:")
+    print(data)
     
     ranked = data.get("ranked_technicians", [])
     disqualified = data.get("disqualified_technicians", [])
@@ -202,7 +249,7 @@ def test_exclusion_persists_across_cycles(setup_db):
         customer_name="Customer", location="0,0", issue_description="Issue",
         priority="P4", service_type="Service", contact_number="123",
         preferred_service_date=datetime.now().date(), status="ASSIGNED",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),tenant_id="tenant-1"
     )
     db.add(job)
     db.commit()
@@ -229,7 +276,7 @@ def test_exclusion_persists_across_cycles(setup_db):
 def test_manual_override_bypasses_exclusion(mock_lock, setup_db):
     db = setup_db
     
-    tech = Technician(tech_id="tech-1", technician_name="Alice", technician_status="AVAILABLE", technician_skill="Skill", technician_location="0,0")
+    tech = Technician(tech_id="tech-1",tenant_id="tenant-1",technician_name="Alice", technician_status="AVAILABLE", technician_skill="Skill", technician_location="0,0")
     db.add(tech)
     db.commit()
     db.refresh(tech)
@@ -238,7 +285,7 @@ def test_manual_override_bypasses_exclusion(mock_lock, setup_db):
         customer_name="Customer", location="0,0", issue_description="Issue",
         priority="P1", service_type="Service", contact_number="123",
         preferred_service_date=datetime.now().date(), status="QUEUED",
-        required_skill="Skill"
+        required_skill="Skill",tenant_id="tenant-1"
     )
     db.add(job)
     db.commit()
@@ -247,9 +294,10 @@ def test_manual_override_bypasses_exclusion(mock_lock, setup_db):
     ExclusionService.add_exclusion(fake_redis, str(job.id), tech.tech_id, "Permanently excluded")
     
     # Try manual assign (should bypass exclusion)
+    token = create_test_token()
     response = client.post(
         f"/jobs/{job.id}/assign",
-        headers={"X-Permissions": "dispatcher", "Authorization": "Bearer admin", "X-Tenant-ID": "tenant-1"},
+        headers={"X-Permissions": "dispatcher", "Authorization": f"Bearer {token}", "X-Tenant-ID": "tenant-1"},
         json={"tech_id": tech.tech_id, "justification": "This is a very long and detailed justification that bypasses all length limits imposed by the rules."}
     )
     

@@ -3,7 +3,9 @@ from fastapi.testclient import TestClient
 from datetime import datetime, timezone, timedelta
 from app.main import app
 from app.models import Job, Technician, GPSPing
+from app.auth.rbac import UserRole
 from app.database import Base, get_db
+from app.auth.dependencies import get_current_user, AuthenticatedUser
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
@@ -36,8 +38,19 @@ def setup_db():
 
 @pytest.fixture(autouse=True)
 def apply_overrides():
+    async def override_current_user():
+        return AuthenticatedUser(
+            user_id="test-dispatcher",
+            tenant_id="tenant-1",
+            role=UserRole.DISPATCHER,
+            jti="test-jti",
+        )
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_current_user
+
     yield
+
     app.dependency_overrides.clear()
 
 def test_share_job_and_track_flow():

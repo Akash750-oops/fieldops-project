@@ -132,7 +132,7 @@ def extend_sla(
     )
     db.add(audit)
 
-    mark_responded(esc,f"Extended SLA by {payload.minutes} min",)
+    mark_responded(db,esc,f"Extended SLA by {payload.minutes} min",)
 
     try:
         db.commit()
@@ -196,6 +196,7 @@ def cancel_job(
     db.add(audit)
 
     mark_responded(
+        db,
         esc,
         "Cancelled Job",
     )
@@ -329,6 +330,7 @@ async def force_assign(
     db.add(db_notification)
 
     mark_responded(
+        db,
         escalation,
         f"Force Assigned to {recipient_tech_id}",
     )

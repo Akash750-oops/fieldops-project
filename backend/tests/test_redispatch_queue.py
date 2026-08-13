@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from app.services.re_dispatch_queue import ReDispatchQueueService
 
 class MockJob:
-    def __init__(self, id, priority, status="ASSIGNED", attempt_count=0, bumped_at=None, created_at=None):
+    def __init__(self, id, priority, status="ASSIGNED", attempt_count=0, bumped_at=None, created_at=None, tenant_id="tenant1"):
         self.id = id
         self.priority = priority
         self.status = status
@@ -13,6 +13,7 @@ class MockJob:
         self.created_at = created_at or datetime.now(timezone.utc)
         self.previous_priority = None
         self.assigned_technician_id = 123
+        self.tenant_id = tenant_id
 
 def test_priority_bump_rules():
     # P1 never bumps

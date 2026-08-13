@@ -18,6 +18,10 @@ from app.main import app
 from app.database import Base, get_db
 from app import models
 from app.services import socket_manager
+from app.auth.dependencies import get_current_user
+from app.auth.rbac import UserRole
+from app.auth.dependencies import AuthenticatedUser
+
 
 # 1. Test database setup
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -64,6 +68,7 @@ class InAppNotificationFactory(factory.alchemy.SQLAlchemyModelFactory):
 
     id = factory.LazyFunction(lambda: str(uuid.uuid4()))
     tech_id = ""
+    tenant_id = "tenant-123"
     job_id = ""
     type = "job_assignment"
     title = "New Job"
@@ -91,8 +96,22 @@ def client(db_session):
             yield db_session
         finally:
             pass
+
+    test_user = AuthenticatedUser(
+        user_id="test-user",
+        tenant_id="tenant-123",
+        role=UserRole.SUPER_ADMIN,
+        jti="test-jti",
+    )
+
+    def override_get_current_user():
+        return test_user
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+
     yield TestClient(app)
+
     app.dependency_overrides.clear()
 
 @pytest.fixture

@@ -5,13 +5,13 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from pydantic import ValidationError
 import unittest
-
+from app.models.organization import Organization
 from app.services.ai.FieldOpsAI.schemas.communication_configuration import CommunicationMessageCategory, CommunicationChannelState, DeliveryDecision
 from app.services.ai.FieldOpsAI.schemas.customer_profile import CustomerPreferenceDecision
 from app.services.ai.FieldOpsAI.schemas.communication_delivery_policy import CommunicationDeliveryEligibilityDecision
 from app.services.ai.FieldOpsAI.services.communication_delivery_policy_service import CommunicationDeliveryPolicyService
 from app.services.ai.FieldOpsAI.services.customer_preference_service import CustomerPreferencePersistenceError
-
+from app.models.organization import Organization
 import app.services.notification_services as module
 from app.services.notification_services import JobStatusEvent, NotificationRouter
 from app.services.ai.FieldOpsAI.schemas.communication_configuration import CommunicationChannelDisabledError
@@ -850,8 +850,31 @@ def test_8_policy_composition(monkeypatch):
     Base.metadata.create_all(bind=engine)
     TestingSessionLocal = sessionmaker(bind=engine)
     db = TestingSessionLocal()
+    org_a = Organization(
+    id="tenant-a",
+    name="Tenant A",
+    slug="tenant-a",
+    )
+
+    org_b = Organization(
+    id="tenant-b",
+    name="Tenant B",
+    slug="tenant-b",
+    )
+
+    db.add_all([org_a, org_b])
+    db.commit()
+
+    org = Organization(
+        id="t1",
+        name="Test Organization",
+        slug="test-organization",
+    )
+
+    db.add(org)
+    db.commit()
     
-    db.add(CommunicationChannelConfiguration(
+    db.add(CommunicationChannelConfiguration(tenant_id="t1",
         tenant_id="t1",
         channel="SMS",
         state=CommunicationChannelState.ENABLED,
@@ -859,7 +882,7 @@ def test_8_policy_composition(monkeypatch):
         updated_by="sys"
     ))
 
-    db.add(CommunicationChannelConfiguration(
+    db.add(CommunicationChannelConfiguration(tenant_id="t1",
         tenant_id="t1",
         channel="EMAIL",
         state=CommunicationChannelState.DISABLED,
@@ -943,9 +966,24 @@ def test_9_tenant_isolation(monkeypatch):
     Base.metadata.create_all(bind=engine)
     TestingSessionLocal = sessionmaker(bind=engine)
     db = TestingSessionLocal()
+
+    org_a = Organization(
+        id="tenant-a",
+        name="Tenant A",
+        slug="tenant-a"
+    )
+
+    org_b = Organization(
+       id="tenant-b",
+       name="Tenant B",
+       slug="tenant-b"
+    )
+
+    db.add_all([org_a, org_b])
+    db.commit()
     
     # Global config is enabled for both SMS and EMAIL
-    db.add(CommunicationChannelConfiguration(
+    db.add(CommunicationChannelConfiguration(tenant_id="tenant-a",
         tenant_id="tenant-a",
         channel="SMS",
         state=CommunicationChannelState.ENABLED,
@@ -953,7 +991,7 @@ def test_9_tenant_isolation(monkeypatch):
         updated_by="sys"
     ))
 
-    db.add(CommunicationChannelConfiguration(
+    db.add(CommunicationChannelConfiguration(tenant_id="tenant-b",
         tenant_id="tenant-a",
         channel="EMAIL",
         state=CommunicationChannelState.ENABLED,

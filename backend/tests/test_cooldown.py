@@ -14,6 +14,15 @@ from sqlalchemy.orm import sessionmaker
 from app.redis_client import get_redis_client
 from app.services.cooldown_service import CooldownService
 from app.services.exclusion_service import ExclusionService
+from app.auth.dependencies import get_current_user, AuthenticatedUser
+from app.auth.rbac import UserRole
+from fastapi import HTTPException, Request
+from app.auth.dependencies import (
+    get_current_user,
+    get_current_user_or_tenant,
+    AuthenticatedUser,
+)
+from app.auth.rbac import UserRole
 
 # Setup test DB
 SQLALCHEMY_DATABASE_URL = "sqlite://"
@@ -33,6 +42,17 @@ fake_redis = FakeRedis(decode_responses=True)
 
 def override_get_redis():
     return fake_redis
+
+async def override_get_current_user_or_tenant():
+    return (
+        AuthenticatedUser(
+            user_id="test-user",
+            tenant_id="tenant-1",
+            role=UserRole.DISPATCHER,
+            jti="test-jti",
+        ),
+        "tenant-1",
+    )
 
 
 @contextmanager
@@ -58,12 +78,53 @@ def setup_db():
     yield db
     db.close()
 
+def override_get_current_user_or_tenant(request: Request):
+    user = override_get_current_user(request)
+    return user, user.tenant_id
+
+def override_get_current_user(request: Request):
+    token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+
+    if token == "tech-123":
+        return AuthenticatedUser(
+            user_id="tech-123",
+            tenant_id="tenant-1",
+            role=UserRole.TECHNICIAN,
+            jti="test-jti",
+        )
+
+    if token == "dispatcher":
+        return AuthenticatedUser(
+            user_id="dispatcher",
+            tenant_id="tenant-1",
+            role=UserRole.DISPATCHER,
+            jti="test-jti",
+        )
+
+    if token == "admin":
+        return AuthenticatedUser(
+            user_id="admin",
+            tenant_id="tenant-1",
+            role=UserRole.SUPER_ADMIN,
+            jti="test-jti",
+        )
+
+    raise HTTPException(
+        status_code=401,
+        detail="Invalid test token",
+    )
+
 @pytest.fixture(autouse=True)
 def apply_overrides():
     app.dependency_overrides[get_db] = override_get_db
-    if "override_get_redis" in globals():
-        app.dependency_overrides[get_redis_client] = override_get_redis
+    app.dependency_overrides[get_redis_client] = override_get_redis
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_current_user_or_tenant] = (
+        override_get_current_user_or_tenant
+    )
+
     yield
+
     app.dependency_overrides.clear()
 
 @patch("app.routes.jobs.with_job_lock", side_effect=dummy_job_lock)
@@ -71,7 +132,7 @@ def test_cooldown_set_on_rejection(mock_lock, setup_db):
     db = setup_db
     tech = Technician(
         tech_id="tech-123", technician_name="John Doe", technician_skill="Plumbing",
-        technician_location="0,0", technician_status="BUSY", current_jobs=1
+        technician_location="0,0", technician_status="BUSY", current_jobs=1,tenant_id="tenant-1"
     )
     db.add(tech)
     db.commit()
@@ -81,7 +142,7 @@ def test_cooldown_set_on_rejection(mock_lock, setup_db):
         customer_name="Alice", location="1,1", issue_description="Leak",
         priority="HIGH", service_type="Plumbing", contact_number="1234567890",
         preferred_service_date=datetime.now().date(), status="ASSIGNED",
-        assigned_technician_id=tech.technician_id
+        assigned_technician_id=tech.technician_id,tenant_id="tenant-1"
     )
     db.add(job)
     db.commit()
@@ -118,14 +179,14 @@ def test_cooldown_checked_in_planning(setup_db):
     db = setup_db
     tech = Technician(
         tech_id="tech-123", technician_name="John Doe", technician_skill="Plumbing",
-        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0
+        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0,tenant_id="tenant-1"
     )
     db.add(tech)
     
     job = Job(
         customer_name="Alice", location="1,1", issue_description="Leak",
         priority="HIGH", service_type="Plumbing", contact_number="1234567890",
-        preferred_service_date=datetime.now().date(), status="QUEUED"
+        preferred_service_date=datetime.now().date(), status="QUEUED",tenant_id="tenant-1"
     )
     db.add(job)
     db.commit()
@@ -152,14 +213,14 @@ def test_technician_available_after_120s(setup_db):
     db = setup_db
     tech = Technician(
         tech_id="tech-123", technician_name="John Doe", technician_skill="Plumbing",
-        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0
+        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0,tenant_id="tenant-1"
     )
     db.add(tech)
     
     job = Job(
         customer_name="Alice", location="1,1", issue_description="Leak",
         priority="HIGH", service_type="Plumbing", contact_number="1234567890",
-        preferred_service_date=datetime.now().date(), status="QUEUED"
+        preferred_service_date=datetime.now().date(), status="QUEUED",tenant_id="tenant-1"
     )
     db.add(job)
     db.commit()
@@ -217,14 +278,14 @@ def test_manual_override_bypasses(mock_lock, setup_db):
     db = setup_db
     tech = Technician(
         tech_id="tech-123", technician_name="John Doe", technician_skill="Plumbing",
-        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0
+        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0, tenant_id="tenant-1"
     )
     db.add(tech)
     
     job = Job(
         customer_name="Alice", location="1,1", issue_description="Leak",
         priority="HIGH", service_type="Plumbing", contact_number="1234567890",
-        preferred_service_date=datetime.now().date(), status="QUEUED"
+        preferred_service_date=datetime.now().date(), status="QUEUED", tenant_id="tenant-1"
     )
     db.add(job)
     db.commit()
@@ -259,14 +320,14 @@ def test_override_logged_to_audit(mock_lock, setup_db):
     db = setup_db
     tech = Technician(
         tech_id="tech-123", technician_name="John Doe", technician_skill="Plumbing",
-        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0
+        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0, tenant_id="tenant-1"
     )
     db.add(tech)
     
     job = Job(
         customer_name="Alice", location="1,1", issue_description="Leak",
         priority="HIGH", service_type="Plumbing", contact_number="1234567890",
-        preferred_service_date=datetime.now().date(), status="QUEUED"
+        preferred_service_date=datetime.now().date(), status="QUEUED", tenant_id="tenant-1"
     )
     db.add(job)
     db.commit()

@@ -80,4 +80,4 @@ def is_skill_matching(tech_skill: str, job_skill: str, job_service_type: str) ->
     if ("HVAC" in t_skill or "AC" in t_skill) and any(k in j_type or k in j_skill for k in ["HVAC", "AC", "COOL"]):
         return True
 
-    return True
+    return False
