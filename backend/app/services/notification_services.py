@@ -712,11 +712,12 @@ class NotificationRouter:
                 event=event,
                 recipient_type=recipient_type,
                 channel=channel,
-                notification_type=(
-                    notification_type
-                ),
+                notification_type=notification_type,
                 locale="en",
             )
+
+        except CommunicationChannelDisabledError:
+            raise
 
         except CommunicationIntegrationError:
             logger.error(
@@ -727,12 +728,9 @@ class NotificationRouter:
                 channel,
                 recipient_type,
             )
-
             return None
 
         except Exception:
-            # Test doubles or unexpected adapter failures are
-            # also handled without leaking exception content.
             logger.error(
                 "Unexpected safe communication failure. "
                 "Notification delivery was skipped. "
@@ -741,8 +739,9 @@ class NotificationRouter:
                 channel,
                 recipient_type,
             )
-
             return None
+
+
 
         expected_channel = (
             channel
@@ -1178,8 +1177,8 @@ class NotificationRouter:
         """
         Send guardrail-approved SMS communication.
 
-        Both customer and technician recipient-facing content now
-        comes from CommunicationService.
+        Customer delivery policy is evaluated before AI/fallback
+        communication generation.
         """
 
         _ = payload
@@ -1191,7 +1190,41 @@ class NotificationRouter:
             return False
 
         # ------------------------------------------------------
-        # Generate safe content first
+        # Customer delivery policy MUST be checked first
+        # ------------------------------------------------------
+
+        if recipient_type == "customer":
+            if not event.customer_phone:
+                logger.warning(
+                    "Customer SMS skipped because the phone number "
+                    "is missing. job_id=%s",
+                    event.job_id,
+                )
+                return False
+
+            decision = self._evaluate_customer_delivery_policy(
+                event=event,
+                channel="SMS",
+                category=category,
+            )
+
+            if not decision.allowed:
+                logger.warning(
+                    "Customer SMS delivery blocked by policy. "
+                    "reason_code=%s channel=SMS",
+                    decision.final_reason_code,
+                )
+
+                raise CommunicationChannelDisabledError(
+                    (
+                        "SMS delivery blocked: "
+                        f"{decision.final_reason_code}"
+                    ),
+                    decision,
+                )
+
+        # ------------------------------------------------------
+        # Generate safe content only after policy allows delivery
         # ------------------------------------------------------
 
         communication = (
@@ -1199,9 +1232,7 @@ class NotificationRouter:
                 event=event,
                 recipient_type=recipient_type,
                 channel="sms",
-                notification_type=(
-                    notification_type
-                ),
+                notification_type=notification_type,
             )
         )
 
@@ -1212,20 +1243,18 @@ class NotificationRouter:
             communication.decision.output.text
         )
 
-        # Final length check after real names and other values have
-        # been restored.
+        # Final length check after real names and other values
+        # have been restored.
         if len(message_body) > 160:
             logger.error(
                 "Final SMS content exceeds the transport limit. "
                 "Delivery was skipped. job_id=%s",
                 event.job_id,
             )
-
             return False
 
         # ------------------------------------------------------
-        # Technician delivery through the existing tracked SMS
-        # service
+        # Technician delivery through existing SMS service
         # ------------------------------------------------------
 
         if recipient_type == "technician":
@@ -1235,7 +1264,6 @@ class NotificationRouter:
                     "technician ID is missing. job_id=%s",
                     event.job_id,
                 )
-
                 return False
 
             db = SessionLocal()
@@ -1279,46 +1307,14 @@ class NotificationRouter:
                     "job_id=%s",
                     event.job_id,
                 )
-
                 return False
 
             finally:
                 db.close()
 
         # ------------------------------------------------------
-        # Customer delivery
+        # Customer SMS delivery
         # ------------------------------------------------------
-
-        if not event.customer_phone:
-            logger.warning(
-                "Customer SMS skipped because the phone number "
-                "is missing. job_id=%s",
-                event.job_id,
-            )
-
-            return False
-        decision = (
-            self._evaluate_customer_delivery_policy(
-                event=event,
-                channel="SMS",
-                category=category,
-            )
-        )
-
-        if not decision.allowed:
-            logger.warning(
-                "Customer SMS delivery blocked by policy. "
-                "reason_code=%s channel=SMS",
-                decision.final_reason_code,
-            )
-
-            raise CommunicationChannelDisabledError(
-                (
-                    "SMS delivery blocked: "
-                    f"{decision.final_reason_code}"
-                ),
-                decision,
-            )
 
         from .twilio_sms import (
             TWILIO_ACCOUNT_SID,
@@ -1337,7 +1333,6 @@ class NotificationRouter:
                 "job_id=%s",
                 event.job_id,
             )
-
             return True
 
         try:
@@ -1367,8 +1362,9 @@ class NotificationRouter:
                 "job_id=%s",
                 event.job_id,
             )
+            return False
 
-            return False  
+
         
     # ======================================================
     # Email Delivery
@@ -1381,13 +1377,15 @@ class NotificationRouter:
         payload: dict,
         config: dict,
         notification_type: str,
-        category: CommunicationMessageCategory = CommunicationMessageCategory.STANDARD,
+        category: CommunicationMessageCategory = (
+            CommunicationMessageCategory.STANDARD
+        ),
     ) -> bool:
         """
         Send guardrail-approved customer email.
 
-        The survey link is generated locally by the backend. It
-        is not AI-generated and does not contain customer PII.
+        Customer delivery policy is evaluated before AI/fallback
+        communication generation.
         """
 
         _ = payload
@@ -1401,17 +1399,43 @@ class NotificationRouter:
                 "the email address is missing. job_id=%s",
                 event.job_id,
             )
-
             return False
+
+        # ------------------------------------------------------
+        # Customer delivery policy MUST be checked first
+        # ------------------------------------------------------
+
+        decision = self._evaluate_customer_delivery_policy(
+            event=event,
+            channel="EMAIL",
+            category=category,
+        )
+
+        if not decision.allowed:
+            logger.warning(
+                "Customer email delivery blocked by policy. "
+                "reason_code=%s channel=EMAIL",
+                decision.final_reason_code,
+            )
+
+            raise CommunicationChannelDisabledError(
+                (
+                    "Email delivery blocked: "
+                    f"{decision.final_reason_code}"
+                ),
+                decision,
+            )
+
+        # ------------------------------------------------------
+        # Generate safe content only after policy allows delivery
+        # ------------------------------------------------------
 
         communication = (
             await self._generate_safe_communication(
                 event=event,
                 recipient_type="customer",
                 channel="email",
-                notification_type=(
-                    notification_type
-                ),
+                notification_type=notification_type,
             )
         )
 
@@ -1422,9 +1446,15 @@ class NotificationRouter:
             communication.decision.output.subject
         )
 
-        # Preserve text alternative for Story 10
-        text_body = communication.decision.output.text_body
-        body_html = communication.decision.output.html_body or text_body
+        # Preserve text alternative for Story 10.
+        text_body = (
+            communication.decision.output.text_body
+        )
+
+        body_html = (
+            communication.decision.output.html_body
+            or text_body
+        )
 
         if not isinstance(subject, str):
             logger.error(
@@ -1448,11 +1478,9 @@ class NotificationRouter:
                 "Delivery was skipped. job_id=%s",
                 event.job_id,
             )
-
             return False
 
-        # This deterministic URL is backend-generated. It is not
-        # taken from AI output or free-form user input.
+        # Backend-generated deterministic survey URL.
         if config.get(
             "include_survey_link"
         ):
@@ -1477,26 +1505,6 @@ class NotificationRouter:
                 "</p>"
             )
 
-        # Enforce email delivery policy
-        decision = (
-            self._evaluate_customer_delivery_policy(
-                event=event,
-                channel="EMAIL",
-                category=category,
-            )
-        )
-
-        if not decision.allowed:
-            logger.warning(
-                "Customer email delivery blocked by policy. "
-                "reason_code=%s channel=EMAIL",
-                decision.final_reason_code,
-            )
-            raise CommunicationChannelDisabledError(
-                f"Email delivery blocked: {decision.final_reason_code}",
-                decision,
-            )
-
         delivered = await self.email.send_email(
             event.customer_email,
             subject,
@@ -1513,6 +1521,7 @@ class NotificationRouter:
         return bool(
             delivered
         )
+
 
     # ======================================================
     # Existing Dispatcher In-App Delivery

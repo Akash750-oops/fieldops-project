@@ -45,6 +45,10 @@ from app.services.ai.FieldOpsAI.services.communication_service import (
 )
 
 
+from app.services.ai.FieldOpsAI.schemas.communication_configuration import (
+    CommunicationChannelDisabledError,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -187,12 +191,13 @@ class CommunicationIntegration:
                 context,
             )
 
+        except CommunicationChannelDisabledError:
+            raise
+
         except CommunicationIntegrationError:
             raise
 
         except Exception as exc:
-            # Never include exception details. Provider and
-            # template errors may contain generated content.
             logger.warning(
                 "Production communication integration failed."
             )
@@ -370,18 +375,15 @@ class CommunicationIntegration:
 
             return result
 
+        except CommunicationChannelDisabledError:
+            raise
+
         except CommunicationIntegrationError:
             raise
 
         except Exception as exc:
-            logger.warning(
-                "Safe communication generation failed inside "
-                "the notification integration."
-            )
-
-            raise CommunicationIntegrationError(
-                "Safe communication could not be generated."
-            ) from exc
+            print("DEBUG COMMUNICATION ERROR:", type(exc).__name__, str(exc))
+            raise
 
         finally:
             if db is not None:

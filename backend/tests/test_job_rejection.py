@@ -3,12 +3,13 @@ from fastapi.testclient import TestClient
 from datetime import datetime, timezone
 
 from app.main import app
-from app.models import Job, Technician, AuditEvent, DispatcherNotification
+from app.models import Job, Technician, AuditEvent, DispatcherNotification, User
 from app.database import Base, get_db
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 from app.redis_client import get_redis_client
+from app.auth.jwt_handler import create_access_token
 
 # Setup test DB
 SQLALCHEMY_DATABASE_URL = "sqlite://"
@@ -62,19 +63,53 @@ def apply_overrides():
 
 def test_reject_succeeds_with_valid_reason(setup_db):
     db = setup_db
-    tech = Technician(
-        tech_id="tech-123", technician_name="John Doe", technician_skill="Plumbing",
-        technician_location="0,0", technician_status="BUSY", current_jobs=1
+
+    user = User(
+        id="tech-123",
+        email="tech123@test.com",
+        password_hash="test-password",
+        first_name="John",
+        last_name="Doe",
+        role="technician",
+        tenant_id="tenant-1",
+        is_active=True,
+        is_email_verified=True,
     )
+    db.add(user)
+    db.commit()
+
+    access_token = create_access_token(
+        user_id="tech-123",
+        tenant_id="tenant-1",
+        role="technician"
+    )
+
+
+    tech = Technician(
+        tech_id="tech-123",
+        technician_name="John Doe",
+        technician_skill="Plumbing",
+        technician_location="0,0",
+        technician_status="BUSY",
+        current_jobs=1,
+        tenant_id="tenant-1",
+    )
+
     db.add(tech)
     db.commit()
     db.refresh(tech)
-    
+
     job = Job(
-        customer_name="Alice", location="1,1", issue_description="Leak",
-        priority="HIGH", service_type="Plumbing", contact_number="1234567890",
-        preferred_service_date=datetime.now().date(), status="ASSIGNED",
-        assigned_technician_id=tech.technician_id
+        customer_name="Alice",
+        location="1,1",
+        issue_description="Leak",
+        priority="HIGH",
+        service_type="Plumbing",
+        contact_number="1234567890",
+        preferred_service_date=datetime.now().date(),
+        status="ASSIGNED",
+        assigned_technician_id=tech.technician_id,
+        tenant_id="tenant-1"
     )
     db.add(job)
     db.commit()
@@ -83,7 +118,10 @@ def test_reject_succeeds_with_valid_reason(setup_db):
     reason_text = "Customer is way too far away from me"
     response = client.post(
         f"/jobs/{job.id}/reject",
-        headers={"Authorization": "Bearer tech-123", "X-Tenant-ID": "tenant-1"},
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "X-Tenant-ID": "tenant-1"
+        },
         json={"reason": reason_text}
     )
     
@@ -114,42 +152,152 @@ def test_reject_succeeds_with_valid_reason(setup_db):
     assert reason_text in notif.message
 
 def test_reject_400_reason_too_short(setup_db):
+    db = setup_db
+
+    user = User(
+        id="tech-123",
+        email="tech123@test.com",
+        password_hash="test-password",
+        first_name="John",
+        last_name="Doe",
+        role="technician",
+        tenant_id="tenant-1",
+        is_active=True,
+        is_email_verified=True,
+    )
+    db.add(user)
+    db.commit()
+
+    access_token = create_access_token(
+        user_id="tech-123",
+        tenant_id="tenant-1",
+        role="technician"
+    )
+
     response = client.post(
         "/jobs/1/reject",
-        headers={"Authorization": "Bearer tech-123", "X-Tenant-ID": "tenant-1"},
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "X-Tenant-ID": "tenant-1"
+        },
         json={"reason": "short"}
     )
     assert response.status_code == 400 # Pydantic validation error
 
 def test_reject_404_job_not_found(setup_db):
+    db = setup_db
+
+    user = User(
+        id="tech-123",
+        email="tech123@test.com",
+        password_hash="test-password",
+        first_name="John",
+        last_name="Doe",
+        role="technician",
+        tenant_id="tenant-1",
+        is_active=True,
+        is_email_verified=True,
+    )
+    db.add(user)
+    db.commit()
+
+    access_token = create_access_token(
+        user_id="tech-123",
+        tenant_id="tenant-1",
+        role="technician"
+    )
+
     response = client.post(
         "/jobs/999/reject",
-        headers={"Authorization": "Bearer tech-123", "X-Tenant-ID": "tenant-1"},
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "X-Tenant-ID": "tenant-1"
+        },
         json={"reason": "Customer is way too far away from me"}
     )
+
+
     assert response.status_code == 404
 
 def test_reject_403_wrong_technician(setup_db):
     db = setup_db
-    tech = Technician(
-        tech_id="tech-123", technician_name="John", technician_skill="Plumbing",
-        technician_location="0,0", technician_status="AVAILABLE", current_jobs=0
+
+    user = User(
+        id="wrong-tech",
+        email="wrongtech@test.com",
+        password_hash="test-password",
+        first_name="Wrong",
+        last_name="Technician",
+        role="technician",
+        tenant_id="tenant-1",
+        is_active=True,
+        is_email_verified=True,
     )
+
+    db.add(user)
+    db.commit()
+
+    access_token = create_access_token(
+        user_id="wrong-tech",
+        tenant_id="tenant-1",
+        role="technician"
+    )
+
+    # Authenticated technician
+    wrong_tech = Technician(
+        tech_id="wrong-tech",
+        technician_name="Wrong Technician",
+        technician_skill="Plumbing",
+        technician_location="0,0",
+        technician_status="AVAILABLE",
+        current_jobs=0,
+        tenant_id="tenant-1"
+    )
+
+    db.add(wrong_tech)
+    db.commit()
+    db.refresh(wrong_tech)
+
+    # Technician actually assigned to the job
+    tech = Technician(
+        tech_id="tech-123",
+        technician_name="John",
+        technician_skill="Plumbing",
+        technician_location="0,0",
+        technician_status="AVAILABLE",
+        current_jobs=0,
+        tenant_id="tenant-1"
+    )
+
     db.add(tech)
     db.commit()
-    
+    db.refresh(tech)
+
+    # Job is assigned to tech-123, NOT wrong-tech
     job = Job(
-        customer_name="Alice", location="1,1", issue_description="Leak",
-        priority="HIGH", service_type="Plumbing", contact_number="1234567890",
-        preferred_service_date=datetime.now().date(), status="ASSIGNED",
-        assigned_technician_id=1
+        customer_name="Alice",
+        location="1,1",
+        issue_description="Leak",
+        priority="HIGH",
+        service_type="Plumbing",
+        contact_number="1234567890",
+        preferred_service_date=datetime.now().date(),
+        status="ASSIGNED",
+        assigned_technician_id=tech.technician_id,
+        tenant_id="tenant-1"
     )
+
     db.add(job)
     db.commit()
-    
+    db.refresh(job)
+
     response = client.post(
         f"/jobs/{job.id}/reject",
-        headers={"Authorization": "Bearer wrong-tech", "X-Tenant-ID": "tenant-1"},
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "X-Tenant-ID": "tenant-1"
+        },
         json={"reason": "Customer is way too far away from me"}
     )
+
     assert response.status_code == 403

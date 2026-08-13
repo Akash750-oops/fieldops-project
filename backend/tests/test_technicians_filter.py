@@ -34,40 +34,48 @@ def setup_db():
     # Seed mock technicians
     techs = [
         Technician(
+            technician_id=1,
             tech_id="tech-1",
             technician_name="Alice Smith",
             technician_skill="HVAC Repair",
             technician_location="North Zone",
             technician_status="Available",
             current_jobs=0,
-            max_jobs=5
+            max_jobs=5,
+            tenant_id="tenant-1",
         ),
         Technician(
+            technician_id=2,
             tech_id="tech-2",
             technician_name="Bob Jones",
             technician_skill="Electrical",
             technician_location="South Zone",
             technician_status="Busy",
             current_jobs=1,
-            max_jobs=5
+            max_jobs=5,
+            tenant_id="tenant-1",
         ),
         Technician(
+            technician_id=3,
             tech_id="tech-3",
             technician_name="Charlie Brown",
             technician_skill="Plumbing",
             technician_location="North Zone",
             technician_status="Offline",
             current_jobs=0,
-            max_jobs=5
+            max_jobs=5,
+            tenant_id="tenant-1",
         ),
         Technician(
+            technician_id=4,
             tech_id="tech-4",
             technician_name="Dave Smith",
             technician_skill="Electrical",
             technician_location="East Zone",
             technician_status="Available",
             current_jobs=0,
-            max_jobs=5
+            max_jobs=5,
+            tenant_id="tenant-1",
         ),
     ]
     for t in techs:

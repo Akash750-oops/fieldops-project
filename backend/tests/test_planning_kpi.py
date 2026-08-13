@@ -41,7 +41,8 @@ def setup_db():
         technician_location="North Zone",
         technician_status="AVAILABLE",
         current_jobs=1,
-        max_jobs=5
+        max_jobs=5,
+        tenant_id="tenant-1",
     )
     tech2 = Technician(
         technician_id=2,
@@ -51,7 +52,8 @@ def setup_db():
         technician_location="South Zone",
         technician_status="OFFLINE",
         current_jobs=0,
-        max_jobs=3
+        max_jobs=3,
+        tenant_id="tenant-1",
     )
     db.add_all([tech1, tech2])
     db.commit()
@@ -71,7 +73,8 @@ def setup_db():
             preferred_service_date=now.date(),
             assigned_technician_id=1,
             attempt_count=0,
-            created_at=now
+            created_at=now,
+            tenant_id="tenant-1",
         ),
         # Job 102: Pending (unassigned, active status)
         Job(
@@ -86,7 +89,8 @@ def setup_db():
             preferred_service_date=now.date(),
             assigned_technician_id=None,
             attempt_count=0,
-            created_at=now
+            created_at=now,
+            tenant_id="tenant-1",
         ),
         # Job 103: Expired & Pending (unassigned, sla_deadline in past, NOT completed/cancelled)
         Job(
@@ -102,7 +106,8 @@ def setup_db():
             assigned_technician_id=None,
             sla_deadline=now - timedelta(hours=2),
             attempt_count=0,
-            created_at=now
+            created_at=now,
+            tenant_id="tenant-1",
         ),
         # Job 104: Re-dispatched (attempt_count=2 > 1, unassigned)
         Job(
@@ -117,7 +122,8 @@ def setup_db():
             preferred_service_date=now.date(),
             assigned_technician_id=None,
             attempt_count=2,
-            created_at=now
+            created_at=now,
+            tenant_id="tenant-1",
         ),
         # Job 105: Completed & unassigned - must NOT count as Pending
         Job(
@@ -132,7 +138,8 @@ def setup_db():
             preferred_service_date=now.date(),
             assigned_technician_id=None,
             attempt_count=0,
-            created_at=now
+            created_at=now,
+            tenant_id="tenant-1",
         ),
         # Job 106: attempt_count=1 - must NOT count as Re-dispatched (threshold is > 1)
         Job(
@@ -147,7 +154,8 @@ def setup_db():
             preferred_service_date=now.date(),
             assigned_technician_id=None,
             attempt_count=1,
-            created_at=now
+            created_at=now,
+            tenant_id="tenant-1",
         ),
     ]
     for j in jobs:

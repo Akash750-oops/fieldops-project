@@ -851,8 +851,21 @@ def test_8_policy_composition(monkeypatch):
     TestingSessionLocal = sessionmaker(bind=engine)
     db = TestingSessionLocal()
     
-    db.add(CommunicationChannelConfiguration(channel="SMS", state=CommunicationChannelState.ENABLED, revision=1, updated_by="sys"))
-    db.add(CommunicationChannelConfiguration(channel="EMAIL", state=CommunicationChannelState.DISABLED, revision=1, updated_by="sys"))
+    db.add(CommunicationChannelConfiguration(
+        tenant_id="t1",
+        channel="SMS",
+        state=CommunicationChannelState.ENABLED,
+        revision=1,
+        updated_by="sys"
+    ))
+
+    db.add(CommunicationChannelConfiguration(
+        tenant_id="t1",
+        channel="EMAIL",
+        state=CommunicationChannelState.DISABLED,
+        revision=1,
+        updated_by="sys"
+    ))
     
     db.add(CustomerProfile(tenant_id="t1", customer_id="c1", sms_enabled=True, email_enabled=False, revision=1, updated_by="sys"))
     db.commit()
@@ -932,9 +945,21 @@ def test_9_tenant_isolation(monkeypatch):
     db = TestingSessionLocal()
     
     # Global config is enabled for both SMS and EMAIL
-    db.add(CommunicationChannelConfiguration(channel="SMS", state=CommunicationChannelState.ENABLED, revision=1, updated_by="sys"))
-    db.add(CommunicationChannelConfiguration(channel="EMAIL", state=CommunicationChannelState.ENABLED, revision=1, updated_by="sys"))
-    
+    db.add(CommunicationChannelConfiguration(
+        tenant_id="tenant-a",
+        channel="SMS",
+        state=CommunicationChannelState.ENABLED,
+        revision=1,
+        updated_by="sys"
+    ))
+
+    db.add(CommunicationChannelConfiguration(
+        tenant_id="tenant-a",
+        channel="EMAIL",
+        state=CommunicationChannelState.ENABLED,
+        revision=1,
+        updated_by="sys"
+    ))
     # Tenant a: SMS disabled, EMAIL enabled
     db.add(CustomerProfile(tenant_id="tenant-a", customer_id="shared-customer", sms_enabled=False, email_enabled=True, revision=1, updated_by="sys"))
     
