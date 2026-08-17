@@ -3,7 +3,8 @@ from fastapi.testclient import TestClient
 from datetime import datetime, timezone
 from unittest.mock import patch
 from app.main import app
-from app.models import Job, Technician, AuditEvent, SLAEscalation, AssignmentOverride, OverrideAuditEvent
+from app.models import Job, Technician, AuditEvent, SLAEscalation, AssignmentOverride, OverrideAuditEvent,User, Organization
+from app.auth.jwt_handler import create_access_token
 from app.database import Base, get_db
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
@@ -42,6 +43,12 @@ class MockRedis:
         return 1
 
 mock_redis = MockRedis()
+def get_test_token():
+    return create_access_token(
+        user_id="test-admin",
+        tenant_id="tenant-1",
+        role="super_admin",
+    )
 
 def override_get_redis():
     return mock_redis
@@ -61,7 +68,25 @@ def setup_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
-    
+
+    organization = Organization(id="tenant-1", name="Test Organization", slug="test-organization")
+    db.add(organization)
+    db.commit()
+
+    test_user = User(
+        id="test-admin",
+        email="test-admin@example.com",
+        password_hash="test-password",
+        first_name="Test",
+        last_name="Admin",
+        role="super_admin",
+        tenant_id="tenant-1",
+        is_active=True,
+        is_email_verified=True,
+    )
+    db.add(test_user)
+    db.commit()
+
     db.query(AuditEvent).delete()
     db.query(Job).delete()
     db.query(Technician).delete()
@@ -69,9 +94,7 @@ def setup_db():
     db.query(AssignmentOverride).delete()
     db.query(OverrideAuditEvent).delete()
     db.commit()
-    
-    mock_redis.data = {}
-    
+
     yield db
     db.close()
 
@@ -88,6 +111,7 @@ def test_assign_busy_offline_technician_blocked(setup_db):
     # 1. Create Busy, Offline, and Available technicians
     tech_busy = Technician(
         tech_id="tech-busy",
+        tenant_id="tenant-1",
         technician_name="Busy Tech",
         technician_skill="Plumbing",
         technician_location="0,0",
@@ -97,6 +121,7 @@ def test_assign_busy_offline_technician_blocked(setup_db):
     )
     tech_offline = Technician(
         tech_id="tech-offline",
+        tenant_id="tenant-1", 
         technician_name="Offline Tech",
         technician_skill="Plumbing",
         technician_location="0,0",
@@ -106,6 +131,7 @@ def test_assign_busy_offline_technician_blocked(setup_db):
     )
     tech_available = Technician(
         tech_id="tech-available",
+        tenant_id="tenant-1", 
         technician_name="Available Tech",
         technician_skill="Plumbing",
         technician_location="0,0",
@@ -118,6 +144,7 @@ def test_assign_busy_offline_technician_blocked(setup_db):
 
     # Create jobs
     job1 = Job(
+        tenant_id="tenant-1", 
         customer_name="Customer 1",
         location="1,1",
         issue_description="Leaking pipe",
@@ -129,6 +156,7 @@ def test_assign_busy_offline_technician_blocked(setup_db):
         status="QUEUED"
     )
     job2 = Job(
+        tenant_id="tenant-1", 
         customer_name="Customer 2",
         location="1,1",
         issue_description="Leaking pipe",
@@ -147,7 +175,7 @@ def test_assign_busy_offline_technician_blocked(setup_db):
     # Assignment check: Try assigning Busy technician (should fail)
     resp = client.post(
         f"/jobs/{job1.id}/assign",
-        headers={"Authorization": "Bearer admin", "X-Tenant-ID": "tenant-1"},
+        headers={"Authorization": f"Bearer {get_test_token()}", "X-Tenant-ID": "tenant-1"},
         json={
             "tech_id": "tech-busy",
             "justification": "Force test justification with length limit 20."
@@ -159,7 +187,7 @@ def test_assign_busy_offline_technician_blocked(setup_db):
     # Assignment check: Try assigning Offline technician (should fail)
     resp = client.post(
         f"/jobs/{job1.id}/assign",
-        headers={"Authorization": "Bearer admin", "X-Tenant-ID": "tenant-1"},
+        headers={"Authorization": f"Bearer {get_test_token()}", "X-Tenant-ID": "tenant-1"},
         json={
             "tech_id": "tech-offline",
             "justification": "Force test justification with length limit 20."
@@ -171,7 +199,7 @@ def test_assign_busy_offline_technician_blocked(setup_db):
     # Assignment check: Assign Available technician (should succeed)
     resp = client.post(
         f"/jobs/{job1.id}/assign",
-        headers={"Authorization": "Bearer admin", "X-Tenant-ID": "tenant-1"},
+        headers={"Authorization": f"Bearer {get_test_token()}", "X-Tenant-ID": "tenant-1"},
         json={
             "tech_id": "tech-available",
             "justification": "Force test justification with length limit 20."
@@ -185,6 +213,7 @@ def test_force_assign_busy_offline_blocked(setup_db):
     
     tech_busy = Technician(
         tech_id="tech-busy",
+        tenant_id="tenant-1",
         technician_name="Busy Tech",
         technician_skill="Plumbing",
         technician_location="0,0",
@@ -194,6 +223,7 @@ def test_force_assign_busy_offline_blocked(setup_db):
     db.add(tech_busy)
     
     job = Job(
+        tenant_id="tenant-1", 
         customer_name="Customer 1",
         location="1,1",
         issue_description="Leak",
@@ -208,6 +238,7 @@ def test_force_assign_busy_offline_blocked(setup_db):
     db.refresh(job)
     
     esc = SLAEscalation(
+        tenant_id="tenant-1", 
         job_id=job.id,
         status="ESCALATED",
         manager_notified_at=datetime.now(timezone.utc)
@@ -218,7 +249,7 @@ def test_force_assign_busy_offline_blocked(setup_db):
     # Try force-assigning Busy technician
     resp = client.post(
         f"/escalations/{job.id}/force-assign",
-        headers={"Authorization": "Bearer admin", "X-Tenant-ID": "tenant-1"},
+        headers={"Authorization": f"Bearer {get_test_token()}", "X-Tenant-ID": "tenant-1"},
         json={
             "tech_id": "tech-busy",
             "reason": "Expert tech needed immediately"

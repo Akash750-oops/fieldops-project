@@ -102,7 +102,6 @@ def get_dispatch_queue(
     
     # Fetch limit + 1 to know if there's a next page
     jobs = query.limit(limit + 1).all()
-    
     has_more = len(jobs) > limit
     results = jobs[:limit]
     

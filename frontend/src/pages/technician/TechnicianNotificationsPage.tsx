@@ -69,7 +69,17 @@ export default function TechnicianNotificationsPage() {
       setSuccessBanner(`Job #${jobId} accepted! Status moved to EN ROUTE.`);
       setTimeout(() => setSuccessBanner(""), 4000);
       // Immediately erase notification from list
-      setNotifications((prev) => prev.filter((n) => n.id !== notifId && parseInt(n.jobId, 10) !== jobId));
+      setNotifications((prev) =>
+      prev.map((n) =>
+        n.id === notifId
+          ? {
+          ...n,
+          isRead: true,
+          jobStatus: "EN_ROUTE",
+        }
+      : n
+      )
+    );;
       setUnread((u) => Math.max(0, u - 1));
     } catch (e: any) {
       alert(e.response?.data?.detail || "Failed to accept job");
@@ -86,7 +96,17 @@ export default function TechnicianNotificationsPage() {
       setSuccessBanner(`Job #${rejectModalJobId} declined.`);
       setTimeout(() => setSuccessBanner(""), 4000);
       // Immediately erase notification from local state
-      setNotifications((prev) => prev.filter((n) => parseInt(n.jobId, 10) !== rejectModalJobId));
+      setNotifications((prev) =>
+  prev.map((n) =>
+    parseInt(n.jobId, 10) === rejectModalJobId
+      ? {
+          ...n,
+          isRead: true,
+          jobStatus: "REJECTED_BY_TECHNICIAN",
+        }
+      : n
+  )
+);
       setRejectModalJobId(null);
       setRejectReason("");
       loadNotifications();
@@ -243,7 +263,7 @@ export default function TechnicianNotificationsPage() {
               ["JOB_ASSIGNED", "JOB_REASSIGNED"].includes(n.type) ||
               n.title?.toLowerCase().includes("assigned");
             const jobId = n.jobId ? parseInt(n.jobId, 10) : null;
-
+            const canTakeAction =isJobAssigned && jobId &&["ASSIGNED", "PLANNED", "QUEUED","ACTIVE"].includes((n.jobStatus || "").toUpperCase());
             return (
               <div
                 key={n.id}
@@ -353,7 +373,7 @@ export default function TechnicianNotificationsPage() {
                     </div>
 
                     {/* Quick Job Action Buttons */}
-                    {isJobAssigned && jobId && (
+                    {canTakeAction && (
                       <div
                         style={{
                           display: "flex",

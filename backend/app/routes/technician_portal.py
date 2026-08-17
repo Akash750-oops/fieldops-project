@@ -38,6 +38,10 @@ router = APIRouter(
     tags=["Technician Portal"],
 )
 
+def _json_safe(value):
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return value
 
 def _get_tech_for_user(
     db: Session,
@@ -344,7 +348,7 @@ async def update_technician_profile(
     old_values = {}
     for key, value in update_data.items():
         if value is not None:
-            old_values[key] = getattr(profile, key, None)
+            old_values[key] = _json_safe(getattr(profile, key, None))
             setattr(profile, key, value)
 
     profile.profile_completed = True
@@ -394,7 +398,7 @@ async def update_technician_profile(
         entity_type="technician_profile",
         entity_id=profile.id,
         old_value=old_values,
-        new_value=update_data,
+        new_value={k: _json_safe(v) for k, v in update_data.items()},
         request=request,
     )
 
@@ -845,6 +849,11 @@ async def get_notifications(
         current_user.user_id,
         tech,
     )
+    print("========== NOTIFICATION DEBUG ==========")
+    print("USER ID:", current_user.user_id)
+    print("TENANT ID:", current_user.tenant_id)
+    print("TECH:", tech)
+    print("SEARCH IDS:", search_ids)
 
     notifications = db.query(InAppNotification).filter(
         InAppNotification.tenant_id == current_user.tenant_id,
@@ -852,15 +861,27 @@ async def get_notifications(
     ).order_by(
         InAppNotification.created_at.desc()
     ).limit(100).all()
+    print("NOTIFICATION COUNT:", len(notifications))
 
+    for n in notifications:
+        print(
+            "NOTIFICATION:",
+            n.id,
+            n.tech_id,
+            n.tenant_id,
+            n.job_id,
+            n.type,
+            n.status,
+        )
     # Create missing notifications for pending jobs.
     if tech:
         pending_jobs = db.query(Job).filter(
             Job.tenant_id == current_user.tenant_id,
             Job.assigned_technician_id == tech.technician_id,
-            func.lower(Job.status).in_(
-                ["assigned", "active", "planned", "queued"]
-            ),
+            # func.lower(Job.status).in_(
+            #     ["assigned", "active", "planned", "queued"]
+            # ),
+            
         ).all()
 
         pending_job_ids = [
@@ -961,39 +982,40 @@ async def get_notifications(
             for job in job_rows
         }
 
-    hidden_job_statuses = {
-        "EN_ROUTE",
-        "ACCEPTED",
-        "IN_PROGRESS",
-        "PAUSED",
-        "COMPLETED",
-        "CLOSED",
-        "REJECTED_BY_TECHNICIAN",
-    }
+    # hidden_job_statuses = {
+    #     "EN_ROUTE",
+    #     "ACCEPTED",
+    #     "IN_PROGRESS",
+    #     "PAUSED",
+    #     "COMPLETED",
+    #     "CLOSED",
+    #     "REJECTED_BY_TECHNICIAN",
+    # }
 
-    filtered_notifications = []
+    # filtered_notifications = []
 
-    for notification in notifications:
-        job_id = (
-            int(notification.job_id)
-            if notification.job_id
-            and str(notification.job_id).isdigit()
-            else None
-        )
+    # for notification in notifications:
+    #     job_id = (
+    #         int(notification.job_id)
+    #         if notification.job_id
+    #         and str(notification.job_id).isdigit()
+    #         else None
+    #     )
 
-        job_status = (
-            job_status_map.get(job_id, "")
-            if job_id is not None
-            else ""
-        )
+    #     job_status = (
+    #         job_status_map.get(job_id, "")
+    #         if job_id is not None
+    #         else ""
+    #     )
 
-        if (
-            notification.type == "JOB_ASSIGNED"
-            and job_status in hidden_job_statuses
-        ):
-            continue
+    #     if (
+    #         notification.type == "JOB_ASSIGNED"
+    #         and job_status in hidden_job_statuses
+    #     ):
+    #         continue
 
-        filtered_notifications.append(notification)
+    #     filtered_notifications.append(notification)
+    filtered_notifications = notifications
 
     unread_count = sum(
         1
@@ -1015,6 +1037,12 @@ async def get_notifications(
                     else None
                 ),
                 "jobId": notification.job_id,
+                "jobStatus": (
+                job_status_map.get(int(notification.job_id))
+                if notification.job_id
+                and str(notification.job_id).isdigit()
+                else None
+            ),
             }
             for notification in filtered_notifications
         ],

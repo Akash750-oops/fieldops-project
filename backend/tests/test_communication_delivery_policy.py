@@ -874,7 +874,7 @@ def test_8_policy_composition(monkeypatch):
     db.add(org)
     db.commit()
     
-    db.add(CommunicationChannelConfiguration(tenant_id="t1",
+    db.add(CommunicationChannelConfiguration(
         tenant_id="t1",
         channel="SMS",
         state=CommunicationChannelState.ENABLED,
@@ -882,7 +882,7 @@ def test_8_policy_composition(monkeypatch):
         updated_by="sys"
     ))
 
-    db.add(CommunicationChannelConfiguration(tenant_id="t1",
+    db.add(CommunicationChannelConfiguration(
         tenant_id="t1",
         channel="EMAIL",
         state=CommunicationChannelState.DISABLED,
@@ -983,7 +983,7 @@ def test_9_tenant_isolation(monkeypatch):
     db.commit()
     
     # Global config is enabled for both SMS and EMAIL
-    db.add(CommunicationChannelConfiguration(tenant_id="tenant-a",
+    db.add(CommunicationChannelConfiguration(
         tenant_id="tenant-a",
         channel="SMS",
         state=CommunicationChannelState.ENABLED,
@@ -991,7 +991,7 @@ def test_9_tenant_isolation(monkeypatch):
         updated_by="sys"
     ))
 
-    db.add(CommunicationChannelConfiguration(tenant_id="tenant-b",
+    db.add(CommunicationChannelConfiguration(
         tenant_id="tenant-a",
         channel="EMAIL",
         state=CommunicationChannelState.ENABLED,

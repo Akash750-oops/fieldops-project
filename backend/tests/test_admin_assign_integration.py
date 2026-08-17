@@ -83,7 +83,7 @@ def get_test_token():
     return create_access_token(
         user_id="test-admin",
         tenant_id="tenant-1",
-        role="admin",
+        role="super_admin",
     )
 
 def override_get_redis():
@@ -119,7 +119,7 @@ def setup_db():
         password_hash="test-password",
         first_name="Test",
         last_name="Admin",
-        role="admin",
+        role="super_admin",
         tenant_id="tenant-1",
         is_active=True,
         is_email_verified=True,

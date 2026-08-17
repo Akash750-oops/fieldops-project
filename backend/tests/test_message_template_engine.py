@@ -347,7 +347,7 @@ def test_database_fallback_stored_declarations_validation():
         reg_inst.find.return_value = mock_dto_allowed
         mock_reg_cls.return_value = reg_inst
 
-        svc = GuardrailFallbackService(db=mock_db)
+        svc = GuardrailFallbackService(db=mock_db, tenant_id="tenant-1")
         ctx = CommunicationContext(job_id="1", notification_type="job_assigned", recipient_type="CUSTOMER", channel="SMS", locale="en", customer_name="Alice", job_status="ASSIGNED")
         res = svc.render(context=ctx)
         assert res.source == FallbackTemplateSource.DATABASE
@@ -364,7 +364,7 @@ def test_database_fallback_stored_declarations_validation():
         reg_inst.find.return_value = mock_dto_disallowed
         mock_reg_cls.return_value = reg_inst
 
-        svc = GuardrailFallbackService(db=mock_db)
+        svc = GuardrailFallbackService(db=mock_db, tenant_id="tenant-1")
         ctx = CommunicationContext(job_id="1", notification_type="job_assigned", recipient_type="CUSTOMER", channel="SMS", locale="en", customer_name="Alice", job_status="ASSIGNED")
         res = svc.render(context=ctx)
         assert res.source != FallbackTemplateSource.DATABASE
@@ -573,8 +573,7 @@ def test_fallback_rejects_nested_disallowed_path():
         )
         registry_class.return_value = registry
 
-        service = GuardrailFallbackService(
-            db=Mock(),
+        service = GuardrailFallbackService(db=Mock(tenant_id="tenant-1"),tenant_id="tenant-1"
         )
 
         context = CommunicationContext(

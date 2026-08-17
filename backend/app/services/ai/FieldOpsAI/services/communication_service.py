@@ -339,7 +339,8 @@ class CommunicationService:
             fallback_service
             if fallback_service is not None
             else GuardrailFallbackService(
-                db=db
+                db=db,
+                tenant_id=normalized_tenant_id,
             )
         )
 

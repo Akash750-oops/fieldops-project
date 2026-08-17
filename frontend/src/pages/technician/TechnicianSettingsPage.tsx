@@ -447,11 +447,18 @@ export default function TechnicianSettingsPage() {
               <div>
                 <label style={labelStyle}>Mobile Number *</label>
                 <input
-                  style={inputStyle}
-                  value={profileForm.mobile_number}
-                  onChange={(e) => updProf("mobile_number", e.target.value)}
-                  placeholder="10-digit mobile number"
-                />
+  style={inputStyle}
+  value={profileForm.mobile_number}
+  onChange={(e) => {
+    const value = e.target.value;
+    if (/^\d{0,10}$/.test(value)) {
+      updProf("mobile_number", value);
+    }
+  }}
+  maxLength={10}
+  inputMode="numeric"
+  placeholder="10-digit mobile number"
+/>
               </div>
 
               <div>
@@ -576,13 +583,16 @@ export default function TechnicianSettingsPage() {
               </div>
 
               <div>
-                <label style={labelStyle}>Emergency Contact</label>
-                <input
-                  style={inputStyle}
-                  value={profileForm.emergency_contact}
-                  onChange={(e) => updProf("emergency_contact", e.target.value)}
-                  placeholder="Contact name & phone"
-                />
+                <div>
+                  <label style={labelStyle}>Emergency Contact</label>
+                  <input
+                    style={inputStyle}
+                    value={profileForm.emergency_contact}
+                    onChange={(e) => updProf("emergency_contact", e.target.value)}
+                    maxLength={100}
+                    placeholder="Contact name & phone"
+                  />
+                </div>
               </div>
 
               {/* Professional Background */}

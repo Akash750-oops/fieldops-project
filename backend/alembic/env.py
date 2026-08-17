@@ -24,7 +24,8 @@ GPS_PARTITION_PATTERN = re.compile(
 
 IGNORED_TABLES = {
     "redispatch_attempts",
-    "gps_pings",   
+    "gps_pings",
+    'alembic_version',   
 }
 
 def is_ignored_table(table_name: str | None) -> bool:
@@ -84,9 +85,7 @@ config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL").replace("%", 
 
 from app.models import Base
 # Import new multi-tenant models so Alembic discovers them
-from app.models.user import User, RefreshToken  # noqa: F401
-from app.models.organization import Organization  # noqa: F401
-from app.models.enterprise_audit import EnterpriseAuditLog  # noqa: F401
+  # noqa: F401
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
@@ -116,6 +115,7 @@ def run_migrations_offline() -> None:
         include_name=include_name,
         include_object=include_object,
         compare_type=True,
+        version_table_schema="public"
     )
 
     with context.begin_transaction():
@@ -142,6 +142,7 @@ def run_migrations_online() -> None:
             include_name=include_name,
             include_object=include_object,
             compare_type=True,
+            version_table_schema="public"
         )
 
         with context.begin_transaction():

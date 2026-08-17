@@ -48,7 +48,7 @@ class JobFactory(factory.alchemy.SQLAlchemyModelFactory):
         model = models.Job
         sqlalchemy_session = test_db_session
         sqlalchemy_session_persistence = "commit"
-
+    tenant_id = "tenant-123"
     customer_name = "Test Customer"
     location = "13.0,80.0"
     issue_description = "Issue"

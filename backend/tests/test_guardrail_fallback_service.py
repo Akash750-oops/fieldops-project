@@ -186,9 +186,7 @@ def test_sms_uses_active_database_template(
         ),
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context()
     )
 
@@ -226,9 +224,7 @@ def test_email_maps_title_to_subject(
         ),
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context(
             channel="EMAIL"
         )
@@ -263,9 +259,7 @@ def test_push_maps_title_correctly(
         body_template="ETA {{eta}}",
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context(
             channel="PUSH"
         )
@@ -300,9 +294,7 @@ def test_in_app_supports_optional_title(
         ),
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context(
             channel="IN_APP"
         )
@@ -333,9 +325,7 @@ def test_requested_locale_falls_back_to_base_language(
         body_template="Service update.",
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context(
             locale="en-US"
         )
@@ -378,9 +368,7 @@ def test_latest_active_database_version_is_selected(
         version=2,
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context()
     )
 
@@ -404,9 +392,7 @@ def test_missing_database_template_uses_builtin(
     Built-in defaults are used when no DB template exists.
     """
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context()
     )
 
@@ -435,9 +421,7 @@ def test_unknown_notification_type_uses_emergency(
     )
     ctx.job_status = "WORK_IN_PROGRESS"
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=ctx
     )
 
@@ -473,9 +457,7 @@ def test_unsupported_database_variable_is_not_rendered(
         variables=[],
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context()
     )
 
@@ -506,9 +488,7 @@ def test_broken_database_template_uses_builtin(
         ),
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context()
     )
 
@@ -532,9 +512,7 @@ def test_oversized_sms_database_template_is_truncated(
         body_template="x" * 161,
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context()
     )
 
@@ -579,9 +557,7 @@ def test_missing_optional_values_never_render_none_or_null(
         technician_name=None,
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=context
     )
 
@@ -628,9 +604,7 @@ def test_free_form_additional_context_is_not_available_to_template(
         }
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=context
     )
 
@@ -673,9 +647,7 @@ def test_database_email_variables_are_html_escaped(
         ),
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=context
     )
 
@@ -704,9 +676,7 @@ def test_rendered_fallback_passes_default_guardrails(
 
     context = build_context()
 
-    fallback = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    fallback = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=context
     )
 
@@ -729,25 +699,25 @@ def test_database_lookup_failure_reaches_builtin_fallback(db_session, monkeypatc
         raise SQLAlchemyError("DB Down")
     monkeypatch.setattr(db_session, "query", mock_query)
     
-    svc = GuardrailFallbackService(db=db_session)
+    svc = GuardrailFallbackService(db=db_session, tenant_id="tenant-1")
     ctx = CommunicationContext(job_id="1", notification_type="job_assigned", recipient_type="CUSTOMER", channel="SMS", locale="es", job_status="ASSIGNED")
     res = svc.render(context=ctx)
     assert res.source == "BUILTIN"
 
 def test_spanish_missing_optional_values_use_spanish_defaults(db_session):
-    svc = GuardrailFallbackService(db=db_session)
+    svc = GuardrailFallbackService(db=db_session, tenant_id="tenant-1")
     ctx = CommunicationContext(job_id="1", notification_type="job_assigned", recipient_type="CUSTOMER", channel="SMS", locale="es", job_status="ASSIGNED")
     res = svc.render(context=ctx)
     assert "Cliente" in res.decision.message or "técnico" in res.decision.message
 
 def test_tamil_missing_optional_values_use_tamil_defaults(db_session):
-    svc = GuardrailFallbackService(db=db_session)
+    svc = GuardrailFallbackService(db=db_session, tenant_id="tenant-1")
     ctx = CommunicationContext(job_id="1", notification_type="job_assigned", recipient_type="CUSTOMER", channel="SMS", locale="ta", job_status="ASSIGNED")
     res = svc.render(context=ctx)
     assert "வாடிக்கையாளர்" in res.decision.message or "தொழில்நுட்பவியலாளர்" in res.decision.message
 
 def test_hindi_missing_optional_values_use_hindi_defaults(db_session):
-    svc = GuardrailFallbackService(db=db_session)
+    svc = GuardrailFallbackService(db=db_session, tenant_id="tenant-1")
     ctx = CommunicationContext(job_id="1", notification_type="job_assigned", recipient_type="CUSTOMER", channel="SMS", locale="hi", job_status="ASSIGNED")
     res = svc.render(context=ctx)
     assert "ग्राहक" in res.decision.message or "तकनीशियन" in res.decision.message
@@ -783,9 +753,7 @@ def test_declared_additional_context_is_rejected(
 
     context = build_context()
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(context=context)
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(context=context)
 
     # Must skip the database template and continue to builtin/emergency.
     assert result.source != FallbackTemplateSource.DATABASE
@@ -822,9 +790,7 @@ def test_raw_exception_text_is_not_printed_or_logged(
         )
 
     with unittest.mock.patch.object(te, "render_template_source", raising_render):
-        result = GuardrailFallbackService(
-            db=db_session
-        ).render(context=build_context())
+        result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(context=build_context())
 
     captured = capsys.readouterr()
 
@@ -858,9 +824,7 @@ def test_exact_regional_locale_wins(
         notification_type="job_assigned",
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context(locale="es")
     )
 
@@ -886,9 +850,7 @@ def test_base_locale_fallback(
         notification_type="job_assigned",
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context(locale="es-MX")
     )
 
@@ -914,9 +876,7 @@ def test_english_locale_fallback(
         notification_type="job_assigned",
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context(locale="es-MX")
     )
 
@@ -941,9 +901,7 @@ def test_resolved_locale_is_reported(
         notification_type="job_assigned",
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context(locale="ta")
     )
 
@@ -1015,9 +973,7 @@ def test_unsafe_builtin_syntax_falls_to_emergency(
     }
 
     with patch.object(dt, "LOCALIZED_NOTIFICATION_TYPES", patched):
-        result = GuardrailFallbackService(
-            db=db_session
-        ).render(
+        result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
             context=build_context(
                 locale="en",
                 notification_type="job_assigned",
@@ -1047,9 +1003,7 @@ def test_invalid_builtin_syntax_falls_to_emergency(
     }
 
     with patch.object(dt, "LOCALIZED_NOTIFICATION_TYPES", patched):
-        result = GuardrailFallbackService(
-            db=db_session
-        ).render(
+        result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
             context=build_context(
                 locale="en",
                 notification_type="job_assigned",
@@ -1080,9 +1034,7 @@ def test_multiline_sms_body_is_normalized(
         variables=[],
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context(channel="SMS")
     )
 
@@ -1109,9 +1061,7 @@ def test_multiline_push_title_is_normalized(
         variables=[],
     )
 
-    result = GuardrailFallbackService(
-        db=db_session
-    ).render(
+    result = GuardrailFallbackService(db=db_session, tenant_id="tenant-1").render(
         context=build_context(channel="PUSH")
     )
 
