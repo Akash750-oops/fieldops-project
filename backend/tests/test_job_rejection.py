@@ -403,20 +403,13 @@ def test_reject_403_wrong_technician(setup_db):
     db.refresh(job)
 
     response = client.post(
-        f"/jobs/{job.id}/reject",
-        headers={
-            "Authorization": "Bearer wrong-tech",
-            "X-Tenant-ID": "tenant-1",
-        },
-        json={
-            "reason": "Customer is way too far away from me"
-        },
-        headers={
-            "Authorization": f"Bearer {access_token}",
-            "X-Tenant-ID": "tenant-1"
-        },
-        json={"reason": "Customer is way too far away from me"}
-    )
+    f"/jobs/{job.id}/reject",
+    headers={
+        "Authorization": f"Bearer {access_token}",
+        "X-Tenant-ID": "tenant-1"
+    },
+    json={"reason": "Customer is way too far away from me"}
+)
 
     print("STATUS:", response.status_code)
     print("BODY:", response.text)

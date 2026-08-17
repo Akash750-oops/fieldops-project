@@ -43,10 +43,10 @@ export default function TechnicianProfilePage() {
       if (p.profile_completed) {
         setIsNew(false);
         setForm({
-          full_name: p.full_name || "", mobile_number: p.mobile_number || "",
+          full_name: p.full_name || "", mobile_number: String(p.mobile_number || "").replace(/\D/g, "").slice(0, 10),
           date_of_birth: p.date_of_birth || "", gender: p.gender || "",
           address: p.address || "", city: p.city || "", state: p.state || "",
-          pincode: p.pincode || "", emergency_contact: p.emergency_contact || "",
+          pincode: p.pincode || "", emergency_contact: String(p.emergency_contact || "").replace(/\D/g, "").slice(0, 10),
           skills: (p.skills || []).join(", "), experience: p.experience || "",
           certifications: (p.certifications || []).join(", "), profile_photo: p.profile_photo || "",
         });
@@ -76,6 +76,7 @@ export default function TechnicianProfilePage() {
       if (age !== null && age < 18) { setError("Technician must be at least 18 years old"); setSaving(false); return; }
       if (!form.full_name.trim()) { setError("Full name is required"); setSaving(false); return; }
       if (!form.mobile_number.trim()) { setError("Mobile number is required"); setSaving(false); return; }
+
 
       const payload = {
         ...form,
@@ -118,11 +119,24 @@ export default function TechnicianProfilePage() {
             <label style={s.label}>Full Name *</label>
             <input style={s.input} value={form.full_name} onChange={e => upd("full_name", e.target.value)} placeholder="Enter full name" />
           </div>
-          <div>
-            <label style={s.label}>Mobile Number *</label>
-            <input style={s.input} value={form.mobile_number} onChange={e => upd("mobile_number", e.target.value)} placeholder="10-digit mobile" />
-          </div>
-          <div>
+            <div>
+              <label style={s.label}>Mobile Number *</label>
+              <input
+                type="text"
+                style={s.input}
+                value={form.mobile_number}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (/^\d{0,10}$/.test(value)) {
+                    upd("mobile_number", value);
+                  }
+                }}
+                maxLength={10}
+                inputMode="numeric"
+                placeholder="10-digit mobile"
+              />
+            </div>
+            <div>
             <label style={s.label}>Email</label>
             <input style={{ ...s.input, background: "#F3F4F6" }} value={user?.email || ""} disabled />
           </div>
@@ -146,7 +160,7 @@ export default function TechnicianProfilePage() {
           <div><label style={s.label}>City</label><input style={s.input} value={form.city} onChange={e => upd("city", e.target.value)} /></div>
           <div><label style={s.label}>State</label><input style={s.input} value={form.state} onChange={e => upd("state", e.target.value)} /></div>
           <div><label style={s.label}>Pincode</label><input style={s.input} value={form.pincode} onChange={e => upd("pincode", e.target.value)} maxLength={6} /></div>
-          <div><label style={s.label}>Emergency Contact</label><input style={s.input} value={form.emergency_contact} onChange={e => upd("emergency_contact", e.target.value)} /></div>
+          <div><label style={s.label}>Emergency Contact</label><input style={s.input} value={form.emergency_contact} onChange={e => upd("emergency_contact", e.target.value)} maxLength={10}/></div>
 
           <div style={{ ...s.fullWidth, ...{ marginTop: "4px" } }}><div style={s.section}>Professional Info</div></div>
           <div style={s.fullWidth}>

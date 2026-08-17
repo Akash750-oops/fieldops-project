@@ -310,7 +310,7 @@ def test_cache_key_normalized_identity(db_session: Session):
 # ==========================================================
 
 def test_guardrail_fallback_uses_job_status(db_session: Session):
-    service = GuardrailFallbackService(db=db_session)
+    service = GuardrailFallbackService(db=db_session, tenant_id="tenant-1")
     ctx = CommunicationContext(
         job_id="101",
         channel="SMS",

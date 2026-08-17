@@ -170,6 +170,7 @@ class SMSDelivery(Base):
     __tablename__ = "sms_deliveries"
 
     id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String(50), ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False, index=True)
     tech_id = Column(String(36), nullable=False, index=True)
     job_id = Column(String(36), nullable=False, index=True)
     sms_sid = Column(String(255), nullable=True)
@@ -1182,7 +1183,7 @@ class CustomerPreferenceAudit(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     customer_profile_id = Column(String(36), ForeignKey("customer_profiles.id"), nullable=False)
 
-    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
+    tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False)
     previous_revision = Column(Integer, nullable=False)
     new_revision = Column(Integer, nullable=False)
     changed_fields = Column(JSON, nullable=False)
@@ -1191,6 +1192,92 @@ class CustomerPreferenceAudit(Base):
     correlation_id = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     organization=relationship("Organization",back_populates="customer_preference_audits")
+
+class RedispatchAttempt(Base):
+    __tablename__ = "redispatch_attempts"
+
+    id = Column(Integer, primary_key=True)
+
+    job_id = Column(
+        Integer,
+        nullable=False,
+    )
+
+    attempt_number = Column(
+        Integer,
+        nullable=False,
+    )
+
+    technician_id = Column(
+        Integer,
+        nullable=True,
+    )
+
+    technician_name = Column(
+        String(100),
+        nullable=True,
+    )
+
+    event_type = Column(
+        String(30),
+        nullable=False,
+    )
+
+    reason = Column(
+        String(255),
+        nullable=True,
+    )
+
+    queue_position = Column(
+        Integer,
+        nullable=True,
+        default=1,
+    )
+
+    next_dispatch_eta = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_redispatch_attempts_job_id",
+            "job_id",
+        ),
+    )
+
+# class Organization(Base):
+#     __tablename__ = "organizations"
+
+#     id = Column(String(50), primary_key=True, index=True)
+#     name = Column(String(150), nullable=True)
+#     slug = Column(String(100), nullable=True)
+#     status = Column(String(30), nullable=True)
+#     subscription_plan = Column(String(50), nullable=True)
+#     max_users = Column(Integer, nullable=True)
+#     max_technicians = Column(Integer, nullable=True)
+#     max_jobs_per_month = Column(Integer, nullable=True)
+#     settings = Column(JSON, nullable=True)
+#     contact_email = Column(String(150), nullable=True)
+#     contact_phone = Column(String(20), nullable=True)
+#     address = Column(Text, nullable=True)
+#     logo_url = Column(String(500), nullable=True)
+#     primary_color = Column(String(20), nullable=True)
+#     created_at = Column(DateTime(timezone=True), server_default=func.now())
+#     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+#     deleted_at = Column(DateTime(timezone=True), nullable=True)
+#     deleted_by = Column(String(100), nullable=True)
+#     suspended_at = Column(DateTime(timezone=True), nullable=True)
+#     suspended_by = Column(String(100), nullable=True)
+#     suspension_reason = Column(Text, nullable=True)
+
+
 
 @event.listens_for(CustomerPreferenceAudit, "before_update")
 def prevent_customer_preference_audit_update(mapper, connection, target):

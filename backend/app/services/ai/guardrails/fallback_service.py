@@ -233,6 +233,7 @@ class GuardrailFallbackService:
         self,
         *,
         db: Session,
+        tenant_id:str,
     ) -> None:
         """
         Initialize the fallback service.
@@ -245,7 +246,9 @@ class GuardrailFallbackService:
         """
 
         self._db = db
-
+        self._tenant_id=tenant_id.strip()
+        if not self._tenant_id:
+            raise ValueError('tenant_id must not be empty')
     # ------------------------------------------------------
 
     def render(
@@ -272,10 +275,11 @@ class GuardrailFallbackService:
         # --------------------------------------------------
 
         try:
-            tenant_id = (
-                getattr(context, "tenant_id", None)
-                or "**platform**"
-            )
+            tenant_id=self._tenant_id
+            # tenant_id = (
+            #     getattr(context, "tenant_id", None)
+            #     or "**platform**"
+            # )
 
             # Build an allowlisted rendering context — never pass the raw
             # model dump so that additional_context and other sensitive

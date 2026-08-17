@@ -1,7 +1,7 @@
 """mapped organization_id to all models
 
 Revision ID: a7b892c8d632
-Revises: b5d08fade71a
+Revises: 004554449425
 Create Date: 2026-08-01 14:27:33.801554
 
 """
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'a7b892c8d632'
-down_revision: Union[str, Sequence[str], None] = 'b5d08fade71a'
+down_revision: Union[str, Sequence[str], None] = "004554449425"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

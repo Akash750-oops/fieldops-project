@@ -1066,10 +1066,8 @@ export default function ProfilePage() {
                   boxSizing: "border-box"
                 }}
               >
-                <option value="admin">Organization Admin</option>
                 <option value="dispatcher">Dispatcher</option>
                 <option value="technician">Technician</option>
-                <option value="customer">Customer</option>
               </select>
             </div>
 
