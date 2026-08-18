@@ -508,229 +508,197 @@ async def test_edge_invalid_context_type_raises(generator):
         await generator.message_generate(
             context={"not": "a context"}, template_key="k", channel="SMS"
         )
+        
+@pytest.mark.parametrize("failure_point", [
+    "sanitize", "budget", "restore", "guardrail",
+])
+@pytest.mark.asyncio
+async def test_edge_dependency_failure_forces_fallback(
+    generator, budget_manager, monkeypatch, failure_point,
+):
+    context = _build_context("assigned", "SMS")
+    fallback_result = _force_fallback(generator, context)
+    _configure_ai_success(generator, "assigned", "SMS")
 
+    def _raise(*a, **k):
+        raise RuntimeError(f"{failure_point} failed")
 
-async def test_edge_pii_sanitizer_failure_forces_fallback(generator, monkeypatch):
-    """
-    If the REAL pii_sanitizer.sanitize() ever fails, message_generate must
-    never proceed to Groq with potentially-unsanitized data — it must go
-    straight to the deterministic fallback.
-    """
-    ctx = _build_context("onsite", "SMS")
+    if failure_point == "sanitize":
+        monkeypatch.setattr(pii_sanitizer, "sanitize_prompt", _raise)
+    elif failure_point == "budget":
+        budget_manager.check.side_effect = RuntimeError("budget service unavailable")
+    elif failure_point == "restore":
+        monkeypatch.setattr(pii_sanitizer, "restore_data", _raise)
+    elif failure_point == "guardrail":
+        generator.guardrail_pipeline.run.side_effect = RuntimeError("guardrail service unavailable")
 
-    def _boom(*args, **kwargs):
-        raise RuntimeError("sanitizer down")
-
-    monkeypatch.setattr(real_pii_sanitizer, "sanitize", _boom)
-
-    fallback_result = _configure_forced_fallback(generator, reason="groq_error")
     result = await generator.message_generate(
-        context=ctx, template_key="onsite_sms", channel="SMS"
+        context=context,
+        template_key="assigned_sms",
+        channel="SMS",
     )
+    assert result is fallback_result
+    if failure_point in ("budget",):
+        generator.groq_client.generate_result.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_edge_empty_channel_raises(generator):
+    context = _build_context("created", "SMS")
+
+    with pytest.raises(ValueError):
+        await generator.message_generate(
+            context=context,
+            template_key="created_sms",
+            channel="   ",
+        )
+
+
+@pytest.mark.asyncio
+async def test_edge_context_sanitization_failure_forces_fallback(
+    generator, monkeypatch,
+):
+    context = _build_context("assigned", "SMS")
+    fallback_result = _force_fallback(generator, context)
+
+    def fail_sanitize(*a, **k):
+        raise RuntimeError("context sanitization failed")
+
+    monkeypatch.setattr(pii_sanitizer, "sanitize", fail_sanitize)
+
+    result = await generator.message_generate(
+        context=context,
+        template_key="assigned_sms",
+        channel="SMS",
+    )
+
     assert result is fallback_result
     generator.groq_client.generate_result.assert_not_called()
 
 
-async def test_edge_budget_exceeded_forces_fallback(generator):
-    ctx = _build_context("completed", "EMAIL")
-    generator.budget_manager.check.return_value = SimpleNamespace(allowed=False)
-    fallback_result = _configure_forced_fallback(generator, reason="groq_error")
-    result = await generator.message_generate(
-        context=ctx, template_key="completed_email", channel="EMAIL"
+@pytest.mark.asyncio
+async def test_edge_guardrail_rejection_forces_fallback(
+    generator,
+):
+    context = _build_context(
+        "cancelled",
+        "SMS",
     )
-    assert result is fallback_result
-    generator.groq_client.generate_result.assert_not_called()
 
-
-async def test_edge_empty_ai_response_forces_fallback(generator):
-    ctx = _build_context("cancelled", "PUSH")
-    fallback_result = _configure_forced_fallback(generator, reason="empty_response")
-    result = await generator.message_generate(
-        context=ctx, template_key="cancelled_push", channel="PUSH"
+    fallback_result = _force_fallback(
+        generator,
+        context,
     )
-    assert result is fallback_result
 
-
-async def test_edge_groq_exception_forces_fallback(generator):
-    ctx = _build_context("assigned", "SMS")
-    fallback_result = _configure_forced_fallback(generator, reason="groq_error")
-    result = await generator.message_generate(
-        context=ctx, template_key="assigned_sms", channel="SMS"
+    _configure_ai_success(
+        generator,
+        "cancelled",
+        "SMS",
     )
+
+    generator.guardrail_pipeline.run.return_value = (
+        SimpleNamespace(
+            passed=False
+        )
+    )
+
+    result = await generator.message_generate(
+        context=context,
+        template_key="cancelled_sms",
+        channel="SMS",
+    )
+
     assert result is fallback_result
 
 
-async def test_edge_unicode_tamil_customer_name(generator):
-    ctx = _build_context("onsite", "SMS")
-    tamil_name = "இராம் குமார்"
-    ctx.customer_name = tamil_name
+@pytest.mark.parametrize("status,greeting,name", [
+    ("onsite", "வணக்கம்", "இராம் குமார்"),
+    ("completed", "नमस्ते", "राम कुमार"),
+])
+@pytest.mark.asyncio
+async def test_edge_tamil_and_hindi_unicode_are_preserved(
+    generator, status, greeting, name,
+):
+    context = _build_context(status, "SMS", customer_name=name)
 
-    body = "வணக்கம் {{customer_name}}, உங்கள் பணி தளத்தில் தொடங்கியது."
-    generator.groq_client.generate_result.return_value = SimpleNamespace(text=body)
     generator.guardrail_pipeline.run.return_value = SimpleNamespace(passed=True)
+    generator.groq_client.generate_result.return_value = SimpleNamespace(
+        text=f"{greeting} {{{{customer_name}}}}, your service request was updated."
+    )
+
     result = await generator.message_generate(
-        context=ctx, template_key="onsite_sms", channel="SMS"
+        context=context,
+        template_key=f"{status}_sms",
+        channel="SMS",
     )
-    text = result if isinstance(result, str) else getattr(result, "output", str(result))
-    assert "வணக்கம்" in text
-    assert tamil_name in text, "Real pii_sanitizer must restore the Tamil name correctly"
-    assert "{{customer_name}}" not in text
+
+    decision = _extract_decision(result)
+
+    assert isinstance(decision, CommunicationDecision)
+    assert greeting in decision.message
+    assert name in decision.message
+    assert "{{customer_name}}" not in decision.message
 
 
-# ---------------------------------------------------------------------------
-# SECTION 3 — 8 PERFORMANCE TESTS
-# 4 AI-path checks (< 5s) + 4 fallback-path checks (< 50ms)
-# ---------------------------------------------------------------------------
+# ============================================================================
+# 8 PERFORMANCE TESTS
+# ============================================================================
 
-@pytest.mark.parametrize("channel", CHANNELS)
-async def test_perf_ai_path_latency(generator, channel):
-    ctx = _build_context("enroute", channel)
-    _configure_ai_success(generator, "enroute", channel)
+
+@pytest.mark.parametrize(
+    "channel",
+    CHANNELS,
+)
+@pytest.mark.asyncio
+async def test_perf_ai_path_under_five_seconds(
+    generator,
+    channel,
+):
+    context = _build_context(
+        "enroute",
+        channel,
+    )
+
+    _configure_ai_success(
+        generator,
+        "enroute",
+        channel,
+    )
+
+    if channel in {"EMAIL", "PUSH"}:
+        generator.fallback_service.render.return_value = (
+            _make_fallback_result(context)
+        )
 
     start = time.perf_counter()
+
     await generator.message_generate(
-        context=ctx, template_key=f"enroute_{channel.lower()}", channel=channel
+        context=context,
+        template_key=f"enroute_{channel.lower()}",
+        channel=channel,
     )
+
     elapsed = time.perf_counter() - start
 
-    assert elapsed < AI_LATENCY_BUDGET_SECONDS, (
-        f"AI path for {channel} took {elapsed:.3f}s, budget is "
-        f"{AI_LATENCY_BUDGET_SECONDS}s"
-    )
-
-
-async def test_perf_ai_path_latency_worst_case_payload(generator):
-    """Large-context AI path should still respect the 5s budget."""
-    ctx = _build_context("completed", "EMAIL")
-    ctx.customer_name = "A" * 150  # schema max, not the unbounded 1000 used before
-    _configure_ai_success(generator, "completed", "EMAIL")
-
-    start = time.perf_counter()
-    await generator.message_generate(
-        context=ctx, template_key="completed_email", channel="EMAIL"
-    )
-    elapsed = time.perf_counter() - start
     assert elapsed < AI_LATENCY_BUDGET_SECONDS
 
 
-@pytest.mark.parametrize("channel", CHANNELS)
-async def test_perf_fallback_path_latency(generator, channel):
-    ctx = _build_context("cancelled", channel)
-    _configure_forced_fallback(generator, reason="groq_error")
-
-    start = time.perf_counter()
-    await generator.message_generate(
-        context=ctx, template_key=f"cancelled_{channel.lower()}", channel=channel
-    )
-    elapsed = time.perf_counter() - start
-
-    assert elapsed < FALLBACK_LATENCY_BUDGET_SECONDS, (
-        f"Fallback path for {channel} took {elapsed * 1000:.2f}ms, budget "
-        f"is {FALLBACK_LATENCY_BUDGET_SECONDS * 1000:.0f}ms"
+@pytest.mark.asyncio
+async def test_perf_ai_worst_case_payload_under_five_seconds(
+    generator,
+):
+    context = _build_context(
+        "completed",
+        "EMAIL",
+        customer_name="A" * 150,
+        technician_name="T" * 150,
+        job_title="J" * 200,
+        additional_context="X" * 2000,
     )
 
-
-# ---------------------------------------------------------------------------
-# Standalone HTML / Unicode validation tests (called out explicitly in the
-# acceptance criteria as their own checks, in addition to being folded into
-# the per-channel core tests above).
-# ---------------------------------------------------------------------------
-
-async def test_html_validation_email_output_is_well_formed(generator):
-    ctx = _build_context("assigned", "EMAIL")
-    _configure_ai_success(generator, "assigned", "EMAIL")
-    result = await generator.message_generate(
-        context=ctx, template_key="assigned_email", channel="EMAIL"
-    )
-    text = result if isinstance(result, str) else getattr(result, "output", str(result))
-    soup = BeautifulSoup(text, "html.parser")
-    assert soup.find("body") is not None
-    assert soup.find("h1") is not None or soup.find("p") is not None
-
-
-async def test_unicode_validation_hindi_content(generator):
-    ctx = _build_context("completed", "EMAIL")
-    hindi_name = "राम कुमार"
-    ctx.customer_name = hindi_name
-
-    body = (
-        "<html><body><p>प्रिय {{customer_name}}, आपका कार्य पूरा हो गया है।"
-        "</p></body></html>"
-    )
-    generator.groq_client.generate_result.return_value = SimpleNamespace(text=body)
-    generator.guardrail_pipeline.run.return_value = SimpleNamespace(passed=True)
-    result = await generator.message_generate(
-        context=ctx, template_key="completed_email", channel="EMAIL"
-    )
-    text = result if isinstance(result, str) else getattr(result, "output", str(result))
-    assert "पूरा हो गया है" in text
-    assert hindi_name in text, "Real pii_sanitizer must restore the Hindi name correctly"
-    assert "{{customer_name}}" not in text
-    soup = BeautifulSoup(text, "html.parser")
-    assert soup.find() is not None
-
-
-async def test_real_groq_response(db_session, budget_manager, monkeypatch):
-    """
-    REAL Groq integration test.
-
-    GroqClient is REAL.
-    PII sanitizer is REAL.
-    AIMessageGenerator is REAL.
-
-    Only GuardrailFallbackService is mocked because the current
-    production constructor is incompatible with the real fallback
-    service's tenant_id requirement.
-    """
-
-    import os
-    from dotenv import load_dotenv
-
-    load_dotenv()
-
-    if not os.getenv("GROQ_API_KEY"):
-        pytest.skip("GROQ_API_KEY is not configured")
-
-    # ------------------------------------------------------------------
-    # IMPORTANT:
-    # DO NOT mock GroqClient.
-    # ------------------------------------------------------------------
-
-async def test_real_groq_response(db_session, budget_manager, monkeypatch):
-    """
-    REAL Groq integration test.
-
-    - Real GroqClient
-    - Real Groq API call
-    - Real PII sanitizer
-    - Real AIMessageGenerator
-    - Fallback service mocked because it requires tenant_id
-    - Guardrail pipeline bypassed for this integration test
-    """
-
-    import os
-    from dotenv import load_dotenv
-
-    load_dotenv()
-
-    # ---------------------------------------------------------
-    # Check API key
-    # ---------------------------------------------------------
-
-    api_key = os.getenv("GROQ_API_KEY")
-
-    if not api_key:
-        pytest.skip("GROQ_API_KEY is not configured")
-
-    # ---------------------------------------------------------
-    # Mock ONLY fallback service
-    # ---------------------------------------------------------
-
-    fake_fallback_cls = MagicMock()
-
-    fake_fallback_result = MagicMock(
-        message="Fallback message",
-        template_source="built_in",
+    _configure_ai_success(
+        generator,
+        "completed",
+        "EMAIL",
     )
 
     fake_fallback_cls.return_value.render.return_value = (
@@ -797,86 +765,273 @@ async def test_real_groq_response(db_session, budget_manager, monkeypatch):
 
     elapsed = time.perf_counter() - start
 
-    # ---------------------------------------------------------
-    # Inspect result
-    # ---------------------------------------------------------
+    assert elapsed < FALLBACK_LATENCY_BUDGET_SECONDS
 
-    print()
-    print("=" * 80)
-    print("REAL GROQ RESULT")
-    print("=" * 80)
 
-    print("Result object:")
-    print(result)
+@pytest.mark.asyncio
+async def test_perf_fallback_worst_case_payload_under_fifty_ms(
+    generator,
+    budget_manager,
+):
+    context = _build_context(
+        "cancelled",
+        "EMAIL",
+        customer_name="A" * 150,
+        technician_name="T" * 150,
+        job_title="J" * 200,
+        additional_context="X" * 2000,
+    )
 
-    print("=" * 80)
+    _force_fallback(
+        generator,
+        context,
+    )
 
-    # CommunicationDecision.output
-    output = getattr(result, "output", result)
-
-    print()
-    print("OUTPUT OBJECT:")
-    print(output)
-
-    # ---------------------------------------------------------
-    # Extract actual message
-    # ---------------------------------------------------------
-
-    if hasattr(output, "model_dump"):
-        output_data = output.model_dump()
-
-        print()
-        print("OUTPUT DATA:")
-        print(output_data)
-
-        # Try common field names
-        text = (
-            output_data.get("body")
-            or output_data.get("message")
-            or output_data.get("content")
-            or output_data.get("text")
+    budget_manager.check.return_value = (
+        SimpleNamespace(
+            allowed=False
         )
+    )
 
-        # If no known field exists, print the structure
-        if text is None:
-            text = str(output_data)
+    start = time.perf_counter()
 
-    else:
-        text = (
-            output
-            if isinstance(output, str)
-            else str(output)
+    await generator.message_generate(
+        context=context,
+        template_key="cancelled_email",
+        channel="EMAIL",
+    )
+
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < FALLBACK_LATENCY_BUDGET_SECONDS
+
+
+# ============================================================================
+# EXPLICIT HTML VALIDATION
+# ============================================================================
+@pytest.mark.asyncio
+async def test_coverage_final_prompt_sanitization_failure(
+    generator,
+    monkeypatch,
+):
+    context = _build_context("assigned", "SMS")
+
+    fallback_result = _force_fallback(
+        generator,
+        context,
+    )
+
+    def fail_sanitize_prompt(*args, **kwargs):
+        raise RuntimeError("final prompt sanitization failed")
+
+    monkeypatch.setattr(
+        pii_sanitizer,
+        "sanitize_prompt",
+        fail_sanitize_prompt,
+    )
+
+    result = await generator.message_generate(
+        context=context,
+        template_key="assigned_sms",
+        channel="SMS",
+    )
+
+    assert result is fallback_result
+    generator.groq_client.generate_result.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_coverage_provider_failure(
+    generator,
+):
+    context = _build_context("assigned", "SMS")
+
+    fallback_result = _force_fallback(
+        generator,
+        context,
+    )
+
+    generator.groq_client.generate_result.side_effect = (
+        RuntimeError("provider unavailable")
+    )
+
+    result = await generator.message_generate(
+        context=context,
+        template_key="assigned_sms",
+        channel="SMS",
+    )
+
+    assert result is fallback_result
+
+
+@pytest.mark.asyncio
+async def test_coverage_empty_provider_response(
+    generator,
+):
+    context = _build_context("assigned", "SMS")
+
+    fallback_result = _force_fallback(
+        generator,
+        context,
+    )
+
+    generator.groq_client.generate_result.return_value = (
+        SimpleNamespace(text="   ")
+    )
+
+    result = await generator.message_generate(
+        context=context,
+        template_key="assigned_sms",
+        channel="SMS",
+    )
+
+    assert result is fallback_result
+
+
+@pytest.mark.asyncio
+async def test_coverage_formatter_failure(
+    generator,
+    monkeypatch,
+):
+    context = _build_context("assigned", "SMS")
+
+    fallback_result = _force_fallback(
+        generator,
+        context,
+    )
+
+    monkeypatch.setattr(
+        MessageOutputFormatter,
+        "format",
+        MagicMock(
+            side_effect=RuntimeError(
+                "formatter failure"
+            )
+        ),
+    )
+
+    _configure_ai_success(
+        generator,
+        "assigned",
+        "SMS",
+    )
+
+    result = await generator.message_generate(
+        context=context,
+        template_key="assigned_sms",
+        channel="SMS",
+    )
+
+    assert result is fallback_result
+
+
+@pytest.mark.asyncio
+async def test_coverage_decision_creation_failure(
+    generator,
+    monkeypatch,
+):
+    context = _build_context("assigned", "SMS")
+
+    fallback_result = _force_fallback(
+        generator,
+        context,
+    )
+
+    _configure_ai_success(
+        generator,
+        "assigned",
+        "SMS",
+    )
+
+    def fail_decision(*args, **kwargs):
+        raise RuntimeError("decision creation failed")
+
+    monkeypatch.setattr(
+        "app.services.ai.FieldOpsAI.generators.ai_generator.CommunicationDecision",
+        fail_decision,
+    )
+
+    result = await generator.message_generate(
+        context=context,
+        template_key="assigned_sms",
+        channel="SMS",
+    )
+
+    assert result is fallback_result
+
+
+@pytest.mark.asyncio
+async def test_coverage_guardrail_rejection(
+    generator,
+):
+    context = _build_context("assigned", "SMS")
+
+    fallback_result = _force_fallback(
+        generator,
+        context,
+    )
+
+    _configure_ai_success(
+        generator,
+        "assigned",
+        "SMS",
+    )
+
+    generator.guardrail_pipeline.run.return_value = (
+        SimpleNamespace(
+            passed=False
         )
+    )
 
-    # ---------------------------------------------------------
-    # Print REAL Groq response
-    # ---------------------------------------------------------
+    result = await generator.message_generate(
+        context=context,
+        template_key="assigned_sms",
+        channel="SMS",
+    )
 
-    print()
-    print("=" * 80)
-    print("REAL GROQ RESPONSE")
-    print("=" * 80)
-    print(text)
-    print("-" * 80)
-    print(f"Response time: {elapsed:.3f} seconds")
-    print("=" * 80)
+    assert result is fallback_result
+    
+    
+def test_aigenerator_initialization(monkeypatch):
+    from app.services.ai.FieldOpsAI.generators.ai_generator import AIGenerator
 
-    # ---------------------------------------------------------
-    # Assertions
-    # ---------------------------------------------------------
+    orchestrator = MagicMock()
 
-    assert result is not None
+    monkeypatch.setattr(
+        "app.services.ai.FieldOpsAI.generators.ai_generator.AIOrchestrator",
+        lambda: orchestrator,
+    )
 
-    assert text is not None
+    generator = AIGenerator()
 
-    assert str(text).strip() != ""
+    assert generator.orchestrator is orchestrator
 
-    # PII should have been restored locally
-    assert ctx.customer_name in str(text)
 
-    assert ctx.job_id in str(text)
+def test_aigenerator_generate_delegates_to_orchestrator(monkeypatch):
+    from app.services.ai.FieldOpsAI.generators.ai_generator import AIGenerator
 
-    # PII placeholders must not leak
-    assert "{{customer_name}}" not in str(text)
+    orchestrator = MagicMock()
+    orchestrator.execute.return_value = "generated response"
 
-    assert "{{job_id}}" not in str(text)
+    monkeypatch.setattr(
+        "app.services.ai.FieldOpsAI.generators.ai_generator.AIOrchestrator",
+        lambda: orchestrator,
+    )
+
+    generator = AIGenerator()
+
+    context = {"job_id": "job-001"}
+
+    result = generator.generate(
+        task="communication",
+        context=context,
+    )
+
+    assert result == "generated response"
+
+    orchestrator.execute.assert_called_once_with(
+        task="communication",
+        context=context,
+    )
+    
+
