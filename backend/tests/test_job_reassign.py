@@ -303,8 +303,8 @@ def test_reassign_400_ineligible_new_tech_missing_skills(setup_db):
         },
     )
 
-    # This is the requirement expected from the test.
-    assert response.status_code == 200
+    assert response.status_code == 400
+    assert "missing required skills" in response.json()["detail"].lower()
 
 
 def test_reassign_400_new_tech_max_workload(setup_db):

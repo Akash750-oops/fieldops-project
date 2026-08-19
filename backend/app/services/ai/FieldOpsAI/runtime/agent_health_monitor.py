@@ -222,9 +222,10 @@ class AgentHealthMonitor:
 
             # Heartbeat ordering and replay protection
             if record.last_heartbeat is not None:
-                if operational_hb.observed_at <= record.last_heartbeat.observed_at:
-                    # Stale or duplicate replay, ignore completely
-                    # But construct snapshot and return it
+
+    # Older heartbeat -> ignore
+                if operational_hb.observed_at < record.last_heartbeat.observed_at:
+
                     last_hb = record.last_heartbeat
                     last_successes = record.total_successes
                     last_failures = record.total_failures
@@ -233,7 +234,6 @@ class AgentHealthMonitor:
                     last_total = record.total_heartbeats
                     last_samples = list(record.latency_samples)
 
-                    # We copy values so we can return snapshot without holding the lock
                     temp_record = _AgentHealthRecord(self._latency_window_size)
                     temp_record.last_heartbeat = last_hb
                     temp_record.total_successes = last_successes
@@ -244,8 +244,35 @@ class AgentHealthMonitor:
                     temp_record.latency_samples.extend(last_samples)
 
                     to_snapshot = temp_record
+
+    # Exact duplicate heartbeat -> ignore
+                elif (
+                    operational_hb.observed_at == record.last_heartbeat.observed_at
+                    and operational_hb.state == record.last_heartbeat.state
+                    and operational_hb.result_status == record.last_heartbeat.result_status
+                ):
+
+                    last_hb = record.last_heartbeat
+                    last_successes = record.total_successes
+                    last_failures = record.total_failures
+                    last_timeouts = record.total_timeouts
+                    last_consec = record.consecutive_failures
+                    last_total = record.total_heartbeats
+                    last_samples = list(record.latency_samples)
+
+                    temp_record = _AgentHealthRecord(self._latency_window_size)
+                    temp_record.last_heartbeat = last_hb
+                    temp_record.total_successes = last_successes
+                    temp_record.total_failures = last_failures
+                    temp_record.total_timeouts = last_timeouts
+                    temp_record.consecutive_failures = last_consec
+                    temp_record.total_heartbeats = last_total
+                    temp_record.latency_samples.extend(last_samples)
+
+                    to_snapshot = temp_record
+
                 else:
-                    # New heartbeat: update counters
+                    # New heartbeat
                     record.last_heartbeat = operational_hb
                     record.total_heartbeats += 1
 

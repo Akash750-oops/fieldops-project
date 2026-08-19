@@ -26,3 +26,12 @@ class JobClosure(Base):
     organization=relationship("Organization",back_populates="job_closures")
 
     job = relationship("Job", backref="closure")
+
+    @property
+    def technician_id(self) -> str | None:
+        """Compatibility accessor for the technician who completed the job.
+
+        Completion ownership is stored on ``Job.completed_by`` so that the
+        closure remains tied to the job's canonical completion record.
+        """
+        return self.job.completed_by if self.job is not None else None

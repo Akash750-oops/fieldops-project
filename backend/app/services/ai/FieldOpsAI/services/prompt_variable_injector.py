@@ -69,6 +69,47 @@ def _format_datetime(value: Any, format_str: str = "datetime") -> str:
 def _format_date(value: Any, format_str: str = "date") -> str:
     return _format_datetime(value, format_str)
 
+def _format_time(value: Any, format_str: str = "time") -> str:
+    if value is None:
+        return ""
+
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            raise PromptRenderingError("Invalid time string")
+
+    if isinstance(value, datetime):
+        if format_str == "time":
+            return value.strftime("%H:%M:%S")
+        if format_str == "time_short":
+            return value.strftime("%H:%M")
+
+    raise PromptRenderingError("Invalid time object")
+
+
+def _currency(
+    value: Any,
+    symbol: str = "₹",
+    decimals: int = 2,
+) -> str:
+    if value is None:
+        return ""
+
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        raise PromptRenderingError("Invalid currency value")
+
+    return f"{symbol}{amount:,.{decimals}f}"
+
+
+def _title_case(value: Any) -> str:
+    if value is None:
+        return ""
+
+    return str(value).title()
+
 _ALLOWED_NODE_TYPES = (
     nodes.Template, nodes.Output, nodes.TemplateData, nodes.Name, 
     nodes.Getattr, nodes.Getitem, nodes.If, nodes.CondExpr, nodes.Compare,
@@ -160,15 +201,18 @@ class PromptVariableInjector:
 
         allowed_filters = {
             "default", "lower", "upper", "title", "capitalize", "trim", 
-            "replace", "join", "length", "int", "float", "round", "escape", "e"
+            "replace", "join", "length", "int", "float", "round", "escape", "e", "format_time", "currency", "title_case"
         }
         env.filters = {k: v for k, v in env.filters.items() if k in allowed_filters}
         env.filters["format_date"] = _format_date
         env.filters["format_datetime"] = _format_datetime
+        env.filters["format_time"] = _format_time
+        env.filters["currency"] = _currency
+        env.filters["title_case"] = _title_case
 
         allowed_tests = {
             "defined", "undefined", "none", "boolean", "string", 
-            "number", "mapping", "sequence", "equalto"
+            "number", "mapping", "sequence", "equalto", 
         }
         env.tests = {k: v for k, v in env.tests.items() if k in allowed_tests}
         
@@ -325,7 +369,8 @@ class PromptVariableInjector:
             raise InvalidTemplateSyntaxError("Invalid Jinja syntax.") from None
 
         node_count = 0
-        _ALLOWED_FILTERS = {"default", "lower", "upper", "title", "capitalize", "trim", "replace", "join", "length", "int", "float", "round", "escape", "e", "format_date", "format_datetime"}
+        _ALLOWED_FILTERS = {"default", "lower", "upper", "title", "capitalize", "trim", "replace", "join", "length", "int", "float", "round", "escape", "e", "format_date", "format_datetime", "format_time",
+                            "currency", "title_case",}
         _ALLOWED_TESTS = {"defined", "undefined", "none", "boolean", "string", "number", "mapping", "sequence", "equalto"}
 
         for node in parsed.find_all(nodes.Node):

@@ -170,6 +170,13 @@ def check_assignment_timers():
                 timer_ttl = 0
             
             tech = db.query(Technician).filter(Technician.technician_id == job.assigned_technician_id).first()
+
+            # Legacy assignments can predate tenant ownership on the job.
+            # The assigned technician is already resolved from the same
+            # database record, so use its tenant before re-queueing rather
+            # than abandoning an expired assignment mid-transaction.
+            if not job.tenant_id and tech and tech.tenant_id:
+                job.tenant_id = tech.tenant_id
             
             trigger = ReDispatchTriggerService.detect_trigger(job, tech, timer_exists, timer_ttl)
             
@@ -179,7 +186,7 @@ def check_assignment_timers():
                         if trigger["type"] == "trigger":
                             logger.info(f"ReDispatch: Triggering re-dispatch for job {job.id} (Reason: {trigger['reason']})")
                             tech_id_str = tech.tech_id if tech else str(job.assigned_technician_id)
-                            tenant_id_str = tech.tenant_id if tech and tech.tenant_id else "system"
+                            tenant_id_str = job.tenant_id or (tech.tenant_id if tech and tech.tenant_id else "system")
                             
                             queue_result = ReDispatchQueueService.enqueue_failed_job(
                                 db=db,
