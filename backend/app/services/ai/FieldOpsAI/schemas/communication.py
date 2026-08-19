@@ -225,6 +225,20 @@ class CommunicationContext(BaseModel):
             "system or business rules."
         ),
     )
+    template: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=5000,
+        description="Optional Jinja2 personalization template.",
+    )
+
+    personalization_data: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Customer, job, technician and other data "
+            "used for message personalization."
+        ),
+    )
 
 
 # ==========================================================

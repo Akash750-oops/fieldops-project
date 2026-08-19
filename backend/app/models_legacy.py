@@ -172,6 +172,12 @@ class SMSDelivery(Base):
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(String(50), ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False, index=True)
     tech_id = Column(String(36), nullable=False, index=True)
+    tenant_id = Column(
+        String(50),
+        ForeignKey("organizations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
     job_id = Column(String(36), nullable=False, index=True)
     sms_sid = Column(String(255), nullable=True)
     status = Column(String(30), nullable=False, default="queued") # queued, sent, delivered, failed, undelivered
@@ -1175,7 +1181,6 @@ class CustomerPreferenceAudit(Base):
         CheckConstraint("previous_revision >= 0", name="chk_audit_prev_revision"),
         CheckConstraint("new_revision >= 1", name="chk_audit_new_revision"),
         CheckConstraint("new_revision > previous_revision", name="chk_audit_revision_progression"),
-        Index('ix_customer_preference_audits_tenant_id', 'tenant_id'),
         Index('ix_customer_preference_audits_profile_id', 'customer_profile_id'),
         Index('ix_customer_preference_audits_tenant_profile', 'tenant_id', 'customer_profile_id'),
     )

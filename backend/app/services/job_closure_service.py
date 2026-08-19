@@ -31,13 +31,12 @@ def close_job(
     6. create JobClosure and update Job (status COMPLETED, completed_at, completed_by)
     7. single transaction with rollback on failure
     """
-    # 0. Enforce role restriction: Technician or Dispatcher/Admin/Manager
+    # 0. Only the assigned technician may complete a job.
     role_str = (user_role or "").upper()
-    allowed_roles = ["TECHNICIAN", "DISPATCHER", "ADMIN", "SUPER_ADMIN", "MANAGER", "LEAD"]
-    if role_str not in allowed_roles:
+    if role_str != "TECHNICIAN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only technicians, dispatchers, or administrators can close jobs"
+            detail="Only technicians can close jobs"
         )
 
     # 1. Verify job exists

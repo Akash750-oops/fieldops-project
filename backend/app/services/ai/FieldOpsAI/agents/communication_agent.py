@@ -19,34 +19,55 @@ from app.services.ai.FieldOpsAI.runtime.orchestrator import AIOrchestrator, ai_o
 from app.services.ai.FieldOpsAI.runtime.lifecycle import AgentLifecycle
 from app.services.ai.FieldOpsAI.runtime.agent_pool import AgentPool
 from app.services.ai.FieldOpsAI.schemas.agent_result import AgentResultStatus
+from app.services.ai.FieldOpsAI.agents.personalization import (
+    PersonalizationPipeline,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class CommunicationAgent(BaseAgent[CommunicationDecision]):
-    """
-    AI agent responsible for generating customer-facing communication.
-    """
 
     def __init__(
         self,
         config: AgentConfig,
         orchestrator: Optional[AIOrchestrator] = None,
+        personalization_pipeline: Optional[PersonalizationPipeline] = None,
     ) -> None:
-        """
-        Initialize the Communication Agent.
-        """
+
         if config.agent_type != AITask.COMMUNICATION:
             raise ValueError(
-                "CommunicationAgent requires an AITask.COMMUNICATION configuration."
+                "CommunicationAgent requires an "
+                "AITask.COMMUNICATION configuration."
             )
 
         super().__init__(config)
+
         self.orchestrator = (
             ai_orchestrator
             if orchestrator is None
             else orchestrator
         )
+
+        self.personalization_pipeline = (
+            personalization_pipeline
+            if personalization_pipeline is not None
+            else PersonalizationPipeline()
+        )
+
+    def personalize(
+        self,
+        template: str,
+        context: dict[str, Any],
+    ) -> str:
+        return self.personalization_pipeline.apply_template(
+            template=template,
+            variables=context,
+        )
+
+    # existing run()
+    # existing generate()
+        
 
     async def run(
         self,
@@ -62,6 +83,36 @@ class CommunicationAgent(BaseAgent[CommunicationDecision]):
         exec_context.pop("tenant_id", None)
 
         validated_context = CommunicationContext.model_validate(exec_context)
+        # ----------------------------------------------------
+        # Personalization
+        # ----------------------------------------------------
+        if validated_context.template:
+            personalization_context = (
+                validated_context.model_dump(
+                    mode="python"
+                )
+            )
+
+            personalization_context.update(
+                validated_context.personalization_data
+            )
+
+            personalized_message = (
+                self.personalization_pipeline.ai_enhance(
+                    context=personalization_context,
+                    template=validated_context.template,
+                )
+            )
+
+            exec_context["additional_context"] = (
+                personalized_message
+            )
+
+            validated_context = (
+                CommunicationContext.model_validate(
+                    exec_context
+                )
+            )
 
         # Offload synchronous AIOrchestrator execute to prevent blocking the event loop
         decision = await asyncio.to_thread(

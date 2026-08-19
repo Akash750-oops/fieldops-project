@@ -22,6 +22,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 from app.redis_client import get_redis_client
+from app.auth.rbac import UserRole
 
 # Setup test DB
 SQLALCHEMY_DATABASE_URL = "sqlite://"
@@ -83,7 +84,8 @@ def get_test_token():
     return create_access_token(
         user_id="test-admin",
         tenant_id="tenant-1",
-        role="super_admin",
+        #role=UserRole.SUPER_ADMIN.value,
+        role="super_admin"
     )
 
 def override_get_redis():

@@ -1760,30 +1760,6 @@ class NotificationRouter:
         # Delivery policy
         # ------------------------------------------------
 
-        decision = (
-            self._evaluate_customer_delivery_policy(
-                event=event,
-                channel="EMAIL",
-                category=category,
-            )
-        )
-
-        if not decision.allowed:
-
-            logger.warning(
-                "Customer email delivery blocked by policy. "
-                "reason_code=%s",
-                decision.final_reason_code,
-            )
-
-            raise CommunicationChannelDisabledError(
-                (
-                    "Email delivery blocked: "
-                    f"{decision.final_reason_code}"
-                ),
-                decision,
-            )
-
         # ------------------------------------------------
         # Send
         # ------------------------------------------------

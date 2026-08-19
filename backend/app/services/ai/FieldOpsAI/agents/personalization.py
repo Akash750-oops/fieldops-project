@@ -1,0 +1,1004 @@
+"""
+personalization.py
+
+Customer message personalization pipeline for FieldOps Commander AI.
+
+Flow
+----
+1. Resolve customer/job/technician data.
+2. Render Jinja2 template locally.
+3. Handle optional and required variables.
+4. Sanitize PII before AI processing.
+5. Ask Groq to naturally enhance the message.
+6. Keep personalization placeholders intact.
+7. Restore real values locally.
+8. Return the final personalized message.
+
+The AI provider must never receive raw customer PII.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import re
+from datetime import date, datetime, time
+from collections.abc import Mapping
+from typing import Any, Iterable
+
+from pydantic import BaseModel
+
+try:
+    from sqlalchemy import inspect as sqlalchemy_inspect
+    from sqlalchemy.orm.attributes import NO_VALUE
+except ImportError:  # pragma: no cover
+    sqlalchemy_inspect = None
+    NO_VALUE = object()
+
+from app.services.ai.FieldOpsAI.providers.groq_client import (
+    GroqClient,
+)
+from app.services.ai.FieldOpsAI.schemas.ai_task import (
+    AITask,
+)
+from app.services.ai.FieldOpsAI.services.prompt_variable_injector import (
+    PromptVariableInjector,
+    PromptVariableInjectionError,
+)
+from app.services.ai.pii_sanitizer import (
+    PIISanitizer,
+    pii_sanitizer,
+)
+
+
+# ============================================================
+# Exceptions
+# ============================================================
+
+
+class PersonalizationError(Exception):
+    """Base personalization pipeline error."""
+
+
+class PersonalizationVariableError(PersonalizationError):
+    """Raised when a personalization variable is invalid."""
+
+
+class PersonalizationAIError(PersonalizationError):
+    """Raised when AI enhancement fails."""
+
+
+class UnresolvedPlaceholderError(PersonalizationError):
+    """Raised when AI output contains unresolved placeholders."""
+
+
+# ============================================================
+# Personalization Pipeline
+# ============================================================
+
+
+class PersonalizationPipeline:
+    """
+    Coordinates local variable resolution, Jinja rendering,
+    PII protection, AI enhancement and local replacement.
+
+    Parameters
+    ----------
+    groq_client
+        Existing GroqClient. Can be replaced with a fake client
+        during unit tests.
+
+    sanitizer
+        Existing PIISanitizer implementation.
+
+    injector
+        Existing PromptVariableInjector implementation.
+
+    optional_variables
+        Variable paths that may be missing.
+
+        Example:
+            {
+                "customer.phone",
+                "customer.address.city",
+                "technician.name",
+            }
+
+    required_variables
+        Variable paths that must exist.
+
+        If a variable is not explicitly listed as optional,
+        it is required by default.
+    """
+
+    PLACEHOLDER_PATTERN = re.compile(
+        r"\{\{[a-zA-Z_][a-zA-Z0-9_.]*\}\}"
+    )
+
+    MAX_TEMPLATE_LENGTH = 50_000
+    MAX_AI_OUTPUT_LENGTH = 20_000
+
+    def __init__(
+        self,
+        *,
+        db=None,
+        groq_client: GroqClient | None = None,
+        sanitizer: PIISanitizer | None = None,
+        injector: PromptVariableInjector | None = None,
+        optional_variables: Iterable[str] | None = None,
+        required_variables: Iterable[str] | None = None,
+    ) -> None:
+        self.db = db
+        self.groq_client = groq_client
+
+        self.sanitizer = (
+            sanitizer
+            if sanitizer is not None
+            else pii_sanitizer
+        )
+
+        self.injector = (
+            injector
+            if injector is not None
+            else PromptVariableInjector()
+        )
+
+        self.optional_variables = {
+            self._normalize_path(path)
+            for path in (optional_variables or ())
+        }
+
+        self.required_variables = {
+            self._normalize_path(path)
+            for path in (required_variables or ())
+        }
+
+        overlap = (
+            self.optional_variables
+            & self.required_variables
+        )
+
+        if overlap:
+            raise ValueError(
+                "A variable cannot be both optional and required: "
+                f"{sorted(overlap)}"
+            )
+
+    # ========================================================
+    # 1. Variable Resolution
+    # ========================================================
+
+    def resolve_variables(
+        self,
+        context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Resolve personalization variables from supplied context and,
+        when a DB session is available, enrich the context from
+        Job and Technician records.
+
+        Supported variables:
+
+            customer.name
+            customer.address.city
+            job.title
+            technician.name
+            eta
+        """
+
+        if not isinstance(context, dict):
+            raise PersonalizationVariableError(
+                "Personalization context must be a dictionary."
+            )
+
+        resolved = self._to_plain_structure(context)
+
+        if not isinstance(resolved, dict):
+            raise PersonalizationVariableError(
+                "Resolved personalization context must be a dictionary."
+            )
+
+        # --------------------------------------------------------
+        # 1. Resolve Job from DB
+        # --------------------------------------------------------
+
+        job_id = resolved.get("job_id")
+
+        if self.db is not None and job_id is not None:
+            try:
+                from app.models import Job
+
+                job = (
+                    self.db.query(Job)
+                    .filter(Job.id == job_id)
+                    .first()
+                )
+
+                if job is not None:
+                    job_data = {
+                        "id": job.id,
+                        "title": (
+                            getattr(job, "service_type", None)
+                            or getattr(job, "issue_description", None)
+                        ),
+                        "status": getattr(job, "status", None),
+                        "customer_id": getattr(
+                            job,
+                            "customer_id",
+                            None,
+                        ),
+                        "customer_name": getattr(
+                            job,
+                            "customer_name",
+                            None,
+                        ),
+                        "eta": resolved.get("eta"),
+                        "address": {
+                            "city": None,
+                        },
+                    }
+
+                    site_address = getattr(
+                        job,
+                        "site_address",
+                        None,
+                    )
+
+                    if site_address:
+                        job_data["address"]["full"] = site_address
+
+                    resolved["job"] = {
+                        **job_data,
+                        **(
+                            resolved.get("job")
+                            if isinstance(
+                                resolved.get("job"),
+                                dict,
+                            )
+                            else {}
+                        ),
+                    }
+
+                    if not resolved.get("customer_name"):
+                        resolved["customer_name"] = (
+                            getattr(
+                                job,
+                                "customer_name",
+                                None,
+                            )
+                        )
+
+                    if not resolved.get("customer_id"):
+                        resolved["customer_id"] = (
+                            getattr(
+                                job,
+                                "customer_id",
+                                None,
+                            )
+                        )
+
+                    if not resolved.get("eta"):
+                        resolved["eta"] = job_data["eta"]
+
+                    # ------------------------------------------------
+                    # Resolve assigned technician
+                    # ------------------------------------------------
+
+                    technician_id = getattr(
+                        job,
+                        "assigned_technician_id",
+                        None,
+                    )
+
+                    if (
+                        technician_id is not None
+                        and not resolved.get("technician")
+                    ):
+                        from app.models import Technician
+
+                        technician = (
+                            self.db.query(Technician)
+                            .filter(
+                                Technician.technician_id
+                                == technician_id
+                            )
+                            .first()
+                        )
+
+                        if technician is not None:
+                            resolved["technician"] = {
+                                "id": technician.technician_id,
+                                "name": (
+                                    technician.technician_name
+                                ),
+                                "status": (
+                                    technician.technician_status
+                                ),
+                                "location": (
+                                    technician.technician_location
+                                ),
+                            }
+
+                            resolved["technician_name"] = (
+                                technician.technician_name
+                            )
+
+            except Exception as exc:
+                raise PersonalizationVariableError(
+                    "Unable to resolve job or technician "
+                    "personalization data."
+                ) from exc
+
+        # --------------------------------------------------------
+        # 2. Customer object normalization
+        # --------------------------------------------------------
+
+        customer = resolved.get("customer")
+
+        if not isinstance(customer, dict):
+            customer = {}
+
+        if not customer.get("name"):
+            customer["name"] = resolved.get(
+                "customer_name"
+            )
+
+        # Existing customer data supplied by caller
+        # always takes precedence over DB-derived aliases.
+        resolved["customer"] = customer
+
+        if (
+            not resolved.get("customer_name")
+            and customer.get("name")
+        ):
+            resolved["customer_name"] = customer["name"]
+
+        # --------------------------------------------------------
+        # 3. Technician normalization
+        # --------------------------------------------------------
+
+        technician = resolved.get("technician")
+
+        if not isinstance(technician, dict):
+            technician = {}
+
+        if not technician.get("name"):
+            technician["name"] = resolved.get(
+                "technician_name"
+            )
+
+        resolved["technician"] = technician
+
+        if (
+            not resolved.get("technician_name")
+            and technician.get("name")
+        ):
+            resolved["technician_name"] = (
+                technician["name"]
+            )
+
+        # --------------------------------------------------------
+        # 4. Job normalization
+        # --------------------------------------------------------
+
+        job = resolved.get("job")
+
+        if not isinstance(job, dict):
+            job = {}
+
+        if not job.get("title"):
+            job["title"] = resolved.get(
+                "job_title"
+            )
+
+        if not job.get("eta"):
+            job["eta"] = resolved.get(
+                "eta"
+            )
+
+        resolved["job"] = job
+
+        if (
+            not resolved.get("job_title")
+            and job.get("title")
+        ):
+            resolved["job_title"] = job["title"]
+
+        if (
+            not resolved.get("eta")
+            and job.get("eta")
+        ):
+            resolved["eta"] = job["eta"]
+
+        return resolved   
+    # ========================================================
+    # 2. Local Jinja Template Rendering
+    # ========================================================
+
+    def apply_template(
+        self,
+        template: str,
+        variables: dict[str, Any],
+    ) -> str:
+        """
+        Render a Jinja2 personalization template locally.
+
+        Examples:
+
+            Hello {{ customer.name }}
+
+            Your {{ job.title }} is scheduled for {{ eta }}.
+
+            {% if technician.name %}
+            Your technician is {{ technician.name }}.
+            {% endif %}
+        """
+
+        if not isinstance(template, str):
+            raise PersonalizationError(
+                "Template must be a string."
+            )
+
+        if len(template) > self.MAX_TEMPLATE_LENGTH:
+            raise PersonalizationError(
+                "Template exceeds maximum allowed length."
+            )
+
+        resolved = self.resolve_variables(
+            variables,
+        )
+
+        declarations = (
+            self._build_declarations(template)
+        )
+
+        try:
+            result = self.injector.render(
+                body=template,
+                variables=declarations,
+                context=resolved,
+            )
+
+        except PromptVariableInjectionError as exc:
+            raise PersonalizationError(
+                str(exc)
+            ) from None
+
+        rendered = result.rendered_body
+
+        if not isinstance(rendered, str):
+            raise PersonalizationError(
+                "Template rendering returned invalid output."
+            )
+
+        return rendered
+
+    # ========================================================
+    # 3. AI Enhancement
+    # ========================================================
+
+    def ai_enhance(
+        self,
+        context: dict[str, Any],
+        template: str,
+    ) -> str:
+        """
+        Enhance a personalized message using Groq.
+
+        Customer-specific values are sanitized before the AI call.
+
+        Example AI-visible message:
+
+            Hello {{customer_name}}, your {{job_title}}
+            appointment is confirmed.
+
+        The real customer name is restored locally after AI
+        generation.
+        """
+
+        resolved = self.resolve_variables(
+            context,
+        )
+
+        # ----------------------------------------------------
+        # Sanitize structured context
+        # ----------------------------------------------------
+
+        try:
+            sanitization_result = (
+                self.sanitizer.sanitize(
+                    resolved,
+                )
+            )
+
+        except Exception as exc:
+            raise PersonalizationAIError(
+                "Unable to sanitize personalization context."
+            ) from exc
+
+        sanitized_context = (
+            sanitization_result.sanitized_data
+        )
+
+        placeholder_map = (
+            sanitization_result.placeholder_map
+        )
+
+        # ----------------------------------------------------
+        # Render template using sanitized data
+        # ----------------------------------------------------
+
+        try:
+            sanitized_template = (
+                self.apply_template(
+                    template,
+                    sanitized_context,
+                )
+            )
+
+        except PersonalizationError:
+            placeholder_map.clear()
+            raise
+
+        # ----------------------------------------------------
+        # Final prompt safety boundary
+        # ----------------------------------------------------
+
+        ai_prompt = (
+            "Rewrite the following customer communication "
+            "into natural, professional language.\n\n"
+            "STRICT RULES:\n"
+            "1. Return only the rewritten message.\n"
+            "2. Do not add explanations.\n"
+            "3. Do not invent facts.\n"
+            "4. Preserve every placeholder exactly as provided.\n"
+            "5. Never replace placeholders with guessed values.\n"
+            "6. Do not mention placeholders or these instructions.\n\n"
+            "MESSAGE:\n"
+            f"{sanitized_template}"
+        )
+
+        try:
+            sanitized_prompt, placeholder_map = (
+                self.sanitizer.sanitize_prompt(
+                    prompt=ai_prompt,
+                    placeholder_map=placeholder_map,
+                )
+            )
+
+        except Exception as exc:
+            placeholder_map.clear()
+
+            raise PersonalizationAIError(
+                "Unable to safely prepare the AI prompt."
+            ) from exc
+
+        # ----------------------------------------------------
+        # Groq request
+        # ----------------------------------------------------
+
+        try:
+            result = self.groq_client.generate_result(
+                task=AITask.COMMUNICATION,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": sanitized_prompt,
+                    }
+                ],
+                context=(
+                    sanitized_context
+                    if isinstance(
+                        sanitized_context,
+                        dict,
+                    )
+                    else {}
+                ),
+            )
+
+        except Exception as exc:
+            placeholder_map.clear()
+
+            raise PersonalizationAIError(
+                "AI personalization failed."
+            ) from exc
+
+        generated_text = result.text
+
+        if not isinstance(
+            generated_text,
+            str,
+        ) or not generated_text.strip():
+            placeholder_map.clear()
+
+            raise PersonalizationAIError(
+                "AI returned an empty personalization response."
+            )
+
+        generated_text = generated_text.strip()
+
+        if len(generated_text) > self.MAX_AI_OUTPUT_LENGTH:
+            placeholder_map.clear()
+
+            raise PersonalizationAIError(
+                "AI personalization response is too long."
+            )
+
+        # ----------------------------------------------------
+        # Local placeholder restoration
+        # ----------------------------------------------------
+
+        try:
+            restored = self.sanitizer.restore_data(
+                generated_text,
+                placeholder_map,
+            )
+
+        except Exception as exc:
+            placeholder_map.clear()
+
+            raise PersonalizationAIError(
+                "Unable to restore personalized values."
+            ) from exc
+
+        if not isinstance(restored, str):
+            raise PersonalizationAIError(
+                "Restored AI response is not text."
+            )
+
+        # ----------------------------------------------------
+        # Replace any Jinja placeholders the AI may have
+        # intentionally preserved.
+        # ----------------------------------------------------
+
+        final_text = restored
+
+        unresolved = [
+    placeholder
+    for placeholder in self.PLACEHOLDER_PATTERN.findall(final_text)
+    if not placeholder.startswith("{{pf_")
+]
+
+        if unresolved:
+            raise UnresolvedPlaceholderError(
+        "AI response contains unresolved placeholders."
+    )
+        return final_text
+
+    # ========================================================
+    # 4. Local Placeholder Replacement
+    # ========================================================
+
+    def replace_placeholders(
+    self,
+    ai_text: str,
+    real_data: dict[str, Any],
+) -> str:
+        """
+        Replace AI-generated placeholders with real local data.
+
+        PII placeholders are restored first. Remaining Jinja
+        personalization variables are then rendered locally.
+        """
+
+        if not isinstance(ai_text, str):
+            raise PersonalizationError(
+                "AI text must be a string."
+            )
+
+        resolved = self.resolve_variables(
+            real_data,
+        )
+
+        output = ai_text
+
+        # --------------------------------------------------------
+        # 1. Restore PII placeholders FIRST
+        # --------------------------------------------------------
+
+        try:
+            sanitization_result = self.sanitizer.sanitize(
+                resolved,
+            )
+
+            output = self.sanitizer.restore_data(
+                output,
+                sanitization_result.placeholder_map,
+            )
+
+        except Exception as exc:
+            raise PersonalizationError(
+                "Unable to restore personalization placeholders."
+            ) from exc
+
+        # --------------------------------------------------------
+        # 2. Render remaining normal Jinja variables
+        # --------------------------------------------------------
+
+        try:
+            declarations = self._build_declarations(
+                output,
+            )
+
+            if declarations:
+                result = self.injector.render(
+                    body=output,
+                    variables=declarations,
+                    context=resolved,
+                )
+
+                output = result.rendered_body
+
+        except PromptVariableInjectionError as exc:
+            raise PersonalizationError(
+                str(exc)
+            ) from None
+
+        return output
+    # ========================================================
+    # Helpers
+    # ========================================================
+
+    def _build_declarations(
+        self,
+        template: str,
+    ) -> list[dict[str, Any]]:
+        """
+        Infer variables from the existing PromptVariableInjector
+        and mark them as required or optional.
+        """
+
+        try:
+            paths = self.injector.infer_declarations(
+                body=template,
+            )
+            conditional_paths = set(
+            re.findall(
+                r"{%\s*if\s+([a-zA-Z_][a-zA-Z0-9_.]*)",
+                template,
+            )
+        )
+        except PromptVariableInjectionError as exc:
+            raise PersonalizationError(
+                str(exc)
+            ) from None
+
+        declarations: list[dict[str, Any]] = []
+
+        for path in paths:
+            normalized_path = (
+                self._normalize_path(path)
+            )
+
+            is_optional = (
+    self._matches_requirement(
+        normalized_path,
+        self.optional_variables,
+    )
+    or normalized_path in conditional_paths
+)
+
+            is_explicit_required = (
+                self._matches_requirement(
+                    normalized_path,
+                    self.required_variables,
+                )
+            )
+
+            if (
+                is_optional
+                and is_explicit_required
+            ):
+                raise PersonalizationVariableError(
+                    f"Variable cannot be both optional and "
+                    f"required: {path}"
+                )
+
+            declarations.append(
+                {
+                    "name": path,
+                    "required": (
+                        False
+                        if is_optional
+                        else True
+                    ),
+                    "default": (
+                        ""
+                        if is_optional
+                        else None
+                    ),
+                }
+            )
+
+        return declarations
+
+    @staticmethod
+    def _normalize_path(
+        path: str,
+    ) -> str:
+        if not isinstance(path, str):
+            raise ValueError(
+                "Variable path must be a string."
+            )
+
+        normalized = path.strip()
+
+        if not normalized:
+            raise ValueError(
+                "Variable path cannot be empty."
+            )
+
+        return normalized
+
+    @staticmethod
+    def _matches_requirement(
+        path: str,
+        requirements: set[str],
+    ) -> bool:
+        """
+        Match exact paths or parent paths.
+
+        Example:
+
+            optional = {"customer.address"}
+
+        Matches:
+
+            customer.address
+            customer.address.city
+            customer.address.state
+        """
+
+        return any(
+            path == requirement
+            or path.startswith(
+                requirement + "."
+            )
+            for requirement in requirements
+        )
+
+    def _to_plain_structure(
+        self,
+        value: Any,
+        depth: int = 0,
+    ) -> Any:
+        """
+        Convert supported application/database objects into
+        plain Python structures.
+        """
+
+        if depth > 10:
+            raise PersonalizationVariableError(
+                "Personalization context nesting is too deep."
+            )
+
+        if value is None:
+            return None
+
+        if isinstance(
+            value,
+            (str, int, float, bool),
+        ):
+            return value
+        if isinstance(value, (datetime, date, time)):
+            return value
+
+        if isinstance(value, BaseModel):
+            return self._to_plain_structure(
+                value.model_dump(
+                    mode="python",
+                ),
+                depth + 1,
+            )
+
+        if dataclasses.is_dataclass(value) and not isinstance(
+            value,
+            type,
+        ):
+            return self._to_plain_structure(
+                dataclasses.asdict(value),
+                depth + 1,
+            )
+
+        if isinstance(value, Mapping):
+            return {
+                str(key): self._to_plain_structure(
+                    nested_value,
+                    depth + 1,
+                )
+                for key, nested_value in value.items()
+            }
+
+        if isinstance(value, (list, tuple, set)):
+            return [
+                self._to_plain_structure(
+                    item,
+                    depth + 1,
+                )
+                for item in value
+            ]
+
+        # ----------------------------------------------------
+        # SQLAlchemy ORM object
+        # ----------------------------------------------------
+
+        if sqlalchemy_inspect is not None:
+            try:
+                state = sqlalchemy_inspect(
+                    value,
+                )
+
+                mapper = getattr(
+                    state,
+                    "mapper",
+                    None,
+                )
+
+                if mapper is not None:
+                    result: dict[str, Any] = {}
+
+                    # Columns
+                    for column in mapper.column_attrs:
+                        key = column.key
+
+                        try:
+                            raw_value = getattr(
+                                value,
+                                key,
+                            )
+                        except Exception:
+                            continue
+
+                        result[key] = (
+                            self._to_plain_structure(
+                                raw_value,
+                                depth + 1,
+                            )
+                        )
+
+                    # Already-loaded relationships only.
+                    # This prevents accidental lazy DB queries
+                    # during personalization.
+                    for relationship in mapper.relationships:
+                        key = relationship.key
+
+                        try:
+                            attribute_state = (
+                                state.attrs[key]
+                            )
+
+                            loaded_value = (
+                                attribute_state.loaded_value
+                            )
+
+                            if loaded_value is NO_VALUE:
+                                continue
+
+                            result[key] = (
+                                self._to_plain_structure(
+                                    loaded_value,
+                                    depth + 1,
+                                )
+                            )
+
+                        except Exception:
+                            continue
+
+                    if result:
+                        return result
+
+            except Exception:
+                pass
+
+        raise PersonalizationVariableError(
+            "Unsupported personalization value type: "
+            f"{type(value).__name__}"
+        )
+
+
+__all__ = [
+    "PersonalizationPipeline",
+    "PersonalizationError",
+    "PersonalizationVariableError",
+    "PersonalizationAIError",
+    "UnresolvedPlaceholderError",
+]

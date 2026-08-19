@@ -87,12 +87,15 @@ async def lifespan(app: FastAPI):
     # Seed default notification templates, organizations, and users
     db = SessionLocal()
     try:
-        seed_default_templates(db)
-        print("Default notification templates seeded successfully.")
-        
+        # Skip default seeding while running pytest
+        if os.getenv("PYTEST_CURRENT_TEST") is None:
+            seed_default_templates(db)
+            print("Default notification templates seeded successfully.")
+
         from .seed_users import seed_organizations_and_users
         seed_organizations_and_users(db)
         print("Default organizations and users seeded successfully.")
+
     except Exception as e:
         print(f"Failed to seed default data: {e}")
     finally:

@@ -43,4 +43,5 @@ bcrypt==3.2.2
 email-validator==2.1.1
 html2text==2025.4.15
 premailer==3.10.0
-beautifulsoup4==4.12.2   
+beautifulsoup4==4.15.0
+pytest-asyncio==1.4.0
