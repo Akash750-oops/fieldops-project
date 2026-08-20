@@ -301,6 +301,11 @@ class CommunicationIntegration:
                 ),
                 channel=normalized_channel,
                 locale=normalized_locale,
+                customer_id=(
+                    self._clean_optional_text(
+                        event.customer_id
+                    )
+                ),
                 customer_name=(
                     self._clean_optional_text(
                         event.customer_name

@@ -104,6 +104,174 @@ async def test_tenant_id_removed_before_validation() -> None:
     mock_orchestrator.execute.assert_called_once()
     called_args = mock_orchestrator.execute.call_args[1]
     assert "tenant_id" not in called_args["context"]
+    
+@pytest.mark.anyio
+async def test_run_applies_personalization_when_template_exists() -> None:
+    config = build_config()
+
+    mock_orchestrator = MagicMock(spec=AIOrchestrator)
+
+    expected_decision = CommunicationDecision(
+        channel="SMS",
+        message="Personalized message",
+        tone="PROFESSIONAL",
+        confidence=0.95,
+    )
+    mock_orchestrator.execute.return_value = expected_decision
+
+    mock_personalization = MagicMock()
+    mock_personalization.ai_enhance.return_value = (
+        "Hello Test Customer, your technician is on the way."
+    )
+
+    agent = CommunicationAgent(
+        config=config,
+        orchestrator=mock_orchestrator,
+        personalization_pipeline=mock_personalization,
+    )
+
+    await agent.setup()
+
+    valid_context = {
+        "tenant_id": "tenant-abc",
+        "job_id": "job-123",
+        "notification_type": "job_assigned",
+        "recipient_type": "CUSTOMER",
+        "channel": "SMS",
+        "locale": "en",
+        "job_status": "ASSIGNED",
+        "template": "Hello {{ customer_name }}",
+        "customer_name": "Test Customer",
+    }
+
+    decision = await agent.run(valid_context)
+
+    assert decision == expected_decision
+
+    mock_personalization.ai_enhance.assert_called_once()
+
+    mock_orchestrator.execute.assert_called_once()
+
+    called_context = mock_orchestrator.execute.call_args.kwargs["context"]
+
+    assert (
+        called_context["additional_context"]
+        == "Hello Test Customer, your technician is on the way."
+    )
+    
+@pytest.mark.anyio
+async def test_personalize_uses_personalization_pipeline() -> None:
+    config = build_config()
+
+    mock_personalization = MagicMock()
+    mock_personalization.apply_template.return_value = (
+        "Hello Test Customer"
+    )
+
+    agent = CommunicationAgent(
+        config=config,
+        personalization_pipeline=mock_personalization,
+    )
+
+    result = agent.personalize(
+        template="Hello {{ customer_name }}",
+        context={"customer_name": "Test Customer"},
+    )
+
+    assert result == "Hello Test Customer"
+
+    mock_personalization.apply_template.assert_called_once_with(
+        template="Hello {{ customer_name }}",
+        variables={"customer_name": "Test Customer"},
+    )
+
+@pytest.mark.anyio
+async def test_run_raises_fallback_error_when_validation_requires_fallback() -> None:
+    config = build_config()
+    mock_orchestrator = MagicMock(spec=AIOrchestrator)
+
+    expected_decision = CommunicationDecision(
+        channel="SMS",
+        message="Test message",
+        tone="PROFESSIONAL",
+        confidence=0.95,
+    )
+    mock_orchestrator.execute.return_value = expected_decision
+
+    mock_validator = MagicMock()
+    mock_validator.validate.return_value = MagicMock(
+        passed=False,
+        requires_fallback=True,
+    )
+
+    agent = CommunicationAgent(
+        config=config,
+        orchestrator=mock_orchestrator,
+        message_validator=mock_validator,
+    )
+
+    await agent.setup()
+
+    valid_context = {
+        "tenant_id": "tenant-abc",
+        "job_id": "job-123",
+        "notification_type": "job_assigned",
+        "recipient_type": "CUSTOMER",
+        "channel": "SMS",
+        "job_status": "ASSIGNED",
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="requires fallback",
+    ):
+        await agent.run(valid_context)
+
+    mock_validator.validate.assert_called_once()
+
+@pytest.mark.anyio
+async def test_run_raises_validation_error_without_fallback() -> None:
+    config = build_config()
+    mock_orchestrator = MagicMock(spec=AIOrchestrator)
+
+    expected_decision = CommunicationDecision(
+        channel="SMS",
+        message="Test message",
+        tone="PROFESSIONAL",
+        confidence=0.95,
+    )
+    mock_orchestrator.execute.return_value = expected_decision
+
+    mock_validator = MagicMock()
+    mock_validator.validate.return_value = MagicMock(
+        passed=False,
+        requires_fallback=False,
+    )
+
+    agent = CommunicationAgent(
+        config=config,
+        orchestrator=mock_orchestrator,
+        message_validator=mock_validator,
+    )
+
+    await agent.setup()
+
+    valid_context = {
+        "tenant_id": "tenant-abc",
+        "job_id": "job-123",
+        "notification_type": "job_assigned",
+        "recipient_type": "CUSTOMER",
+        "channel": "SMS",
+        "job_status": "ASSIGNED",
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="Generated communication failed message validation.",
+    ):
+        await agent.run(valid_context)
+
+    mock_validator.validate.assert_called_once()
 
 @pytest.mark.anyio
 async def test_tenant_mismatch_rejected_by_base_agent() -> None:
