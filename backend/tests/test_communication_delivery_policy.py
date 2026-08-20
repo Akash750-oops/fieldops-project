@@ -51,7 +51,7 @@ def test_1_2_supported_channels(policy_service, mock_config_service, mock_pref_s
     
     dec_sms = policy_service.evaluate(
         channel="SMS", category=CommunicationMessageCategory.STANDARD,
-        recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1"
+        recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1"
     )
     assert dec_sms.channel == "SMS"
     
@@ -64,7 +64,7 @@ def test_1_2_supported_channels(policy_service, mock_config_service, mock_pref_s
     )
     dec_email = policy_service.evaluate(
         channel="EMAIL", category=CommunicationMessageCategory.STANDARD,
-        recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1"
+        recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1"
     )
     assert dec_email.channel == "EMAIL"
 
@@ -73,7 +73,7 @@ def test_3_unsupported_channel_rejected(policy_service, channel):
     with pytest.raises(ValidationError):
         policy_service.evaluate(
             channel=channel, category=CommunicationMessageCategory.STANDARD,
-            recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1"
+            recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1"
         )
 
 @pytest.mark.parametrize("recipient", ["", "UNKNOWN", "CUSTOMER_ADMIN", "carrier-pigeon"])
@@ -81,7 +81,7 @@ def test_4_invalid_recipient_type_rejected(policy_service, recipient):
     with pytest.raises(ValidationError):
         policy_service.evaluate(
             channel="SMS", category=CommunicationMessageCategory.STANDARD,
-            recipient_type=recipient, tenant_id="t1", customer_id="c1"
+            recipient_type=recipient, tenant_id="tenant-1", customer_id="c1"
         )
 
 def test_5_customer_requires_tenant_id(policy_service, mock_config_service):
@@ -103,7 +103,7 @@ def test_6_customer_requires_customer_id(policy_service, mock_config_service):
     )
     dec = policy_service.evaluate(
         channel="SMS", category=CommunicationMessageCategory.STANDARD,
-        recipient_type="CUSTOMER", tenant_id="t1", customer_id=None
+        recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id=None
     )
     assert not dec.allowed
     assert dec.final_reason_code == "CUSTOMER_IDENTITY_REQUIRED"
@@ -117,7 +117,7 @@ def test_7_8_tech_system_bypasses_pref(policy_service, mock_config_service, mock
     for rtype in ["TECHNICIAN", "SYSTEM"]:
         dec = policy_service.evaluate(
             channel="SMS", category=CommunicationMessageCategory.STANDARD,
-            recipient_type=rtype, tenant_id="t1", customer_id="c1"
+            recipient_type=rtype, tenant_id="tenant-1", customer_id="c1"
         )
         assert dec.allowed
         mock_pref_service.evaluate_channel.assert_not_called()
@@ -130,7 +130,7 @@ def test_7_8_tech_system_bypasses_pref(policy_service, mock_config_service, mock
     for rtype in ["TECHNICIAN", "SYSTEM"]:
         dec = policy_service.evaluate(
             channel="SMS", category=CommunicationMessageCategory.STANDARD,
-            recipient_type=rtype, tenant_id="t1", customer_id="c1"
+            recipient_type=rtype, tenant_id="tenant-1", customer_id="c1"
         )
         assert not dec.allowed
 
@@ -144,7 +144,7 @@ def test_9_10_result_immutable_no_pii(policy_service, mock_config_service, mock_
     )
     dec = policy_service.evaluate(
         channel="SMS", category=CommunicationMessageCategory.STANDARD,
-        recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1"
+        recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1"
     )
     # Immutable check
     with pytest.raises(ValidationError):
@@ -183,7 +183,7 @@ def test_global_matrix_various(policy_service, mock_config_service, mock_pref_se
     
     dec = policy_service.evaluate(
         channel=channel, category=category,
-        recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1"
+        recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1"
     )
     
     assert dec.allowed == allowed
@@ -200,7 +200,7 @@ def test_11_global_allowed_pref_enabled(policy_service, mock_config_service, moc
     mock_pref_service.evaluate_channel.return_value = CustomerPreferenceDecision(
         allowed=True, channel="SMS", reason_code="P", source="PROFILE", revision=1
     )
-    dec = policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1")
+    dec = policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1")
     assert dec.allowed
     assert dec.final_reason_code == "DELIVERY_POLICY_ALLOWED"
 
@@ -212,21 +212,21 @@ def test_12_global_allowed_pref_disabled(policy_service, mock_config_service, mo
     mock_pref_service.evaluate_channel.return_value = CustomerPreferenceDecision(
         allowed=False, channel="SMS", reason_code="P", source="PROFILE", revision=1
     )
-    assert not policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1").allowed
+    assert not policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1").allowed
 
 def test_13_global_blocked_pref_enabled(policy_service, mock_config_service, mock_pref_service):
     mock_config_service.evaluate_delivery.return_value = DeliveryDecision(
         allowed=False, channel="SMS", state=CommunicationChannelState.DISABLED,
         category=CommunicationMessageCategory.STANDARD, reason_code="G", revision=1
     )
-    assert not policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1").allowed
+    assert not policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1").allowed
 
 def test_14_global_blocked_does_not_query_pref(policy_service, mock_config_service, mock_pref_service):
     mock_config_service.evaluate_delivery.return_value = DeliveryDecision(
         allowed=False, channel="SMS", state=CommunicationChannelState.DISABLED,
         category=CommunicationMessageCategory.STANDARD, reason_code="G", revision=1
     )
-    policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1")
+    policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1")
     mock_pref_service.evaluate_channel.assert_not_called()
 
 def test_15_emergency_does_not_bypass_disabled_pref(policy_service, mock_config_service, mock_pref_service):
@@ -237,7 +237,7 @@ def test_15_emergency_does_not_bypass_disabled_pref(policy_service, mock_config_
     mock_pref_service.evaluate_channel.return_value = CustomerPreferenceDecision(
         allowed=False, channel="SMS", reason_code="P", source="PROFILE", revision=1
     )
-    assert not policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.EMERGENCY, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1").allowed
+    assert not policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.EMERGENCY, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1").allowed
 
 def test_18_pref_service_failure_blocks(policy_service, mock_config_service, mock_pref_service):
     mock_config_service.evaluate_delivery.return_value = DeliveryDecision(
@@ -245,7 +245,7 @@ def test_18_pref_service_failure_blocks(policy_service, mock_config_service, moc
         category=CommunicationMessageCategory.STANDARD, reason_code="G", revision=1
     )
     mock_pref_service.evaluate_channel.side_effect = CustomerPreferencePersistenceError("DB Down")
-    dec = policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1")
+    dec = policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1")
     assert not dec.allowed
     assert dec.final_reason_code == "CUSTOMER_PREFERENCE_UNAVAILABLE"
 
@@ -258,7 +258,7 @@ def test_16_17_missing_profile_compatibility(policy_service, mock_config_service
     mock_pref_service.evaluate_channel.return_value = CustomerPreferenceDecision(
         allowed=True, channel="SMS", reason_code="COMPAT_ALLOWED", source="COMPATIBILITY_DEFAULT", revision=0
     )
-    dec = policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1")
+    dec = policy_service.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1")
     assert dec.allowed
     assert dec.final_reason_code == "DELIVERY_POLICY_ALLOWED"
 
@@ -812,7 +812,7 @@ def test_74_76_no_message_or_env_in_decision(policy_service, mock_config_service
     
     dec = policy_service.evaluate(
         channel="SMS", category=CommunicationMessageCategory.STANDARD,
-        recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1"
+        recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1"
     )
     
     dump = dec.model_dump()
@@ -829,7 +829,7 @@ def test_missing_customer_identity_fails_closed(policy_service, mock_config_serv
     )
     dec = policy_service.evaluate(
         channel="SMS", category=CommunicationMessageCategory.STANDARD,
-        recipient_type="CUSTOMER", tenant_id="t1", customer_id=None
+        recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id=None
     )
     
     assert dec.allowed is False
@@ -874,23 +874,21 @@ def test_8_policy_composition(monkeypatch):
     db.add(org)
     db.commit()
     
-    db.add(CommunicationChannelConfiguration(
-        tenant_id="t1",
+    db.add(CommunicationChannelConfiguration(tenant_id="tenant-1",
         channel="SMS",
         state=CommunicationChannelState.ENABLED,
         revision=1,
         updated_by="sys"
     ))
 
-    db.add(CommunicationChannelConfiguration(
-        tenant_id="t1",
+    db.add(CommunicationChannelConfiguration(tenant_id="tenant-1",
         channel="EMAIL",
         state=CommunicationChannelState.DISABLED,
         revision=1,
         updated_by="sys"
     ))
     
-    db.add(CustomerProfile(tenant_id="t1", customer_id="c1", sms_enabled=True, email_enabled=False, revision=1, updated_by="sys"))
+    db.add(CustomerProfile(tenant_id="tenant-1", customer_id="c1", sms_enabled=True, email_enabled=False, revision=1, updated_by="sys"))
     db.commit()
     
     config_repo = CommunicationConfigurationRepository(db)
@@ -908,34 +906,34 @@ def test_8_policy_composition(monkeypatch):
     
     # 1. persistent ENABLED, override INHERIT, preference enabled => allowed
     env_mapping.clear()
-    dec = policy_svc.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1")
+    dec = policy_svc.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1")
     assert dec.allowed is True
     
     # 2. persistent ENABLED, override DISABLED, preference enabled => blocked
     env_mapping["FIELDOPS_SMS_EMERGENCY_OVERRIDE"] = "DISABLED"
-    dec = policy_svc.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1")
+    dec = policy_svc.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1")
     assert dec.allowed is False
     assert dec.global_reason_code == "ENV_OVERRIDE_DISABLED"
     
     # 3. persistent ENABLED, override EMERGENCY_ONLY, STANDARD => blocked
     env_mapping["FIELDOPS_SMS_EMERGENCY_OVERRIDE"] = "EMERGENCY_ONLY"
-    dec = policy_svc.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1")
+    dec = policy_svc.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1")
     assert dec.allowed is False
     
     # 4. persistent ENABLED, override EMERGENCY_ONLY, EMERGENCY, preference enabled => allowed
-    dec = policy_svc.evaluate(channel="SMS", category=CommunicationMessageCategory.EMERGENCY, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1")
+    dec = policy_svc.evaluate(channel="SMS", category=CommunicationMessageCategory.EMERGENCY, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1")
     assert dec.allowed is True
     
     # 5. persistent DISABLED, override EMERGENCY_ONLY, EMERGENCY => blocked
     # Email is persistent DISABLED in db
     env_mapping["FIELDOPS_EMAIL_EMERGENCY_OVERRIDE"] = "EMERGENCY_ONLY"
-    dec = policy_svc.evaluate(channel="EMAIL", category=CommunicationMessageCategory.EMERGENCY, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1")
+    dec = policy_svc.evaluate(channel="EMAIL", category=CommunicationMessageCategory.EMERGENCY, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1")
     assert dec.allowed is False
     assert dec.global_reason_code == "EMAIL_DISABLED" # Because DB is more restrictive than override
     
     # 6. persistent ENABLED, invalid override => blocked
     env_mapping["FIELDOPS_SMS_EMERGENCY_OVERRIDE"] = "INVALID_STATE"
-    dec = policy_svc.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1")
+    dec = policy_svc.evaluate(channel="SMS", category=CommunicationMessageCategory.STANDARD, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1")
     assert dec.allowed is False
     
     # 7. persistent ENABLED, preference disabled, EMERGENCY => blocked
@@ -946,7 +944,7 @@ def test_8_policy_composition(monkeypatch):
     email_config.state = CommunicationChannelState.ENABLED
     db.commit()
     
-    dec = policy_svc.evaluate(channel="EMAIL", category=CommunicationMessageCategory.EMERGENCY, recipient_type="CUSTOMER", tenant_id="t1", customer_id="c1")
+    dec = policy_svc.evaluate(channel="EMAIL", category=CommunicationMessageCategory.EMERGENCY, recipient_type="CUSTOMER", tenant_id="tenant-1", customer_id="c1")
     assert dec.allowed is False
     assert dec.preference_allowed is False
     

@@ -174,6 +174,10 @@ class AuditAction:
     # Notifications
     NOTIFICATION_SENT = "NOTIFICATION_SENT"
 
+
+    # AI / Intent Recognition
+    INTENT_CLASSIFIED = "INTENT_CLASSIFIED"
+
     # Security
     UNAUTHORIZED_ACCESS = "UNAUTHORIZED_ACCESS"
     CROSS_TENANT_ACCESS = "CROSS_TENANT_ACCESS"

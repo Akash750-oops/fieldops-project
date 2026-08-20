@@ -12,9 +12,9 @@ The `GroqProvider` is a concrete implementation of `BaseAIProvider` connecting t
 
 ## Model Restriction
 
-- **Allowed Model**: `llama-3.3-70b-versatile`
+- **Allowed Model**: `openai/gpt-oss-120b`
 - Requests or configurations specifying any other model raise `ProviderConfigurationError`.
-- Defined via module-level constant `ALLOWED_MODEL = "llama-3.3-70b-versatile"`.
+- Defined via module-level constant `ALLOWED_MODEL = "openai/gpt-oss-120b"`.
 
 ---
 
@@ -73,7 +73,7 @@ Retries are strictly limited to **HTTP 429 (Rate Limit Exceeded)** responses:
 
 - `health_check()` queries the Groq models endpoint (`client.models.list()`) instead of running expensive chat completions.
 - `get_models()` returns available model IDs from the endpoint.
-- `health_check()` returns `True` only when `llama-3.3-70b-versatile` is present in the models endpoint response. Returns `False` on any network failure or missing model.
+- `health_check()` returns `True` only when `openai/gpt-oss-120b` is present in the models endpoint response. Returns `False` on any network failure or missing model.
 
 ---
 

@@ -41,6 +41,9 @@ from app.services.ai.FieldOpsAI.providers.base_provider import (
     ProviderConfigurationError,
     ProviderExecutionError,
 )
+
+
+
 from app.services.ai.FieldOpsAI.providers.budget import (
     BudgetExceededError,
     BudgetInfrastructureError,
@@ -100,7 +103,7 @@ def anyio_backend():
 
 
 class FakeIntegrationProvider(BaseAIProvider):
-    def __init__(self, name: str = "groq", model: str = "llama-3.3-70b-versatile", config: Any = None, **kwargs: Any) -> None:
+    def __init__(self, name: str = "groq", model: str = "openai/gpt-oss-120b", config: Any = None, **kwargs: Any) -> None:
         self._name = name
         self._model = model
         self.config = config
@@ -120,7 +123,7 @@ class FakeIntegrationProvider(BaseAIProvider):
 
 def make_gen_result(
     provider: str = "groq",
-    model: str = "llama-3.3-70b-versatile",
+    model: str = "openai/gpt-oss-120b",
     text: str = '{"summary": "integration ok"}',
 ) -> GenerationResult:
     return GenerationResult(
@@ -157,13 +160,20 @@ def test_incomplete_provider_subclass_raises() -> None:
 
 
 def test_complete_provider_subclass_contract() -> None:
-    provider = FakeIntegrationProvider("groq", "llama-3.3-70b-versatile")
-    assert provider.provider_name() == "groq"
-    assert provider.model_name() == "llama-3.3-70b-versatile"
-    assert provider.health_check() is True
-    res = provider.generate_completion([{"role": "user", "content": "hi"}])
-    assert "fake response" in res
+    provider = FakeIntegrationProvider(
+        "groq",
+        "openai/gpt-oss-120b",
+    )
 
+    assert provider.provider_name() == "groq"
+    assert provider.model_name() == "openai/gpt-oss-120b"
+    assert provider.health_check() is True
+
+    res = provider.generate_completion(
+        [{"role": "user", "content": "hi"}]
+    )
+
+    assert "fake response" in res
 
 # ==========================================================
 # 2. GROQ PROVIDER & CLIENT
@@ -173,7 +183,7 @@ def test_groq_provider_initialization_and_allowlist() -> None:
     mock_client = MagicMock()
     provider = GroqProvider(client=mock_client)
     assert provider.provider_name() == "Groq"
-    assert provider.model_name() == "llama-3.3-70b-versatile"
+    assert provider.model_name() == "openai/gpt-oss-120b"
 
     mock_bad_config = MagicMock()
     mock_bad_config.model_name = "unsupported-model-99"
@@ -323,7 +333,7 @@ def test_token_budget_reserve_reconcile_cancel_cycle() -> None:
         max_output_tokens=20,
         category="general",
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         tenant_id="tenant-1",
     )
     assert res_id is not None
@@ -353,7 +363,7 @@ async def test_provider_cache_set_get_and_key_determinism() -> None:
     req = ProviderCacheRequest.from_sanitized_payload(
         sanitized_result=sanitized_res,
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         temperature=0.0,
         max_tokens=100,
         ttl_policy=CacheTTLPolicy.STATIC,
@@ -387,7 +397,8 @@ def test_orchestrator_end_to_end_privacy_and_execution() -> None:
     )
 
     orchestrator = AIOrchestrator(
-        client=mock_client
+        client=mock_client,
+        redis_client=fake_redis,
     )
 
     result = orchestrator.execute(

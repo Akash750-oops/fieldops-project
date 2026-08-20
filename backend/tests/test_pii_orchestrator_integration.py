@@ -179,7 +179,7 @@ class RecordingClient:
         return GenerationResult(
             text=text,
             provider_name="Groq",
-            model_name="llama-3.3-70b-versatile",
+            model_name="openai/gpt-oss-120b",
             usage=UsageStats(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,

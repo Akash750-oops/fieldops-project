@@ -113,7 +113,7 @@ class _LegacyClientProviderAdapter(BaseAIProvider):
     def __init__(
         self,
         name: str = "groq",
-        model: str = "llama-3.3-70b-versatile",
+        model: str = "openai/gpt-oss-120b",
     ) -> None:
         self._name = name
         self._model = model
@@ -160,6 +160,7 @@ class AIOrchestrator(RuntimeInterface):
         budget_manager: SyncTokenBudgetManager | None = None,
         provider_cache: SyncProviderCache | None = None,
         circuit_breaker: CircuitBreaker | None = None,
+        redis_client: Any | None = None,
     ) -> None:
         """
         Initialize the AI orchestrator.
@@ -195,9 +196,9 @@ class AIOrchestrator(RuntimeInterface):
         # Shared synchronous Redis client
         # --------------------------------------------------
 
-        redis_client: Any | None = None
+        
 
-        if circuit_breaker is not None:
+        if redis_client is None and circuit_breaker is not None:
             try:
                 redis_client = vars(
                     circuit_breaker
@@ -742,7 +743,7 @@ class AIOrchestrator(RuntimeInterface):
                             max_output_tokens
                         ),
                         ttl_policy=(
-                            CacheTTLPolicy.STATIC
+                            CacheTTLPolicy.DYNAMIC
                         ),
                         explicit_safety_verification=True,
                     )

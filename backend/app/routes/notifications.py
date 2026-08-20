@@ -49,7 +49,9 @@ from ..services.fcm import (
 from ..services.twilio_sms import (
     send_job_assignment_sms,
 )
-
+from app.models import User
+from app.services.ai.FieldOpsAI.services.intent_service import IntentService
+from app.services.ai.FieldOpsAI.schemas.intent import IntentContext
 
 router = APIRouter(
     tags=["Notifications"]
@@ -715,6 +717,7 @@ async def send_sms_notification(
 @router.post(
     "/webhooks/twilio-status"
 )
+
 async def twilio_status_webhook(
     MessageSid: str = Form(
         ...
@@ -774,6 +777,11 @@ async def twilio_status_webhook(
     }
 
 
+# ==========================================================
+# Twilio Inbound Webhook
+# ==========================================================
+
+
 @router.post(
     "/webhooks/twilio-inbound"
 )
@@ -809,6 +817,10 @@ async def twilio_inbound_webhook(
         masked_from,
     )
 
+    # ---------------------------------------------------------
+    # Technician SMS opt-out handling
+    # ---------------------------------------------------------
+
     stop_keywords = {
         "STOP",
         "UNSUBSCRIBE",
@@ -840,6 +852,45 @@ async def twilio_inbound_webhook(
                 "tech_id=%s",
                 technician.tech_id,
             )
+
+    # ---------------------------------------------------------
+    # Customer Intent Recognition
+    # ---------------------------------------------------------
+
+    customer = (
+        db.query(User)
+        .filter(
+            User.phone_number == From,
+            User.role == "customer",
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+        )
+        .first()
+    )
+
+    if customer and Body and Body.strip():
+        intent_service = IntentService(
+            db=db
+        )
+
+        intent_result = intent_service.recognize(
+            IntentContext(
+                message=Body,
+                language="en",
+            ),
+            tenant_id=customer.tenant_id,
+            user_id=customer.id,
+            user_email=customer.email,
+            role=customer.role,
+        )
+
+        logger.info(
+            "Customer intent classified. "
+            "user_id=%s intent=%s confidence=%.2f",
+            customer.id,
+            intent_result.intent,
+            intent_result.confidence,
+        )
 
     return {
         "status": "ok"
