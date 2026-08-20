@@ -5,7 +5,6 @@ from app.services.ai.FieldOpsAI.agents.personalization import (
     UnresolvedPlaceholderError,
 )
 
-
 class FakeGroqClient:
     def generate_result(self, **kwargs):
         prompt = kwargs["messages"][0]["content"]
@@ -150,7 +149,18 @@ async def test_communication_agent_run_personalizes_before_orchestrator():
 
     fake_orchestrator = Mock()
 
-    fake_decision = Mock(spec=CommunicationDecision)
+    fake_orchestrator = Mock()
+
+    fake_decision = CommunicationDecision(
+    channel="SMS",
+    output={
+        "channel": "SMS",
+        "text": "Hello Alice, your AC Repair is scheduled.",
+    },
+    tone="FRIENDLY",
+    confidence=0.95,
+)
+
     fake_orchestrator.execute.return_value = fake_decision
 
     config = AgentConfig(

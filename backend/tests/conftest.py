@@ -460,4 +460,3 @@ def generation_service(db_session):
         )
 
     return _make_service
-

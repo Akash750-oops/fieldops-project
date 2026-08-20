@@ -22,6 +22,7 @@ from app.services.ai.FieldOpsAI.schemas.agent_result import AgentResultStatus
 from app.services.ai.FieldOpsAI.agents.personalization import (
     PersonalizationPipeline,
 )
+from app.services.ai.guardrails.message_validator import MessageValidator
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class CommunicationAgent(BaseAgent[CommunicationDecision]):
         config: AgentConfig,
         orchestrator: Optional[AIOrchestrator] = None,
         personalization_pipeline: Optional[PersonalizationPipeline] = None,
+         message_validator: Optional[MessageValidator] = None,
     ) -> None:
 
         if config.agent_type != AITask.COMMUNICATION:
@@ -54,6 +56,10 @@ class CommunicationAgent(BaseAgent[CommunicationDecision]):
             if personalization_pipeline is not None
             else PersonalizationPipeline()
         )
+        self.message_validator = (
+            message_validator
+            if message_validator is not None
+            else MessageValidator())
 
     def personalize(
         self,
@@ -124,6 +130,32 @@ class CommunicationAgent(BaseAgent[CommunicationDecision]):
 
         if not isinstance(decision, CommunicationDecision):
             raise TypeError("Returned object is not a CommunicationDecision.")
+        validation_result = self.message_validator.validate(
+    context=validated_context,
+    decision=decision,
+)
+
+        if not validation_result.passed:
+            logger.warning(
+                "Communication message failed validation.",
+                extra={
+                    "agent_id": str(self.agent_id),
+                    "agent_type": self.config.agent_type.value,
+                    "channel": validated_context.channel,
+                    "notification_type": validated_context.notification_type,
+                    "quality_score": validation_result.quality_score,
+                },
+            )
+
+            if validation_result.requires_fallback:
+                raise ValueError(
+                    "Generated communication failed message validation "
+                    "and requires fallback."
+                )
+
+            raise ValueError(
+                "Generated communication failed message validation."
+            )
 
         elapsed = time.perf_counter() - start_time
 
