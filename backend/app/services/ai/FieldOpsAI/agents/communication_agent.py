@@ -22,6 +22,7 @@ from app.services.ai.FieldOpsAI.schemas.agent_result import AgentResultStatus
 from app.services.ai.FieldOpsAI.agents.personalization import (
     PersonalizationPipeline,
 )
+from app.services.ai.FieldOpsAI.agents.channel_selector import ( ChannelSelector, )
 from app.services.ai.guardrails.message_validator import MessageValidator
 
 logger = logging.getLogger(__name__)
@@ -30,13 +31,14 @@ logger = logging.getLogger(__name__)
 class CommunicationAgent(BaseAgent[CommunicationDecision]):
 
     def __init__(
-        self,
-        config: AgentConfig,
-        orchestrator: Optional[AIOrchestrator] = None,
-        personalization_pipeline: Optional[PersonalizationPipeline] = None,
-         message_validator: Optional[MessageValidator] = None,
-    ) -> None:
-
+    self,
+    config: AgentConfig,
+    orchestrator: Optional[AIOrchestrator] = None,
+    personalization_pipeline: Optional[PersonalizationPipeline] = None,
+    message_validator: Optional[MessageValidator] = None,
+    channel_selector: Optional[ChannelSelector] = None,
+) -> None:
+        
         if config.agent_type != AITask.COMMUNICATION:
             raise ValueError(
                 "CommunicationAgent requires an "
@@ -55,6 +57,11 @@ class CommunicationAgent(BaseAgent[CommunicationDecision]):
             personalization_pipeline
             if personalization_pipeline is not None
             else PersonalizationPipeline()
+        )
+        self.channel_selector = (
+            channel_selector
+            if channel_selector is not None
+            else ChannelSelector()
         )
         self.message_validator = (
             message_validator

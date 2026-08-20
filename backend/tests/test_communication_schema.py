@@ -24,6 +24,11 @@ from pydantic import ValidationError
 from app.services.ai.FieldOpsAI.schemas.communication import (
     CommunicationContext,
     CommunicationDecision,
+    output_text_for_validation,
+    SMSMessageOutput,
+    EmailMessageOutput,
+    PushMessageOutput,
+    PortalMessageOutput,
 )
 
 
@@ -64,7 +69,54 @@ def test_communication_context_accepts_valid_input() -> None:
     assert context.recipient_type == "CUSTOMER"
     assert context.channel == "SMS"
     assert context.job_status == "EN_ROUTE"
+    
+def test_communication_context_accepts_customer_id() -> None:
+    context = CommunicationContext(
+        job_id="job-123",
+        notification_type="job_assigned",
+        recipient_type="CUSTOMER",
+        channel="SMS",
+        locale="en",
+        customer_id="customer-123",
+        job_status="ASSIGNED",
+    )
+    assert context.customer_id == "customer-123"
+    
+def test_communication_context_defaults_empty_locale_to_en() -> None:
+    context = CommunicationContext(
+        job_id="JOB-1001",
+        notification_type="job_assigned",
+        recipient_type="CUSTOMER",
+        channel="SMS",
+        locale="",
+        job_status="ASSIGNED",
+    )
 
+    assert context.locale == "en"
+
+
+def test_communication_context_defaults_missing_locale_to_en() -> None:
+    context = CommunicationContext(
+        job_id="JOB-1001",
+        notification_type="job_assigned",
+        recipient_type="CUSTOMER",
+        channel="SMS",
+        job_status="ASSIGNED",
+    )
+
+    assert context.locale == "en"
+
+
+def test_communication_context_rejects_invalid_locale() -> None:
+    with pytest.raises(ValueError, match="Invalid or unsupported locale"):
+        CommunicationContext(
+            job_id="JOB-1001",
+            notification_type="job_assigned",
+            recipient_type="CUSTOMER",
+            channel="SMS",
+            locale="invalid-locale-xyz",
+            job_status="ASSIGNED",
+        )
 
 def test_communication_context_strips_whitespace() -> None:
     """
@@ -399,3 +451,184 @@ def test_decision_rejects_unknown_ai_fields() -> None:
             confidence=0.95,
             internal_reasoning="Hidden reasoning",
         )
+        
+def test_output_text_for_validation_sms() -> None:
+    output = SMSMessageOutput(
+        text="Your technician is on the way."
+    )
+
+    assert output_text_for_validation(output) == (
+        "Your technician is on the way."
+    )
+
+
+def test_output_text_for_validation_email() -> None:
+    output = EmailMessageOutput(
+        subject="Technician Update",
+        text_body="Your technician is on the way.",
+        html_body="<p>Your technician is on the way.</p>",
+    )
+
+    assert output_text_for_validation(output) == (
+        "Technician Update\nYour technician is on the way."
+    )
+
+
+def test_output_text_for_validation_push() -> None:
+    output = PushMessageOutput(
+        title="Technician Update",
+        body="Your technician is on the way.",
+    )
+
+    assert output_text_for_validation(output) == (
+        "Technician Update\nYour technician is on the way."
+    )
+
+
+def test_output_text_for_validation_portal() -> None:
+    output = PortalMessageOutput(
+        title="Technician Update",
+        body="Your technician is on the way.",
+    )
+
+    assert output_text_for_validation(output) == (
+        "Technician Update\nYour technician is on the way."
+    )
+    
+def test_output_text_for_validation_portal_without_title() -> None:
+    output = PortalMessageOutput(
+        body="Your technician is on the way."
+    )
+
+    assert output_text_for_validation(output) == (
+        "Your technician is on the way."
+    )
+    
+def test_communication_decision_message_for_sms() -> None:
+    decision = CommunicationDecision(
+        channel="SMS",
+        output=SMSMessageOutput(
+            text="Your technician is on the way."
+        ),
+        tone="PROFESSIONAL",
+        confidence=0.95,
+    )
+
+    assert decision.message == (
+        "Your technician is on the way."
+    )
+
+
+def test_communication_decision_message_for_email_html() -> None:
+    decision = CommunicationDecision(
+        channel="EMAIL",
+        output=EmailMessageOutput(
+            subject="Technician Update",
+            text_body="Your technician is on the way.",
+            html_body="<p>Your technician is on the way.</p>",
+        ),
+        tone="PROFESSIONAL",
+        confidence=0.95,
+    )
+
+    assert decision.message == (
+        "<p>Your technician is on the way.</p>"
+    )
+
+
+def test_communication_decision_message_for_email_text() -> None:
+    decision = CommunicationDecision(
+        channel="EMAIL",
+        output=EmailMessageOutput(
+            subject="Technician Update",
+            text_body="Your technician is on the way.",
+        ),
+        tone="PROFESSIONAL",
+        confidence=0.95,
+    )
+
+    assert decision.message == (
+        "Your technician is on the way."
+    )
+
+
+def test_communication_decision_message_for_portal() -> None:
+    decision = CommunicationDecision(
+        channel="IN_APP",
+        output=PortalMessageOutput(
+            title="Technician Update",
+            body="Your technician is on the way.",
+        ),
+        tone="PROFESSIONAL",
+        confidence=0.95,
+    )
+
+    assert decision.message == (
+        "Your technician is on the way."
+    )
+    
+def test_communication_decision_accepts_existing_output() -> None:
+    decision = CommunicationDecision(
+        channel="SMS",
+        output=SMSMessageOutput(
+            text="Existing output"
+        ),
+        tone="PROFESSIONAL",
+        confidence=0.9,
+    )
+
+    assert decision.message == "Existing output"
+
+
+def test_communication_decision_returns_data_when_channel_missing() -> None:
+    data = {
+        "tone": "PROFESSIONAL",
+        "confidence": 0.9,
+    }
+
+    result = CommunicationDecision.validate_legacy_fields_and_format(data)
+
+    assert result == data
+
+def test_communication_decision_returns_existing_output_data() -> None:
+    data = {
+        "channel": "SMS",
+        "output": {
+            "channel": "SMS",
+            "text": "Existing output",
+        },
+        "tone": "PROFESSIONAL",
+        "confidence": 0.9,
+    }
+
+    result = CommunicationDecision.validate_legacy_fields_and_format(data)
+
+    assert result is data
+    
+def test_communication_decision_formatter_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def failing_format(*args, **kwargs):
+        raise RuntimeError("formatter failed")
+
+    from app.services.ai.FieldOpsAI.services.message_output_formatter import (
+        MessageOutputFormatter,
+    )
+
+    monkeypatch.setattr(
+        MessageOutputFormatter,
+        "format",
+        failing_format,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Failed to format message output",
+    ):
+        CommunicationDecision(
+            channel="SMS",
+            message="Technician is on the way.",
+            tone="PROFESSIONAL",
+            confidence=0.9,
+        )
+    

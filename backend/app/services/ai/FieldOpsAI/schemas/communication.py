@@ -165,6 +165,13 @@ class CommunicationContext(BaseModel):
             return normalize_locale(str(v))
         except InvalidLocaleError:
             raise ValueError("Invalid or unsupported locale.")
+    
+    customer_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="Customer identifier used for preference lookup.",
+    )
 
     customer_name: str | None = Field(
         default=None,

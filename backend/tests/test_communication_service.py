@@ -29,7 +29,12 @@ from app.services.ai.FieldOpsAI.schemas.communication import (
 )
 from app.services.ai.FieldOpsAI.services.communication_service import (
     CommunicationService,
+    CommunicationServiceResult,
     SafeCommunicationUnavailableError,
+)
+from app.services.ai.guardrails.contracts import (
+    GuardrailPipelineResult,
+    GuardrailCheckResult,
 )
 from app.services.ai.guardrails.fallback_service import (
     FallbackTemplateSource,
@@ -326,10 +331,190 @@ def add_unsafe_database_template(
 # Tests
 # ==========================================================
 
+def build_valid_guardrail_result() -> GuardrailPipelineResult:
+    check = GuardrailCheckResult(
+        checker_name="test_checker",
+        passed=True,
+    )
+
+    return GuardrailPipelineResult.from_checks(
+        checks=[check],
+        total_latency_ms=0.0,
+    )
+def test_missing_audit_key_is_rejected(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(
+        "AI_GUARDRAIL_AUDIT_HMAC_KEY",
+        raising=False,
+    )
+
+    agent = FakeAgent(
+        decision=build_sms_decision("Test message")
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="AI_GUARDRAIL_AUDIT_HMAC_KEY must be configured",
+    ):
+        CommunicationService(
+            db=db_session,
+            tenant_id="tenant-1",
+            agent=agent,
+        )
+
+
+def test_injected_audit_logger_is_used(
+    db_session: Session,
+) -> None:
+    agent = FakeAgent(
+        decision=build_sms_decision("Test message")
+    )
+
+    audit_logger = object()
+
+    service = CommunicationService(
+        db=db_session,
+        tenant_id="tenant-1",
+        agent=agent,
+        audit_logger=audit_logger,
+        fingerprint_key="test-audit-secret",
+    )
+
+    assert service._audit_logger is audit_logger
+    
+def test_audit_placeholder_decision_email() -> None:
+    result = CommunicationService._build_audit_placeholder_decision(
+        "EMAIL"
+    )
+
+    assert result.channel == "EMAIL"
+    assert result.subject == "FieldOps communication unavailable"
+    assert result.title is None
+
+
+def test_audit_placeholder_decision_push() -> None:
+    result = CommunicationService._build_audit_placeholder_decision(
+        "PUSH"
+    )
+
+    assert result.channel == "PUSH"
+    assert result.title == "FieldOps update"
+    assert result.subject is None
+
+
+def test_audit_placeholder_decision_in_app() -> None:
+    result = CommunicationService._build_audit_placeholder_decision(
+        "IN_APP"
+    )
+
+    assert result.channel == "IN_APP"
+    assert result.title == "FieldOps update"
+    assert result.subject is None
+
+
+def test_audit_placeholder_decision_sms() -> None:
+    result = CommunicationService._build_audit_placeholder_decision(
+        "SMS"
+    )
+
+    assert result.channel == "SMS"
+    assert result.title is None
+    assert result.subject is None
+
+
+def test_fallback_result_requires_fallback_source() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Fallback results require a fallback source",
+    ):
+        CommunicationServiceResult(
+            decision=build_sms_decision("Test message"),
+            used_fallback=True,
+            fallback_source=None,
+            guardrail_result=build_valid_guardrail_result(),
+        )
+
+
+def test_ai_result_rejects_fallback_source() -> None:
+    with pytest.raises(
+        ValueError,
+        match="AI results must not contain a fallback source",
+    ):
+        CommunicationServiceResult(
+            decision=build_sms_decision("Test message"),
+            used_fallback=False,
+            fallback_source=FallbackTemplateSource.BUILTIN,
+            guardrail_result=build_valid_guardrail_result(),
+        )
+
+
+def test_ai_result_rejects_fallback_template_id() -> None:
+    with pytest.raises(
+        ValueError,
+        match="AI results must not contain a fallback template ID",
+    ):
+        CommunicationServiceResult(
+            decision=build_sms_decision("Test message"),
+            used_fallback=False,
+            fallback_template_id=1,
+            guardrail_result=build_valid_guardrail_result(),
+        )
+
+
+def test_ai_result_rejects_fallback_template_version() -> None:
+    with pytest.raises(
+        ValueError,
+        match="AI results must not contain a fallback template version",
+    ):
+        CommunicationServiceResult(
+            decision=build_sms_decision("Test message"),
+            used_fallback=False,
+            fallback_template_version=1,
+            guardrail_result=build_valid_guardrail_result(),
+        )
+
+def test_empty_tenant_id_is_rejected(
+    db_session: Session,
+) -> None:
+    agent = FakeAgent(
+        decision=build_sms_decision("Test message")
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="tenant_id must not be empty",
+    ):
+        build_service(
+            db_session,
+            agent=agent,
+            tenant_id="   ",
+        )
+
+
+def test_tenant_id_over_max_length_is_rejected(
+    db_session: Session,
+) -> None:
+    agent = FakeAgent(
+        decision=build_sms_decision("Test message")
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="tenant_id exceeds the supported length",
+    ):
+        build_service(
+            db_session,
+            agent=agent,
+            tenant_id="t" * 51,
+        )
+
 
 def test_safe_ai_output_is_allowed_and_pii_is_restored(
     db_session: Session,
 ) -> None:
+
     """
     Safe placeholder-based AI output is restored only after all
     guardrails pass.
