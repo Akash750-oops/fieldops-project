@@ -57,7 +57,7 @@ class FakeProvider(BaseAIProvider):
     def __init__(
         self,
         name: str = "groq",
-        model: str = "llama-3.3-70b-versatile",
+        model: str = "openai/gpt-oss-120b",
     ) -> None:
         self._name = name
         self._model = model
@@ -139,7 +139,7 @@ class FakeProviderClient:
 def make_gen_result(
     provider_name: str = "groq",
     text: str = '{"summary": "ok"}',
-    model: str = "llama-3.3-70b-versatile",
+    model: str = "openai/gpt-oss-120b",
 ) -> GenerationResult:
     return GenerationResult(
         text=text,

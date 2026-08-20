@@ -61,7 +61,7 @@ def test_cache_key_generation_order_independence() -> None:
     req1 = ProviderCacheRequest(
         tenant_id="tenant-1",
         provider="Groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=msg_dict1,
         temperature=0.0,
         max_tokens=100,
@@ -72,7 +72,7 @@ def test_cache_key_generation_order_independence() -> None:
     req2 = ProviderCacheRequest(
         tenant_id="tenant-1",
         provider="Groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=msg_dict2,
         temperature=0.0,
         max_tokens=100,
@@ -95,7 +95,7 @@ def test_keys_contain_no_pii_or_raw_tenant_ids() -> None:
     req = ProviderCacheRequest(
         tenant_id=raw_tenant,
         provider="Groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=[{"role": "user", "content": "some info"}],
         temperature=0.0,
         max_tokens=100,
@@ -116,7 +116,7 @@ def test_tenant_isolation() -> None:
     req_a = ProviderCacheRequest(
         tenant_id="tenantA",
         provider="Groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=[{"role": "user", "content": "hello"}],
         temperature=0.0,
         max_tokens=100,
@@ -127,7 +127,7 @@ def test_tenant_isolation() -> None:
     req_b = ProviderCacheRequest(
         tenant_id="tenantB",
         provider="Groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=[{"role": "user", "content": "hello"}],
         temperature=0.0,
         max_tokens=100,
@@ -149,7 +149,7 @@ async def test_cache_store_hit_miss(fake_redis) -> None:
     req = ProviderCacheRequest(
         tenant_id="tenant-1",
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=[{"role": "user", "content": "hello"}],
         temperature=0.0,
         max_tokens=100,
@@ -187,7 +187,7 @@ async def test_invalidation_without_keys_command(fake_redis) -> None:
     req1 = ProviderCacheRequest(
         tenant_id="tenant1",
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=[{"role": "user", "content": "msg1"}],
         temperature=0.0,
         max_tokens=100,
@@ -198,7 +198,7 @@ async def test_invalidation_without_keys_command(fake_redis) -> None:
     req2 = ProviderCacheRequest(
         tenant_id="tenant1",
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=[{"role": "user", "content": "msg2"}],
         temperature=0.0,
         max_tokens=100,
@@ -239,7 +239,7 @@ async def test_ttl_selection(fake_redis) -> None:
     req_static = ProviderCacheRequest(
         tenant_id="tenant-1",
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=[{"role": "user", "content": "hello"}],
         temperature=0.0,
         max_tokens=100,
@@ -250,7 +250,7 @@ async def test_ttl_selection(fake_redis) -> None:
     req_dynamic = ProviderCacheRequest(
         tenant_id="tenant-1",
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=[{"role": "user", "content": "hello"}],
         temperature=0.0,
         max_tokens=100,
@@ -280,7 +280,7 @@ async def test_safe_serialization(fake_redis) -> None:
     req = ProviderCacheRequest(
         tenant_id="tenant-1",
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=[{"role": "user", "content": "hello"}],
         temperature=0.0,
         max_tokens=100,
@@ -310,7 +310,7 @@ async def test_oversized_response_rejected(fake_redis) -> None:
     req = ProviderCacheRequest(
         tenant_id="tenant-1",
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=[{"role": "user", "content": "hello"}],
         temperature=0.0,
         max_tokens=100,
@@ -338,7 +338,7 @@ def test_unsanitized_input_rejected() -> None:
         ProviderCacheRequest(
             tenant_id="tenant-1",
             provider="groq",
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             sanitized_messages=[{"role": "user", "content": "hello"}],
             temperature=0.0,
             max_tokens=100,
@@ -360,7 +360,7 @@ async def test_redis_failure_fails_open() -> None:
     req = ProviderCacheRequest(
         tenant_id="tenant-1",
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=[{"role": "user", "content": "hello"}],
         temperature=0.0,
         max_tokens=100,
@@ -407,7 +407,7 @@ async def test_blank_tenant_id_rejected() -> None:
         ProviderCacheRequest(
             tenant_id="   ",
             provider="groq",
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             sanitized_messages=[],
             temperature=0.0,
             max_tokens=10,
@@ -427,7 +427,7 @@ async def test_redis_failure_on_delete_and_invalidate() -> None:
     req = ProviderCacheRequest(
         tenant_id="tenant-1",
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         sanitized_messages=[{"role": "user", "content": "hello"}],
         temperature=0.0,
         max_tokens=100,
@@ -450,7 +450,7 @@ async def test_exact_byte_boundary_and_one_byte_over(fake_redis) -> None:
     req = ProviderCacheRequest.from_sanitized_payload(
         sanitized_result=make_sanitization_result(data={"data": "test"}),
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         temperature=0.0,
         max_tokens=100,
         ttl_policy=CacheTTLPolicy.STATIC,
@@ -484,7 +484,7 @@ def test_from_sanitized_payload_factory() -> None:
     req = ProviderCacheRequest.from_sanitized_payload(
         sanitized_result=res,
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         temperature=0.0,
         max_tokens=100,
         ttl_policy=CacheTTLPolicy.STATIC,
@@ -510,7 +510,7 @@ def test_provider_model_generation_isolation() -> None:
             data="test"
         ),
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         temperature=0.0,
         max_tokens=100,
         ttl_policy=CacheTTLPolicy.STATIC,
@@ -532,7 +532,7 @@ def test_provider_model_generation_isolation() -> None:
             data="test"
         ),
         provider="openai",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         temperature=0.0,
         max_tokens=100,
         ttl_policy=CacheTTLPolicy.STATIC,
@@ -543,7 +543,7 @@ def test_provider_model_generation_isolation() -> None:
             data="test"
         ),
         provider="groq",
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         temperature=0.5,
         max_tokens=100,
         ttl_policy=CacheTTLPolicy.DYNAMIC,
@@ -581,7 +581,7 @@ def test_cache_factory_rejects_raw_values(
         ProviderCacheRequest.from_sanitized_payload(
             sanitized_result=raw_value,  # type: ignore[arg-type]
             provider="groq",
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             temperature=0.0,
             max_tokens=100,
             ttl_policy=CacheTTLPolicy.STATIC,

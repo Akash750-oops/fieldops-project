@@ -324,7 +324,7 @@ class AIMessageGenerator:
             max_output_tokens=512,
             category=channel.lower(),
             provider="groq",
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
         )
 
         except Exception:

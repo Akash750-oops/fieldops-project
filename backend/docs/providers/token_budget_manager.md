@@ -53,7 +53,7 @@ reservation_id = await manager.reserve(
     max_output_tokens=80,
     category="sms",
     provider="groq",
-    model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-120b",
     tenant_id="tenant-abc",
 )
 ```

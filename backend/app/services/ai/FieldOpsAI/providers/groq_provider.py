@@ -30,7 +30,7 @@ from app.services.ai.FieldOpsAI.schemas.provider import (
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_MODEL = "llama-3.3-70b-versatile"
+ALLOWED_MODEL = "openai/gpt-oss-120b"
 
 
 class GroqProvider(BaseAIProvider):
@@ -328,7 +328,9 @@ class GroqProvider(BaseAIProvider):
                 with self._lock:
                     self._cumulative_request_count += total_http_attempts
 
-                logger.warning("Groq provider request execution failed.")
+                logger.error(
+                    "Groq provider request execution failed."
+                )
 
                 is_retryable = (
                     status_code == 429

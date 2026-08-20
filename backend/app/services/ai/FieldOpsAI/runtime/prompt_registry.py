@@ -184,6 +184,7 @@ def get_default_prompt_registry() -> PromptTemplateRegistry:
                 ("TASK_SENTIMENT", "prompts/sentiment.md", AITask.SENTIMENT),
                 ("TASK_COMMUNICATION", "prompts/communication.md", AITask.COMMUNICATION),
                 ("TASK_CLOSURE", "prompts/closure.md", AITask.CLOSURE),
+                ("TASK_INTENT", "prompts/intent.md", AITask.INTENT),
             ]
             for key, path, task in task_prompts:
                 registry.register(PromptMetadata(

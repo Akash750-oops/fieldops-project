@@ -41,7 +41,7 @@ Preferred construction is via the controlled factory:
 request = ProviderCacheRequest.from_sanitized_payload(
     sanitized_result=sanitization_result,
     provider="groq",
-    model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-120b",
     temperature=0.0,
     max_tokens=4096,
     ttl_policy=CacheTTLPolicy.STATIC,

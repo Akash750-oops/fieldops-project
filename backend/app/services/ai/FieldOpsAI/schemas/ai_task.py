@@ -8,3 +8,4 @@ class AITask(str, Enum):
     COMMUNICATION = "communication"
     CLOSURE = "closure"
     SENTIMENT = "sentiment"
+    INTENT = "intent"

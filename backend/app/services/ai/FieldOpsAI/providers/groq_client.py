@@ -175,7 +175,7 @@ class GroqClient:
                     )
 
                 p_name = self.provider.provider_name() if hasattr(self.provider, "provider_name") else "Groq"
-                m_name = self.provider.model_name() if hasattr(self.provider, "model_name") else "llama-3.3-70b-versatile"
+                m_name = self.provider.model_name() if hasattr(self.provider, "model_name") else "openai/gpt-oss-120b"
                 if hasattr(self.provider, "get_usage"):
                     usage = self.provider.get_usage()
                 else:

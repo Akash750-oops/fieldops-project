@@ -1,6 +1,6 @@
 import pytest
 import time
-
+import os
 import app.database
 import app.redis_client
 from app.services.ai.FieldOpsAI.services.communication_service import CommunicationService
@@ -10,7 +10,10 @@ from app.services.ai.FieldOpsAI.schemas.communication import (
     CommunicationDecision,
     CommunicationRecipient,
 )
-
+os.environ.setdefault(
+    "AI_GUARDRAIL_AUDIT_HMAC_KEY",
+    "test-only-fieldops-audit-key",
+)
 
 
 # Store original references
