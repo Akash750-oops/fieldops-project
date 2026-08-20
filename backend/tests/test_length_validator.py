@@ -5,10 +5,12 @@ Tests for channel-specific communication length guardrails.
 """
 
 from __future__ import annotations
-
+import pytest
 from app.services.ai.FieldOpsAI.schemas.communication import (
     CommunicationContext,
     CommunicationDecision,
+    PushMessageOutput,
+
 )
 from app.services.ai.guardrails.base import (
     GuardrailChecker,
@@ -487,3 +489,128 @@ def test_unicode_detection() -> None:
     assert LengthValidator.is_gsm7(
         "Hello 😀"
     ) is False
+
+def test_push_title_violation_is_added():
+    """A PUSH title over 50 characters should produce a violation."""
+    validator = LengthValidator()
+
+    output = PushMessageOutput.model_construct(
+        channel="PUSH",
+        title="T" * 51,
+        body="Valid push body",
+        actions=(),
+    )
+
+    decision = CommunicationDecision.model_construct(
+        channel="PUSH",
+        output=output,
+        tone="PROFESSIONAL",
+        confidence=0.9,
+    )
+
+    context = build_context("PUSH")
+
+    result = validator.check(
+        context=context,
+        decision=decision,
+    )
+
+    assert result.passed is False
+    assert len(result.violations) == 1
+    assert result.violations[0].code == "PUSH_TITLE_TOO_LONG"
+    assert result.violations[0].category == GuardrailCategory.LENGTH
+    assert result.violations[0].severity == GuardrailSeverity.ERROR
+
+
+def test_push_body_violation_is_added():
+    """A PUSH body over 200 characters should produce a violation."""
+    validator = LengthValidator()
+
+    output = PushMessageOutput.model_construct(
+        channel="PUSH",
+        title="Valid title",
+        body="B" * 201,
+        actions=(),
+    )
+
+    decision = CommunicationDecision.model_construct(
+        channel="PUSH",
+        output=output,
+        tone="PROFESSIONAL",
+        confidence=0.9,
+    )
+
+    context = build_context("PUSH")
+
+    result = validator.check(
+        context=context,
+        decision=decision,
+    )
+
+    assert result.passed is False
+    assert len(result.violations) == 1
+    assert result.violations[0].code == "PUSH_BODY_TOO_LONG"
+    assert result.violations[0].category == GuardrailCategory.LENGTH
+    assert result.violations[0].severity == GuardrailSeverity.ERROR
+def test_sms_length_counts_gsm7_extended_character_as_two():
+    """GSM-7 extended characters consume two septets."""
+    value = "Hello^"
+
+    assert LengthValidator.is_gsm7(value) is True
+    assert LengthValidator.sms_length(value) == 7
+
+
+def test_truncate_sms_returns_original_when_within_limit():
+    """Messages already within the SMS limit are returned unchanged."""
+    value = "Hello FieldOps"
+
+    result = LengthValidator.truncate_sms(value)
+
+    assert result == value
+
+
+def test_truncate_sms_raises_when_suffix_cannot_fit():
+    """A truncation suffix plus link must fit within the SMS limit."""
+    value = "A" * 161
+    huge_link = "https://" + ("a" * 200)
+
+    with pytest.raises(
+        ValueError,
+        match="cannot fit within the configured SMS limit",
+    ):
+        LengthValidator.truncate_sms(
+            value,
+            full_message_link=huge_link,
+        )
+def test_truncate_sms_raises_when_final_length_exceeds_limit(
+    monkeypatch,
+):
+    """Defensive check raises if the final SMS is still too long."""
+    original_sms_length = LengthValidator.sms_length
+    call_count = 0
+
+    def fake_sms_length(cls, value):
+        nonlocal call_count
+
+        call_count += 1
+
+        # Allow the normal truncation logic to work,
+        # but make the final validation fail.
+        if call_count >= 3:
+            return LengthValidator.SMS_GSM7_MAX_LENGTH + 1
+
+        return original_sms_length(value)
+
+    monkeypatch.setattr(
+        LengthValidator,
+        "sms_length",
+        classmethod(fake_sms_length),
+    )
+
+    value = "A" * 161
+
+    with pytest.raises(
+        ValueError,
+        match="Unable to truncate SMS within the configured limit",
+    ):
+        LengthValidator.truncate_sms(value)
