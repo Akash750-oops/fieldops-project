@@ -152,8 +152,8 @@ class ServiceRequestCreate(BaseModel):
 
 
 class ServiceRequestUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=3, max_length=200)
-    description: Optional[str] = Field(None, min_length=10)
+    title: Optional[str] = Field(None, min_length=10, max_length=200)
+    description: Optional[str] = Field(None, min_length=25)
     service_type: Optional[str] = None
     priority: Optional[str] = None
     preferred_visit_date: Optional[date] = None
@@ -161,6 +161,95 @@ class ServiceRequestUpdate(BaseModel):
     location: Optional[str] = None
     contact_number: Optional[str] = None
 
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v):
+        if v is None:
+            return v
+
+        v = v.strip()
+
+        if len(v) < 10:
+            raise ValueError("Title minimum 10 characters required")
+
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Title must contain characters")
+
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, v):
+        if v is None:
+            return v
+
+        v = v.strip()
+
+        if len(v) < 25:
+            raise ValueError("Description minimum 25 characters required")
+
+        return v
+
+    @field_validator("priority")
+    @classmethod
+    def validate_priority(cls, v):
+        if v is None:
+            return v
+
+        valid = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
+
+        value = v.upper()
+
+        if value not in valid:
+            raise ValueError(
+                "Priority must be LOW, MEDIUM, HIGH or CRITICAL"
+            )
+
+        return value
+
+    @field_validator("preferred_visit_date")
+    @classmethod
+    def validate_preferred_visit_date(cls, v):
+        if v is None:
+            return v
+
+        if v < date.today():
+            raise ValueError(
+                "Preferred date cannot be before today"
+            )
+
+        return v
+
+    @field_validator("contact_number")
+    @classmethod
+    def validate_contact_number(cls, v):
+        if v is None:
+            return v
+
+        v = v.strip()
+
+        if not v.isdigit():
+            raise ValueError("Contact number must contain numbers only")
+
+        if len(v) != 10:
+            raise ValueError(
+                "Contact number must be exactly 10 digits"
+            )
+
+        return v
+
+    @field_validator("location")
+    @classmethod
+    def validate_location(cls, v):
+        if v is None:
+            return v
+
+        v = v.strip()
+
+        if not v:
+            raise ValueError("Location is required")
+
+        return v
 
 class ServiceRequestResponse(BaseModel):
     id: int

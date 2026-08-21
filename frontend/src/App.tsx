@@ -1,6 +1,25 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import logo from "./assets/logo.png";
-import { ChevronsLeft, ChevronsRight, LayoutDashboard, Briefcase, Users, Calendar, FlaskConical, Info, User, ChevronDown, Activity, BellRing, LogOut, History, Settings, PlusCircle, FileText, Navigation } from "lucide-react";
+import {
+  ChevronsLeft,
+  ChevronsRight,
+  LayoutDashboard,
+  Briefcase,
+  Users,
+  Calendar,
+  FlaskConical,
+  Info,
+  User,
+  ChevronDown,
+  Activity,
+  BellRing,
+  LogOut,
+  History,
+  Settings,
+  PlusCircle,
+  FileText,
+  Navigation,
+} from "lucide-react";
 import useAuthStore from "./store/authStore";
 
 // Import notification modules
@@ -21,7 +40,10 @@ import {
   batchMarkAsRead,
   dismissNotification,
 } from "./services/notificationService";
-import { startHeartbeatLoop, stopHeartbeatLoop } from "./services/heartbeatService";
+import {
+  startHeartbeatLoop,
+  stopHeartbeatLoop,
+} from "./services/heartbeatService";
 import { getAllTechnicians } from "./services/technicianService";
 import { getTechnicianNotifications } from "./services/technicianPortalService";
 import { ToastProvider, useToast } from "./hooks/useToast";
@@ -30,31 +52,59 @@ import LoadingSpinner from "./components/ui/LoadingSpinner";
 // Lazy load page components
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const OrganizationOnboardingPage = lazy(
-  () => import("./pages/OrganizationOnboardingPage")
+  () => import("./pages/OrganizationOnboardingPage"),
 );
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const JobsPage = lazy(() => import("./pages/JobsPage"));
 const TechDashboardPage = lazy(() => import("./pages/TechDashboardPage"));
 const PlanningPage = lazy(() => import("./pages/PlanningPage"));
-const TrackingDashboardPage = lazy(() => import("./pages/TrackingDashboardPage"));
+const TrackingDashboardPage = lazy(
+  () => import("./pages/TrackingDashboardPage"),
+);
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 
 // Lazy load Technician Portal pages
-const TechnicianPortalDashboard = lazy(() => import("./pages/technician/TechnicianPortalDashboard"));
-const TechnicianProfilePage = lazy(() => import("./pages/technician/TechnicianProfilePage"));
-const TechnicianJobsPage = lazy(() => import("./pages/technician/TechnicianJobsPage"));
-const TechnicianJobHistoryPage = lazy(() => import("./pages/technician/TechnicianJobHistoryPage"));
-const TechnicianNotificationsPage = lazy(() => import("./pages/technician/TechnicianNotificationsPage"));
-const TechnicianSettingsPage = lazy(() => import("./pages/technician/TechnicianSettingsPage"));
+const TechnicianPortalDashboard = lazy(
+  () => import("./pages/technician/TechnicianPortalDashboard"),
+);
+const TechnicianProfilePage = lazy(
+  () => import("./pages/technician/TechnicianProfilePage"),
+);
+const TechnicianJobsPage = lazy(
+  () => import("./pages/technician/TechnicianJobsPage"),
+);
+const TechnicianJobHistoryPage = lazy(
+  () => import("./pages/technician/TechnicianJobHistoryPage"),
+);
+const TechnicianNotificationsPage = lazy(
+  () => import("./pages/technician/TechnicianNotificationsPage"),
+);
+const TechnicianSettingsPage = lazy(
+  () => import("./pages/technician/TechnicianSettingsPage"),
+);
 
 // Lazy load Customer Portal pages
-const CustomerPortalDashboard = lazy(() => import("./pages/customer/CustomerPortalDashboard"));
-const CustomerProfilePage = lazy(() => import("./pages/customer/CustomerProfilePage"));
-const CustomerServiceRequestsPage = lazy(() => import("./pages/customer/CustomerServiceRequestsPage"));
-const CustomerJobTrackingPage = lazy(() => import("./pages/customer/CustomerJobTrackingPage"));
-const CustomerNotificationsPage = lazy(() => import("./pages/customer/CustomerNotificationsPage"));
-const CustomerServiceHistoryPage = lazy(() => import("./pages/customer/CustomerServiceHistoryPage"));
-const CustomerSettingsPage = lazy(() => import("./pages/customer/CustomerSettingsPage"));
+const CustomerPortalDashboard = lazy(
+  () => import("./pages/customer/CustomerPortalDashboard"),
+);
+const CustomerProfilePage = lazy(
+  () => import("./pages/customer/CustomerProfilePage"),
+);
+const CustomerServiceRequestsPage = lazy(
+  () => import("./pages/customer/CustomerServiceRequestsPage"),
+);
+const CustomerJobTrackingPage = lazy(
+  () => import("./pages/customer/CustomerJobTrackingPage"),
+);
+const CustomerNotificationsPage = lazy(
+  () => import("./pages/customer/CustomerNotificationsPage"),
+);
+const CustomerServiceHistoryPage = lazy(
+  () => import("./pages/customer/CustomerServiceHistoryPage"),
+);
+const CustomerSettingsPage = lazy(
+  () => import("./pages/customer/CustomerSettingsPage"),
+);
 
 interface NotificationItem {
   id: string | number;
@@ -95,7 +145,8 @@ const styles = {
     height: "100vh",
     zIndex: 200,
     boxShadow: "2px 0 8px rgba(47, 79, 62, 0.04)",
-    transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+    transition:
+      "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
     boxSizing: "border-box",
   } as React.CSSProperties,
 
@@ -620,16 +671,22 @@ function AppInner() {
   };
 
   // Notification States
-  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] =
+    useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null);
+  const [selectedNotification, setSelectedNotification] =
+    useState<NotificationItem | null>(null);
   const [selectedJobDetail, setSelectedJobDetail] = useState<any>(null);
   const [isBellAnimated, setIsBellAnimated] = useState(false);
-  const [activeTechId, setActiveTechId] = useState<string | number | null>(null); // set after fetching real technicians
+  const [activeTechId, setActiveTechId] = useState<string | number | null>(
+    null,
+  ); // set after fetching real technicians
   const [techList, setTechList] = useState<Technician[]>([]);
 
-  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 500);
+  const [windowWidth, setWindowWidth] = useState(
+    typeof window !== "undefined" ? window.innerWidth : 500,
+  );
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -654,6 +711,7 @@ function AppInner() {
               message: n.message || "A new job has been assigned to you.",
               type: "info",
               autoDismiss: 7000,
+              priority: "normal",
             });
           }
         });
@@ -678,7 +736,8 @@ function AppInner() {
         setTechList(response.data);
         // Pick the first technician's UUID
         const firstTech = response.data[0];
-        const techId = firstTech.tech_id || firstTech.technician_id || firstTech.id;
+        const techId =
+          firstTech.tech_id || firstTech.technician_id || firstTech.id;
         if (techId) {
           setActiveTechId(techId);
           return techId;
@@ -713,7 +772,7 @@ function AppInner() {
     // Start heartbeat loop (POST /technicians/{id}/heartbeat every 30 seconds)
     startHeartbeatLoop(String(activeTechId), 30000, () => ({
       last_lat: 13.0827 + (Math.random() - 0.5) * 0.01,
-      last_lng: 80.2707 + (Math.random() - 0.5) * 0.01
+      last_lng: 80.2707 + (Math.random() - 0.5) * 0.01,
     }));
 
     // 2. Connect Socket.io
@@ -728,14 +787,14 @@ function AppInner() {
         setNotifications((prev) => [notif, ...prev]);
         setUnreadCount((prev) => prev + 1);
         // Mirror to toast system
-        addToast(createToastFromNotification(notif));
+        addToast(createToastFromNotification(notif as any));
         // Trigger bell bounce animation
         setIsBellAnimated(true);
         setTimeout(() => setIsBellAnimated(false), 1000);
       },
       onUnreadCount: (count: number) => {
         setUnreadCount(count);
-      }
+      },
     };
 
     const socket = connectNotificationSocket(activeTechId, socketHandlers);
@@ -753,7 +812,10 @@ function AppInner() {
   // Handlers for NotificationDetail Actions
   const handleAcceptJob = async (jobId: string | number) => {
     console.log(`Accepting job ID: ${jobId}`);
-    const isMock = selectedNotification && typeof selectedNotification.id === "string" && selectedNotification.id.startsWith("notif-");
+    const isMock =
+      selectedNotification &&
+      typeof selectedNotification.id === "string" &&
+      selectedNotification.id.startsWith("notif-");
     if (!isMock) {
       await acceptJob(jobId);
     }
@@ -764,7 +826,10 @@ function AppInner() {
 
   const handleRejectJob = async (jobId: string | number, reason: string) => {
     console.log(`Rejecting job ID: ${jobId} for reason: ${reason}`);
-    const isMock = selectedNotification && typeof selectedNotification.id === "string" && selectedNotification.id.startsWith("notif-");
+    const isMock =
+      selectedNotification &&
+      typeof selectedNotification.id === "string" &&
+      selectedNotification.id.startsWith("notif-");
     if (!isMock) {
       await rejectJob(jobId, reason);
     }
@@ -773,9 +838,18 @@ function AppInner() {
     }
   };
 
-  const handleReassignJob = async (jobId: string | number, colleagueId?: string | number, reason?: string) => {
-    console.log(`Requesting reassignment for job ID: ${jobId} to colleague: ${colleagueId} with reason: ${reason}`);
-    const isMock = selectedNotification && typeof selectedNotification.id === "string" && selectedNotification.id.startsWith("notif-");
+  const handleReassignJob = async (
+    jobId: string | number,
+    colleagueId?: string | number,
+    reason?: string,
+  ) => {
+    console.log(
+      `Requesting reassignment for job ID: ${jobId} to colleague: ${colleagueId} with reason: ${reason}`,
+    );
+    const isMock =
+      selectedNotification &&
+      typeof selectedNotification.id === "string" &&
+      selectedNotification.id.startsWith("notif-");
     if (!isMock && colleagueId) {
       await reassignJob(jobId, colleagueId, reason || "");
     }
@@ -801,14 +875,16 @@ function AppInner() {
       await markNotificationAsRead(notifId);
     }
     setNotifications((prev) =>
-      prev.map((n) => (n.id === notifId ? { ...n, isRead: true } : n))
+      prev.map((n) => (n.id === notifId ? { ...n, isRead: true } : n)),
     );
     setUnreadCount((prev) => Math.max(0, prev - 1));
   };
 
   const handleMarkAllAsRead = async () => {
-    const unreadIds = notifications.filter((n) => !n.isRead).map((n) => String(n.id));
-    const realUnreadIds = unreadIds.filter(id => !id.startsWith("notif-"));
+    const unreadIds = notifications
+      .filter((n) => !n.isRead)
+      .map((n) => String(n.id));
+    const realUnreadIds = unreadIds.filter((id) => !id.startsWith("notif-"));
     if (realUnreadIds.length > 0) {
       try {
         await batchMarkAsRead(realUnreadIds);
@@ -829,7 +905,9 @@ function AppInner() {
         console.error(`Failed to dismiss notification ${notifId}`, err);
       }
     }
-    setNotifications((prev) => prev.filter((n) => String(n.id) !== String(notifId)));
+    setNotifications((prev) =>
+      prev.filter((n) => String(n.id) !== String(notifId)),
+    );
     const notif = notifications.find((n) => String(n.id) === String(notifId));
     if (notif && !notif.isRead) {
       setUnreadCount((prev) => Math.max(0, prev - 1));
@@ -839,7 +917,8 @@ function AppInner() {
   const handleToastNavigate = (jobId: string | number) => {
     // Find matching notification in the state
     const matchingNotif = notifications.find(
-      (n) => String(n.jobId) === String(jobId) || String(n.id) === String(jobId)
+      (n) =>
+        String(n.jobId) === String(jobId) || String(n.id) === String(jobId),
     );
 
     if (matchingNotif) {
@@ -850,25 +929,25 @@ function AppInner() {
       // Create a temporary/placeholder notification detail so we can open it!
       const tempNotif: NotificationItem = {
         id: `notif-temp-${Date.now()}`,
-        type: 'JOB_ASSIGNED',
-        title: 'Job Notification',
-        message: 'Details for job #' + jobId,
+        type: "JOB_ASSIGNED",
+        title: "Job Notification",
+        message: "Details for job #" + jobId,
         isRead: true,
         createdAt: new Date().toISOString(),
         jobId: jobId,
         job: {
           id: jobId,
-          title: 'Dispatch Assignment',
-          description: 'Scheduled dispatch details for job #' + jobId,
-          location: 'Chennai Site',
-          priority: 'MEDIUM',
-          customer_name: 'Customer',
-          customer_phone: '+91 9876543210',
+          title: "Dispatch Assignment",
+          description: "Scheduled dispatch details for job #" + jobId,
+          location: "Chennai Site",
+          priority: "MEDIUM",
+          customer_name: "Customer",
+          customer_phone: "+91 9876543210",
           estimated_value: 1500,
           sla_deadline: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
           distance_km: 4.5,
-          required_skills: []
-        }
+          required_skills: [],
+        },
       };
       setSelectedNotification(tempNotif);
       setSelectedJobDetail(tempNotif.job);
@@ -878,11 +957,51 @@ function AppInner() {
 
   // Helper function to trigger mock dispatch events (cycles through all types)
   const MOCK_EVENTS = [
-    { eventType: 'job.assigned', type: 'info' as const, title: 'Job Assigned', message: 'AC Repair Service → Rajesh Kumar', autoDismiss: 5000, priority: 'normal', jobId: 101 },
-    { eventType: 'job.accepted', type: 'success' as const, title: 'Job Accepted', message: 'Rajesh Kumar accepted AC Repair at ABC Corp', autoDismiss: 5000, priority: 'normal', jobId: 101 },
-    { eventType: 'job.rejected', type: 'warning' as const, title: 'Job Rejected', message: 'Vijay Iyer rejected Plumbing — Too far', autoDismiss: 8000, priority: 'critical', jobId: 102 },
-    { eventType: 'job.expired', type: 'error' as const, title: 'Job Expired', message: 'Electrical Repair — Re-dispatching…', autoDismiss: 10000, priority: 'critical', jobId: 103 },
-    { eventType: 'job.en_route', type: 'info' as const, title: 'Tech En Route', message: 'Arjun Sharma is en route — ETA 12 min', autoDismiss: 5000, priority: 'normal', jobId: 104 },
+    {
+      eventType: "job.assigned",
+      type: "info" as const,
+      title: "Job Assigned",
+      message: "AC Repair Service → Rajesh Kumar",
+      autoDismiss: 5000,
+      priority: "normal",
+      jobId: 101,
+    },
+    {
+      eventType: "job.accepted",
+      type: "success" as const,
+      title: "Job Accepted",
+      message: "Rajesh Kumar accepted AC Repair at ABC Corp",
+      autoDismiss: 5000,
+      priority: "normal",
+      jobId: 101,
+    },
+    {
+      eventType: "job.rejected",
+      type: "warning" as const,
+      title: "Job Rejected",
+      message: "Vijay Iyer rejected Plumbing — Too far",
+      autoDismiss: 8000,
+      priority: "critical",
+      jobId: 102,
+    },
+    {
+      eventType: "job.expired",
+      type: "error" as const,
+      title: "Job Expired",
+      message: "Electrical Repair — Re-dispatching…",
+      autoDismiss: 10000,
+      priority: "critical",
+      jobId: 103,
+    },
+    {
+      eventType: "job.en_route",
+      type: "info" as const,
+      title: "Tech En Route",
+      message: "Arjun Sharma is en route — ETA 12 min",
+      autoDismiss: 5000,
+      priority: "normal",
+      jobId: 104,
+    },
   ];
   const mockCursorRef = useRef(0);
 
@@ -891,12 +1010,19 @@ function AppInner() {
     mockCursorRef.current += 1;
 
     // Fire as toast
-    addToast(event);
+    // Fire as toast
+    addToast({
+      title: event.title,
+      message: event.message,
+      type: "info",
+      autoDismiss: event.autoDismiss,
+      priority: "low" as any,
+    });
 
     // Also populate the bell/drawer with an equivalent notification
     const newNotif: NotificationItem = {
       id: `notif-${Date.now()}`,
-      type: event.eventType === 'job.assigned' ? 'JOB_ASSIGNED' : 'SYSTEM',
+      type: event.eventType === "job.assigned" ? "JOB_ASSIGNED" : "SYSTEM",
       title: event.title,
       message: event.message,
       isRead: false,
@@ -907,14 +1033,14 @@ function AppInner() {
         title: event.title,
         description: event.message,
         location: "Chennai",
-        priority: event.priority === 'critical' ? 'HIGH' : 'MEDIUM',
+        priority: event.priority === "critical" ? "HIGH" : "MEDIUM",
         customer_name: "Demo Customer",
         customer_phone: "+91 9876543210",
         estimated_value: 2500,
         sla_deadline: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
         distance_km: 6.8,
-        required_skills: []
-      }
+        required_skills: [],
+      },
     };
     setNotifications((prev) => [newNotif, ...prev]);
     setUnreadCount((prev) => prev + 1);
@@ -928,13 +1054,13 @@ function AppInner() {
       ...styles.navItem,
       ...(isMobileLayout ? styles.navItemMobile : {}),
       ...(!isMobileLayout && sidebarCollapsed ? styles.navItemCollapsed : {}),
-      ...(isSub ? { fontSize: "13px", padding: "5px 6px" } : {})
+      ...(isSub ? { fontSize: "13px", padding: "5px 6px" } : {}),
     };
     if (active) {
       base = {
         ...base,
         ...styles.navActive,
-        ...(isMobileLayout ? styles.navActiveMobile : {})
+        ...(isMobileLayout ? styles.navActiveMobile : {}),
       };
     }
     return base;
@@ -964,7 +1090,11 @@ function AppInner() {
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
           aria-label="Toggle sidebar"
         >
-          {sidebarCollapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
+          {sidebarCollapsed ? (
+            <ChevronsRight size={18} />
+          ) : (
+            <ChevronsLeft size={18} />
+          )}
         </button>
 
         <div
@@ -972,70 +1102,253 @@ function AppInner() {
           style={{
             ...styles.sidebarContent,
             ...(isMobileLayout ? styles.sidebarContentMobile : {}),
-            ...(!isMobileLayout && sidebarCollapsed ? styles.sidebarContentCollapsed : {})
+            ...(!isMobileLayout && sidebarCollapsed
+              ? styles.sidebarContentCollapsed
+              : {}),
           }}
         >
-          <div style={isMobileLayout ? { display: "none" } : styles.sidebarBrand}>
+          <div
+            style={isMobileLayout ? { display: "none" } : styles.sidebarBrand}
+          >
             <div style={styles.brandLogoWrap}>
               <img src={logo} alt="FieldOps Logo" style={styles.brandLogoImg} />
             </div>
           </div>
 
           {isTechnician ? (
-            <nav style={isMobileLayout ? styles.sidebarNavMobile : styles.sidebarNav}>
-              <span style={isMobileLayout || sidebarCollapsed ? { display: "none" } : styles.navGroupLabel}>TECHNICIAN</span>
-              <button className="nav-item-style" style={getItemStyle("tech_jobs")} onClick={() => handleTabChange("tech_jobs")}>
+            <nav
+              style={
+                isMobileLayout ? styles.sidebarNavMobile : styles.sidebarNav
+              }
+            >
+              <span
+                style={
+                  isMobileLayout || sidebarCollapsed
+                    ? { display: "none" }
+                    : styles.navGroupLabel
+                }
+              >
+                TECHNICIAN
+              </span>
+              <button
+                className="nav-item-style"
+                style={getItemStyle("tech_jobs")}
+                onClick={() => handleTabChange("tech_jobs")}
+              >
                 <Briefcase size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Assigned Jobs</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Assigned Jobs
+                </span>
               </button>
-              <button className="nav-item-style" style={getItemStyle("tech_history")} onClick={() => handleTabChange("tech_history")}>
+              <button
+                className="nav-item-style"
+                style={getItemStyle("tech_history")}
+                onClick={() => handleTabChange("tech_history")}
+              >
                 <History size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Job History</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Job History
+                </span>
               </button>
-              <button className="nav-item-style" style={getItemStyle("tech_notifications")} onClick={() => handleTabChange("tech_notifications")}>
+              <button
+                className="nav-item-style"
+                style={getItemStyle("tech_notifications")}
+                onClick={() => handleTabChange("tech_notifications")}
+              >
                 <BellRing size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Notifications</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Notifications
+                </span>
               </button>
             </nav>
           ) : isCustomer ? (
-            <nav style={isMobileLayout ? styles.sidebarNavMobile : styles.sidebarNav}>
-              <span style={isMobileLayout || sidebarCollapsed ? { display: "none" } : styles.navGroupLabel}>CUSTOMER PORTAL</span>
-              <button className="nav-item-style" style={getItemStyle("cust_dashboard")} onClick={() => handleTabChange("cust_dashboard")}>
+            <nav
+              style={
+                isMobileLayout ? styles.sidebarNavMobile : styles.sidebarNav
+              }
+            >
+              <span
+                style={
+                  isMobileLayout || sidebarCollapsed
+                    ? { display: "none" }
+                    : styles.navGroupLabel
+                }
+              >
+                CUSTOMER PORTAL
+              </span>
+              <button
+                className="nav-item-style"
+                style={getItemStyle("cust_dashboard")}
+                onClick={() => handleTabChange("cust_dashboard")}
+              >
                 <LayoutDashboard size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Dashboard</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Dashboard
+                </span>
               </button>
-              <button className="nav-item-style" style={getItemStyle("cust_profile")} onClick={() => handleTabChange("cust_profile")}>
+              <button
+                className="nav-item-style"
+                style={getItemStyle("cust_profile")}
+                onClick={() => handleTabChange("cust_profile")}
+              >
                 <User size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>My Profile</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  My Profile
+                </span>
               </button>
-              <button className="nav-item-style" style={getItemStyle("cust_create_request")} onClick={() => handleTabChange("cust_create_request")}>
+              <button
+                className="nav-item-style"
+                style={getItemStyle("cust_create_request")}
+                onClick={() => handleTabChange("cust_create_request")}
+              >
                 <PlusCircle size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>New Request</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  New Request
+                </span>
               </button>
-              <button className="nav-item-style" style={getItemStyle("cust_requests")} onClick={() => handleTabChange("cust_requests")}>
+              <button
+                className="nav-item-style"
+                style={getItemStyle("cust_requests")}
+                onClick={() => handleTabChange("cust_requests")}
+              >
                 <FileText size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>My Requests</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  My Requests
+                </span>
               </button>
-              <button className="nav-item-style" style={getItemStyle("cust_tracking")} onClick={() => handleTabChange("cust_tracking")}>
+              <button
+                className="nav-item-style"
+                style={getItemStyle("cust_tracking")}
+                onClick={() => handleTabChange("cust_tracking")}
+              >
                 <Navigation size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Job Tracking</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Job Tracking
+                </span>
               </button>
-              <button className="nav-item-style" style={getItemStyle("cust_notifications")} onClick={() => handleTabChange("cust_notifications")}>
+              <button
+                className="nav-item-style"
+                style={getItemStyle("cust_notifications")}
+                onClick={() => handleTabChange("cust_notifications")}
+              >
                 <BellRing size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Notifications</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Notifications
+                </span>
               </button>
-              <button className="nav-item-style" style={getItemStyle("cust_history")} onClick={() => handleTabChange("cust_history")}>
+              <button
+                className="nav-item-style"
+                style={getItemStyle("cust_history")}
+                onClick={() => handleTabChange("cust_history")}
+              >
                 <History size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Service History</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Service History
+                </span>
               </button>
-              <button className="nav-item-style" style={getItemStyle("cust_settings")} onClick={() => handleTabChange("cust_settings")}>
+              <button
+                className="nav-item-style"
+                style={getItemStyle("cust_settings")}
+                onClick={() => handleTabChange("cust_settings")}
+              >
                 <Settings size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Settings</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Settings
+                </span>
               </button>
             </nav>
           ) : (
-            <nav style={isMobileLayout ? styles.sidebarNavMobile : styles.sidebarNav}>
-              <span style={isMobileLayout || sidebarCollapsed ? { display: "none" } : styles.navGroupLabel}>MAIN MENU</span>
+            <nav
+              style={
+                isMobileLayout ? styles.sidebarNavMobile : styles.sidebarNav
+              }
+            >
+              <span
+                style={
+                  isMobileLayout || sidebarCollapsed
+                    ? { display: "none" }
+                    : styles.navGroupLabel
+                }
+              >
+                MAIN MENU
+              </span>
 
               <button
                 className="nav-item-style"
@@ -1043,7 +1356,16 @@ function AppInner() {
                 onClick={() => handleTabChange("dashboard")}
               >
                 <LayoutDashboard size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Dashboard</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Dashboard
+                </span>
               </button>
 
               <button
@@ -1052,7 +1374,16 @@ function AppInner() {
                 onClick={() => handleTabChange("jobs")}
               >
                 <Briefcase size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Jobs</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Jobs
+                </span>
               </button>
 
               <button
@@ -1061,7 +1392,16 @@ function AppInner() {
                 onClick={() => handleTabChange("techboard")}
               >
                 <Users size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Technicians</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Technicians
+                </span>
               </button>
 
               <button
@@ -1070,7 +1410,16 @@ function AppInner() {
                 onClick={() => handleTabChange("planning")}
               >
                 <Calendar size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Planning</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Planning
+                </span>
               </button>
 
               <button
@@ -1079,7 +1428,16 @@ function AppInner() {
                 onClick={() => handleTabChange("tracking")}
               >
                 <Activity size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text" style={isMobileLayout || sidebarCollapsed ? { display: "none" } : {}}>Live Tracking</span>
+                <span
+                  className="nav-text"
+                  style={
+                    isMobileLayout || sidebarCollapsed
+                      ? { display: "none" }
+                      : {}
+                  }
+                >
+                  Live Tracking
+                </span>
               </button>
             </nav>
           )}
@@ -1087,19 +1445,35 @@ function AppInner() {
           {/* Active tech switcher and demo controls for Admin/Dispatcher */}
           {isAdminOrDispatcher && (
             <div
-              style={isMobileLayout || sidebarCollapsed ? { display: "none" } : styles.sidebarSimulationControls}
+              style={
+                isMobileLayout || sidebarCollapsed
+                  ? { display: "none" }
+                  : styles.sidebarSimulationControls
+              }
               onMouseEnter={ensureActiveTechLoaded}
             >
               <div style={styles.simulationCard}>
                 <div style={styles.simulationHeader}>
                   <div style={styles.simulationTitleWrap}>
-                    <FlaskConical size={14} color="#0F9D58" style={{ flexShrink: 0 }} />
+                    <FlaskConical
+                      size={14}
+                      color="#0F9D58"
+                      style={{ flexShrink: 0 }}
+                    />
                     <span style={styles.simulationTitle}>Simulation Lab</span>
                   </div>
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  <span style={styles.simulationLabel}>Simulated Technician</span>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "4px",
+                  }}
+                >
+                  <span style={styles.simulationLabel}>
+                    Simulated Technician
+                  </span>
                   <div style={styles.dropdownWrapper}>
                     <div style={styles.userCircle}>
                       <User size={12} color="#0F9D58" />
@@ -1109,7 +1483,6 @@ function AppInner() {
                         style={styles.simulationSelect}
                         onClick={ensureActiveTechLoaded}
                         onFocus={ensureActiveTechLoaded}
-                        readOnly
                       >
                         <option>Click to load techs...</option>
                       </select>
@@ -1131,7 +1504,11 @@ function AppInner() {
                         </select>
                       )
                     )}
-                    <ChevronDown size={14} color="#64748B" style={styles.dropdownChevron} />
+                    <ChevronDown
+                      size={14}
+                      color="#64748B"
+                      style={styles.dropdownChevron}
+                    />
                   </div>
                 </div>
 
@@ -1146,7 +1523,11 @@ function AppInner() {
                   }}
                   title="Test Notification UI"
                 >
-                  <BellRing size={16} color="#FFFFFF" style={{ flexShrink: 0 }} />
+                  <BellRing
+                    size={16}
+                    color="#FFFFFF"
+                    style={{ flexShrink: 0 }}
+                  />
                   <span>Simulate Alert</span>
                 </button>
               </div>
@@ -1163,7 +1544,15 @@ function AppInner() {
             }
           >
             <div
-              onClick={() => handleTabChange(isTechnician ? "tech_settings" : isCustomer ? "cust_profile" : "profile")}
+              onClick={() =>
+                handleTabChange(
+                  isTechnician
+                    ? "tech_settings"
+                    : isCustomer
+                      ? "cust_profile"
+                      : "profile",
+                )
+              }
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1174,15 +1563,40 @@ function AppInner() {
               }}
               title="Click to open Profile & Settings"
             >
-              <div style={styles.miniAvatar}>{user?.first_name ? user.first_name[0].toUpperCase() : "U"}</div>
+              <div style={styles.miniAvatar}>
+                {user?.first_name ? user.first_name[0].toUpperCase() : "U"}
+              </div>
 
-              <div style={sidebarCollapsed ? { display: "none" } : styles.miniInfo}>
-                <span style={styles.miniName}>{user ? `${user.first_name} ${user.last_name}` : "User"}</span>
-                <span style={styles.miniRole}>{user ? user.role.replace("_", " ").toUpperCase() : "Role"}</span>
+              <div
+                style={sidebarCollapsed ? { display: "none" } : styles.miniInfo}
+              >
+                <span style={styles.miniName}>
+                  {user ? `${user.first_name} ${user.last_name}` : "User"}
+                </span>
+                <span style={styles.miniRole}>
+                  {user ? user.role.replace("_", " ").toUpperCase() : "Role"}
+                </span>
               </div>
             </div>
 
-            <div style={sidebarCollapsed ? { marginTop: "12px", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" } : { marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
+            <div
+              style={
+                sidebarCollapsed
+                  ? {
+                      marginTop: "12px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "8px",
+                    }
+                  : {
+                      marginLeft: "auto",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }
+              }
+            >
               <button
                 title="Log out"
                 onClick={() => logout()}
@@ -1207,16 +1621,24 @@ function AppInner() {
         </div>
       </aside>
 
-      <div style={isMobileLayout ? { ...styles.mainArea, ...styles.mainAreaMobile } : styles.mainArea}>
-        <main style={{
-          ...styles.pageWrap,
-          ...(isMobileLayout ? styles.pageWrapMobile : {}),
-          overflowY: activeTab === "dashboard" ? "auto" : "hidden"
-        }}>
+      <div
+        style={
+          isMobileLayout
+            ? { ...styles.mainArea, ...styles.mainAreaMobile }
+            : styles.mainArea
+        }
+      >
+        <main
+          style={{
+            ...styles.pageWrap,
+            ...(isMobileLayout ? styles.pageWrapMobile : {}),
+            overflowY: activeTab === "dashboard" ? "auto" : "hidden",
+          }}
+        >
           {/* Selected Notification Detail view */}
           {selectedNotification && (
             <NotificationDetail
-              notification={selectedNotification}
+              notification={selectedNotification as any}
               job={selectedJobDetail}
               onAccept={handleAcceptJob}
               onReject={handleRejectJob}
@@ -1229,9 +1651,16 @@ function AppInner() {
           )}
 
           {isNavigating ? (
-            <LoadingSpinner message={getLoadingMessage(activeTab)} fullPage={true} />
+            <LoadingSpinner
+              message={getLoadingMessage(activeTab)}
+              fullPage={true}
+            />
           ) : (
-            <Suspense fallback={<LoadingSpinner message="Loading page..." fullPage={true} />}>
+            <Suspense
+              fallback={
+                <LoadingSpinner message="Loading page..." fullPage={true} />
+              }
+            >
               {/* Admin / Dispatcher Tabs */}
               {activeTab === "dashboard" && (
                 <DashboardPage
@@ -1251,20 +1680,41 @@ function AppInner() {
               {activeTab === "profile" && <ProfilePage />}
 
               {/* Technician Portal Tabs */}
-              {activeTab === "tech_dashboard" && <TechnicianPortalDashboard onNavigate={handleTabChange} />}
+              {activeTab === "tech_dashboard" && (
+                <TechnicianPortalDashboard onNavigate={handleTabChange} />
+              )}
               {activeTab === "tech_profile" && <TechnicianProfilePage />}
               {activeTab === "tech_jobs" && <TechnicianJobsPage />}
               {activeTab === "tech_history" && <TechnicianJobHistoryPage />}
-              {activeTab === "tech_notifications" && <TechnicianNotificationsPage />}
+              {activeTab === "tech_notifications" && (
+                <TechnicianNotificationsPage />
+              )}
               {activeTab === "tech_settings" && <TechnicianSettingsPage />}
 
               {/* Customer Portal Tabs */}
-              {activeTab === "cust_dashboard" && <CustomerPortalDashboard onNavigate={handleTabChange} />}
+              {activeTab === "cust_dashboard" && (
+                <CustomerPortalDashboard onNavigate={handleTabChange} />
+              )}
               {activeTab === "cust_profile" && <CustomerProfilePage />}
-              {activeTab === "cust_create_request" && <CustomerServiceRequestsPage />}
-              {activeTab === "cust_requests" && <CustomerServiceRequestsPage />}
+
+              {activeTab === "cust_create_request" && (
+                <CustomerServiceRequestsPage
+                  createOnly={true}
+                  onNavigate={handleTabChange}
+                />
+              )}
+
+              {activeTab === "cust_requests" && (
+                <CustomerServiceRequestsPage
+                  createOnly={false}
+                  onNavigate={handleTabChange}
+                />
+              )}
+
               {activeTab === "cust_tracking" && <CustomerJobTrackingPage />}
-              {activeTab === "cust_notifications" && <CustomerNotificationsPage />}
+              {activeTab === "cust_notifications" && (
+                <CustomerNotificationsPage />
+              )}
               {activeTab === "cust_history" && <CustomerServiceHistoryPage />}
               {activeTab === "cust_settings" && <CustomerSettingsPage />}
             </Suspense>
@@ -1276,7 +1726,7 @@ function AppInner() {
       <NotificationDrawer
         isOpen={isNotificationDrawerOpen}
         onClose={() => setIsNotificationDrawerOpen(false)}
-        notifications={notifications}
+        notifications={notifications as any}
         onNotificationClick={handleNotificationClick}
         onMarkAllAsRead={handleMarkAllAsRead}
         onDismissNotification={handleDismissNotification}
@@ -1312,15 +1762,13 @@ function AppContent() {
   if (!isAuthenticated) {
     return (
       <Suspense fallback={<LoadingSpinner />}>
-        <LoginPage
-          onCreateOrganization={() => setShowOnboarding(true)}
-        />
+        <LoginPage onCreateOrganization={() => setShowOnboarding(true)} />
       </Suspense>
     );
   }
 
   // User is authenticated
-  return <AppInner/>;
+  return <AppInner />;
 }
 
 function App() {
