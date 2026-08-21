@@ -265,14 +265,22 @@ async def list_service_requests(
 ):
     """List customer's own service requests."""
     query = db.query(ServiceRequest).filter(
-        ServiceRequest.customer_user_id == current_user.user_id,
-        ServiceRequest.tenant_id == current_user.tenant_id,
-    )
+    ServiceRequest.customer_user_id == current_user.user_id,
+    ServiceRequest.tenant_id == current_user.tenant_id,
+)
+
     if status_filter:
-        query = query.filter(func.lower(ServiceRequest.status) == status_filter.lower())
+        query = query.filter(
+        func.lower(ServiceRequest.status) == status_filter.lower()
+    )
+    else:
+    # CANCELLED requests should not appear in My Requests.
+    # Keep them in DB for Service History.
+        query = query.filter(
+        func.lower(ServiceRequest.status) != "cancelled"
+    )
 
     return query.order_by(ServiceRequest.created_at.desc()).all()
-
 
 @router.post("/service-requests", response_model=ServiceRequestResponse, status_code=201)
 async def create_service_request(
@@ -382,10 +390,14 @@ async def update_service_request(
     if sr.status not in ("PENDING",):
         raise HTTPException(status_code=400, detail="Can only edit pending requests")
 
-    update_data = data.model_dump(exclude_unset=True)
+    update_data = data.model_dump(
+    mode="json",
+    exclude_unset=True,
+)
+
     for key, value in update_data.items():
         if value is not None:
-            setattr(sr, key, value)
+                setattr(sr, key, value)
 
     audit_log(
         db,
