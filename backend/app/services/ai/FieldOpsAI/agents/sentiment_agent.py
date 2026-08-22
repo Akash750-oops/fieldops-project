@@ -1,100 +1,122 @@
 """
 sentiment_agent.py
 
-Sentiment Analysis Agent for FieldOps Commander.
-
-Responsibilities
-----------------
-- Analyze customer communication.
-- Determine sentiment, emotion, and urgency.
-- Detect whether human intervention is recommended.
-- Return a validated SentimentDecision.
-
-The Sentiment Agent NEVER:
-- Generates customer replies.
-- Updates the database.
-- Changes job status.
-- Assigns technicians.
-- Sends notifications.
-
-It only returns structured AI analysis.
+Sentiment Analysis Agent for FieldOps Commander AI,
+migrated to inherit from BaseAgent.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-from typing import Optional
+from typing import Any, Optional
 
-from app.services.ai.FieldOpsAI.runtime.orchestrator import AIOrchestrator,ai_orchestrator
+from app.services.ai.FieldOpsAI.agents.base import BaseAgent
+from app.services.ai.FieldOpsAI.runtime.orchestrator import (
+    AIOrchestrator,
+    ai_orchestrator,
+)
+from app.services.ai.FieldOpsAI.schemas.agent_config import AgentConfig
 from app.services.ai.FieldOpsAI.schemas.ai_task import AITask
-from app.services.ai.FieldOpsAI.schemas.sentiment import SentimentContext,SentimentDecision
+from app.services.ai.FieldOpsAI.schemas.sentiment import (
+    SentimentContext,
+    SentimentDecision,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class SentimentAgent:
+class SentimentAgent(BaseAgent[SentimentDecision]):
     """
     AI agent responsible for customer sentiment analysis.
     """
 
     def __init__(
         self,
+        config: AgentConfig,
         orchestrator: Optional[AIOrchestrator] = None,
     ) -> None:
         """
         Initialize the Sentiment Agent.
         """
 
-        self.orchestrator = orchestrator or ai_orchestrator
+        if config.agent_type != AITask.SENTIMENT:
+            raise ValueError(
+                "SentimentAgent requires an AITask.SENTIMENT configuration."
+            )
 
-    # ---------------------------------------------------------
+        super().__init__(config)
+
+        self.orchestrator = (
+            ai_orchestrator
+            if orchestrator is None
+            else orchestrator
+        )
+
+    async def run(
+        self,
+        context: dict[str, Any],
+    ) -> SentimentDecision:
+        """
+        Execute the AI sentiment analysis task.
+
+        The synchronous AIOrchestrator.execute call is moved to a
+        worker thread so the async event loop is not blocked.
+        """
+
+        start_time = time.perf_counter()
+
+        logger.info("Sentiment Agent run started.")
+
+        sentiment_context = SentimentContext.model_validate(context)
+
+        decision = await asyncio.to_thread(
+            self.orchestrator.execute,
+            task=AITask.SENTIMENT,
+            context=sentiment_context.model_dump(mode="json"),
+            response_schema=SentimentDecision,
+        )
+
+        elapsed = time.perf_counter() - start_time
+
+        logger.info(
+            "Sentiment completed in %.2f sec | Sentiment=%s | Urgency=%s",
+            elapsed,
+            decision.sentiment,
+            decision.urgency,
+        )
+
+        return decision
 
     def analyze(
         self,
         context: SentimentContext,
     ) -> SentimentDecision:
         """
-        Analyze customer communication.
+        Compatibility adapter for legacy synchronous callers.
 
-        Parameters
-        ----------
-        context
-            Structured sentiment analysis context.
-
-        Returns
-        -------
-        SentimentDecision
-            Validated AI sentiment analysis.
+        This keeps the existing analyze() API working while the
+        internal execution path uses BaseAgent.execute().
         """
 
-        start_time = time.perf_counter()
-
-        logger.info("Sentiment Agent started.")
-
         try:
-
-            decision = self.orchestrator.execute(
-                task=AITask.SENTIMENT,
-                context=context.model_dump(),
-                response_schema=SentimentDecision,
-            )
-
-            elapsed = time.perf_counter() - start_time
-
-            logger.info(
-                "Sentiment completed in %.2f sec | Sentiment=%s | Urgency=%s",
-                elapsed,
-                decision.sentiment,
-                decision.urgency,
-            )
-
-            return decision
-
-        except Exception as exc:
-
-            logger.exception("Sentiment Agent failed.")
-
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
             raise RuntimeError(
-                "Sentiment Agent failed while analyzing customer communication."
-            ) from exc
+                "analyze() cannot be called from an active event loop. "
+                "Use the asynchronous AgentLifecycle / execute path instead."
+            )
+
+        exec_context = context.model_dump(mode="json")
+        exec_context["tenant_id"] = self.tenant_id
+
+        async def _run_wrapped():
+            if not self.is_setup:
+                await self.setup()
+
+            return await self.execute(exec_context)
+
+        return asyncio.run(_run_wrapped())

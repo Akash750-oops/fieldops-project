@@ -19,6 +19,11 @@ from app.services.ai.FieldOpsAI.agents.base import (
 from app.services.ai.FieldOpsAI.agents.channel_selector import (
     ChannelSelector,
 )
+from app.services.ai.FieldOpsAI.agents.escalation_tree import (
+    EscalationContext,
+    EscalationDecision,
+    EscalationDecisionTree,
+)
 from app.services.ai.FieldOpsAI.agents.personalization import (
     PersonalizationPipeline,
 )
@@ -95,6 +100,7 @@ class CommunicationAgent(BaseAgent[CommunicationDecision]):
         ] = None,
         message_validator: Optional[MessageValidator] = None,
         channel_selector: Optional[ChannelSelector] = None,
+        escalation_tree: Optional[EscalationDecisionTree] = None,
         db: Any = None,
     ) -> None:
         """
@@ -148,6 +154,12 @@ class CommunicationAgent(BaseAgent[CommunicationDecision]):
             else ChannelSelector()
         )
 
+        self.escalation_tree = (
+            escalation_tree
+            if escalation_tree is not None
+            else EscalationDecisionTree()
+        )
+
         self.message_validator = (
             message_validator
             if message_validator is not None
@@ -155,6 +167,18 @@ class CommunicationAgent(BaseAgent[CommunicationDecision]):
         )
 
         self.db = db
+
+    def evaluate_escalation(
+        self,
+        context: EscalationContext | dict[str, Any],
+    ) -> EscalationDecision:
+        """Evaluate an inbound communication using the shared decision tree."""
+        escalation_context = (
+            context
+            if isinstance(context, EscalationContext)
+            else EscalationContext.model_validate(context)
+        )
+        return self.escalation_tree.evaluate(escalation_context)
 
     # ==========================================================
     # Personalization
