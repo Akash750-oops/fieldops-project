@@ -42,7 +42,24 @@ class SentimentContext(BaseModel):
         min_length=5,
         description="Customer communication."
     )
+    language: Literal[
+        "en",
+        "es",
+        "ta",
+        "hi",
+    ] = Field(
+        default="en",
+        description="Language of the customer communication."
+    )
 
+    previous_messages: list[str] = Field(
+        default_factory=list,
+        max_length=3,
+        description=(
+            "Previous messages from the conversation thread. "
+            "Only the last 3 messages should be provided."
+        ),
+    )
 
 # ==========================================================
 # AI Decision
@@ -58,6 +75,7 @@ class SentimentDecision(BaseModel):
         "POSITIVE",
         "NEUTRAL",
         "NEGATIVE",
+        "MIXED",
     ] = Field(
         ...,
         description="Overall customer sentiment."
