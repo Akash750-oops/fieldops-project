@@ -1,77 +1,78 @@
 """
 sentiment_service.py
 
-Sentiment Service for FieldOps Commander.
+Service layer for customer and technician sentiment analysis.
 
-Responsibilities
-----------------
-- Analyze customer messages.
-- Analyze technician messages.
-- Detect customer satisfaction.
-- Detect urgency or frustration.
-
-This service NEVER:
-- Updates database.
-- Sends notifications.
-- Makes assignment decisions.
-
-It only returns AI sentiment analysis.
+The service delegates sentiment analysis to SentimentEngine.
+It does not directly communicate with the AI provider.
 """
 
-from app.services.ai.FieldOpsAI.runtime.orchestrator import AIOrchestrator
+from app.services.ai.FieldOpsAI.agents.sentiment_engine import (
+    SentimentEngine,
+)
+from app.services.ai.FieldOpsAI.schemas.sentiment import (
+    SentimentContext,
+    SentimentDecision,
+)
 
 
 class SentimentService:
     """
-    AI-powered sentiment analysis service.
+    Service layer for sentiment analysis.
     """
 
-    def __init__(self):
-        self.orchestrator = AIOrchestrator()
+    def __init__(
+        self,
+        engine: SentimentEngine | None = None,
+    ) -> None:
+        self.engine = engine or SentimentEngine()
 
+    # ---------------------------------------------------------
+    # Customer sentiment
     # ---------------------------------------------------------
 
     def analyze_customer_message(
         self,
         message: str,
         language: str = "en",
-    ):
+        previous_messages: list[str] | None = None,
+        channel: str = "CHAT",
+    ) -> SentimentDecision:
         """
         Analyze customer sentiment.
-
-        Returns:
-            positive
-            neutral
-            negative
         """
 
-        context = {
-            "text": message,
-            "language": language,
-        }
-
-        return self.orchestrator.execute(
-            task="sentiment",
-            context=context,
+        context = SentimentContext(
+            channel=channel,
+            message=message,
+            language=language,
+            previous_messages=(
+                previous_messages[-3:]
+                if previous_messages
+                else []
+            ),
         )
 
+        return self.engine.analyze(context)
+
+    # ---------------------------------------------------------
+    # Technician sentiment
     # ---------------------------------------------------------
 
     def analyze_technician_message(
         self,
         message: str,
         language: str = "en",
-    ):
+    ) -> SentimentDecision:
         """
         Analyze technician sentiment.
         """
 
-        context = {
-            "text": message,
-            "language": language,
-        }
-
-        return self.orchestrator.execute(
-            task="sentiment",
-            context=context,
+        context = SentimentContext(
+            channel="DISPATCH_NOTE",
+            message=message,
+            language=language,
+            previous_messages=[],
         )
+
+        return self.engine.analyze(context)

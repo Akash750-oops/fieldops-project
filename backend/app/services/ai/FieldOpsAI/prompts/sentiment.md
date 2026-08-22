@@ -65,10 +65,18 @@ Allowed values:
 - POSITIVE
 - NEUTRAL
 - NEGATIVE
+- MIXED
 
 Choose the value that best represents the customer's overall tone.
 
----
+Use:
+
+- POSITIVE when the message is clearly favorable, satisfied, appreciative, or happy.
+- NEGATIVE when the message is clearly dissatisfied, frustrated, angry, disappointed, or unhappy.
+- NEUTRAL when the message is factual, informational, or emotionally balanced.
+- MIXED when the message contains both clearly positive and negative emotional signals.
+
+Do not choose MIXED merely because the message contains different topics. Use MIXED only when the emotional tone itself contains both positive and negative signals.
 
 ## Emotion
 
