@@ -36,18 +36,20 @@ from sqlalchemy.orm import Session
 from app import database as database_module
 from app.context import correlation_id_ctx
 from app.redis_client import get_redis_client
+
 from app.services.ai.FieldOpsAI.schemas.communication import (
     CommunicationContext,
 )
+
 from app.services.ai.FieldOpsAI.services.communication_service import (
     CommunicationService,
     CommunicationServiceResult,
 )
 
-
 from app.services.ai.FieldOpsAI.schemas.communication_configuration import (
     CommunicationChannelDisabledError,
 )
+
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +72,11 @@ class JobStatusEventLike(Protocol):
 
     to_status: str
 
-    job_title: str
+    job_title: str | None
 
     technician_name: str | None
+
+    customer_id: str | None
 
     customer_name: str | None
 
@@ -199,7 +203,8 @@ class CommunicationIntegration:
 
         except Exception as exc:
             logger.warning(
-                "Production communication integration failed."
+                "Production communication integration failed.",
+                exc_info=False,
             )
 
             raise CommunicationIntegrationError(
@@ -224,16 +229,12 @@ class CommunicationIntegration:
         CommunicationContext schema.
         """
 
-        normalized_channel = (
-            self._normalize_channel(
-                channel
-            )
+        normalized_channel = self._normalize_channel(
+            channel
         )
 
-        normalized_recipient = (
-            self._normalize_recipient(
-                recipient_type
-            )
+        normalized_recipient = self._normalize_recipient(
+            recipient_type
         )
 
         from app.services.ai.FieldOpsAI.schemas.prompt_template import (
@@ -248,10 +249,21 @@ class CommunicationIntegration:
         )
 
         try:
-            status_enum = normalize_template_status(raw_event_status, allow_default=False)
-            canon_status = status_enum.value if hasattr(status_enum, "value") else str(status_enum)
+            status_enum = normalize_template_status(
+                raw_event_status,
+                allow_default=False,
+            )
+
+            canon_status = (
+                status_enum.value
+                if hasattr(status_enum, "value")
+                else str(status_enum)
+            )
+
         except UnsupportedTemplateStatusError:
-            raise CommunicationIntegrationError("Could not create a valid communication context.") from None
+            raise CommunicationIntegrationError(
+                "Could not create a valid communication context."
+            ) from None
 
         raw_notif_type = self._normalize_required_text(
             notification_type,
@@ -259,74 +271,111 @@ class CommunicationIntegration:
         ).lower()
 
         try:
-            notif_enum = normalize_template_status(raw_notif_type, allow_default=False)
-            if isinstance(notif_enum, MessageTemplateStatus) and isinstance(status_enum, MessageTemplateStatus):
+            notif_enum = normalize_template_status(
+                raw_notif_type,
+                allow_default=False,
+            )
+
+            if (
+                isinstance(notif_enum, MessageTemplateStatus)
+                and isinstance(status_enum, MessageTemplateStatus)
+            ):
                 if notif_enum != status_enum:
-                    raise CommunicationIntegrationError("TEMPLATE_STATUS_CONFLICT")
+                    raise CommunicationIntegrationError(
+                        "TEMPLATE_STATUS_CONFLICT"
+                    )
+
         except UnsupportedTemplateStatusError:
+            # Notification type does not have to be a template
+            # status. Keep the normalized notification type.
             pass
 
         effective_notif_type = raw_notif_type
 
-        # Map enum name to CommunicationContext JobStatus Literal
+        # Map enum name to CommunicationContext JobStatus Literal.
         status_map = {
             "enroute": "EN_ROUTE",
             "onsite": "ON_SITE",
         }
-        normalized_status = status_map.get(canon_status, canon_status.upper())
 
-        normalized_locale = (
-            self._normalize_required_text(
-                locale,
-                field_name="locale",
-            )
+        normalized_status = status_map.get(
+            canon_status,
+            canon_status.upper(),
+        )
+
+        normalized_locale = self._normalize_required_text(
+            locale,
+            field_name="locale",
         )
 
         try:
             return CommunicationContext(
                 job_id=self._normalize_required_text(
-                    str(
-                        event.job_id
-                    ),
+                    str(event.job_id),
                     field_name="job_id",
                 ),
+
                 correlation_id=self._clean_optional_text(
                     correlation_id_ctx.get()
                 ),
-                notification_type=(
-                    effective_notif_type
-                ),
-                recipient_type=(
-                    normalized_recipient
-                ),
+
+                notification_type=effective_notif_type,
+
+                recipient_type=normalized_recipient,
+
                 channel=normalized_channel,
+
                 locale=normalized_locale,
-                customer_id=(
-                    self._clean_optional_text(
-                        event.customer_id
+
+                # IMPORTANT:
+                # Some older event/test objects do not contain
+                # customer_id. In that case we safely use None.
+                customer_id=self._clean_optional_text(
+                    getattr(
+                        event,
+                        "customer_id",
+                        None,
                     )
                 ),
-                customer_name=(
-                    self._clean_optional_text(
-                        event.customer_name
+
+                customer_name=self._clean_optional_text(
+                    getattr(
+                        event,
+                        "customer_name",
+                        None,
                     )
                 ),
-                technician_name=(
-                    self._clean_optional_text(
-                        event.technician_name
+
+                technician_name=self._clean_optional_text(
+                    getattr(
+                        event,
+                        "technician_name",
+                        None,
                     )
                 ),
+
                 job_status=normalized_status,
-                job_title=(
-                    self._clean_optional_text(
-                        event.job_title
+
+                job_title=self._clean_optional_text(
+                    getattr(
+                        event,
+                        "job_title",
+                        None,
                     )
                 ),
+
                 eta=self._clean_optional_text(
-                    event.eta
+                    getattr(
+                        event,
+                        "eta",
+                        None,
+                    )
                 ),
+
                 appointment_time=None,
+
                 sentiment="NEUTRAL",
+
                 additional_context=None,
             )
 
@@ -386,8 +435,11 @@ class CommunicationIntegration:
         except CommunicationIntegrationError:
             raise
 
-        except Exception as exc:
-            print("DEBUG COMMUNICATION ERROR:", type(exc).__name__, str(exc))
+        except Exception:
+            logger.warning(
+                "Communication service execution failed.",
+                exc_info=False,
+            )
             raise
 
         finally:
@@ -398,7 +450,8 @@ class CommunicationIntegration:
                 except Exception:
                     logger.warning(
                         "Communication database session could "
-                        "not be closed cleanly."
+                        "not be closed cleanly.",
+                        exc_info=False,
                     )
 
     # ======================================================
