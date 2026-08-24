@@ -44,6 +44,8 @@ from ..models_legacy import (  # noqa: F401
     CustomerPreferenceAudit,
 )
 
+from ..prompts.analytics_models import PromptAnalyticsAggregate, PromptUsageEvent  # noqa: F401
+
 # New multi-tenant & job closure models
 from .user import User, RefreshToken  # noqa: F401
 from .organization import Organization  # noqa: F401

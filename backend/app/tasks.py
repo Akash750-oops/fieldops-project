@@ -14,6 +14,30 @@ from .services.eta_service import ETAService
 from .services.socket_manager import ws_manager
 
 
+@celery_app.task(name="app.tasks.aggregate_prompt_analytics_task")
+def aggregate_prompt_analytics_task():
+    """Refresh 7-day and 30-day prompt analytics for every tenant with usage."""
+    from .prompts.analytics import PromptAnalytics
+
+    db = SessionLocal()
+    try:
+        tenant_ids = [
+            row[0]
+            for row in db.query(models.PromptUsageEvent.tenant_id).distinct().all()
+        ]
+        try:
+            from .redis_client import get_redis_client
+            redis_client = get_redis_client()
+        except Exception:
+            redis_client = None
+        return sum(
+            PromptAnalytics(db, redis_client, tenant_id).aggregate_dashboard()
+            for tenant_id in tenant_ids
+        )
+    finally:
+        db.close()
+
+
 def drop_empty_partitions(db: Session):
     """
     Drops any partitioned table under gps_pings that contains 0 rows.
