@@ -1,22 +1,26 @@
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy.engine import make_url
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 from alembic import context
+import re
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# ============================================================
+# Alembic Config
+# ============================================================
+
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-import re
 
+# ============================================================
+# GPS / Manually Managed Tables
+# ============================================================
 
 GPS_PARTITION_PATTERN = re.compile(
     r"^gps_pings_\d{4}_\d{2}$"
@@ -25,8 +29,9 @@ GPS_PARTITION_PATTERN = re.compile(
 IGNORED_TABLES = {
     "redispatch_attempts",
     "gps_pings",
-    'alembic_version',   
+    "alembic_version",
 }
+
 
 def is_ignored_table(table_name: str | None) -> bool:
     if not table_name:
@@ -39,19 +44,16 @@ def is_ignored_table(table_name: str | None) -> bool:
 
 
 def include_name(
-        name: str | None,
-        type_: str,
-        parent_names: dict,
-    ) -> bool:
-        """
-        Exclude manually managed tables during database reflection.
-        
-        """
+    name: str | None,
+    type_: str,
+    parent_names: dict,
+) -> bool:
 
-        if type_ == "table" and is_ignored_table(name):
-                return False
+    if type_ == "table" and is_ignored_table(name):
+        return False
 
-        return True
+    return True
+
 
 def include_object(
     obj,
@@ -60,10 +62,6 @@ def include_object(
     reflected: bool,
     compare_to,
 ) -> bool:
-    """
-    Exclude ignored tables from both database reflection
-    and SQLAlchemy model metadata.
-    """
 
     if type_ == "table":
         table_name = name
@@ -76,78 +74,160 @@ def include_object(
 
     return True
 
-# Load environment variables relative to env.py
-env_path = Path(__file__).resolve().parent.parent / '.env'
+
+# ============================================================
+# Environment
+# ============================================================
+
+env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-# override sqlalchemy.url from .env (escaping % for configparser interpolation)
-config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL").replace("%", "%%"))
+
+# IMPORTANT:
+# Do NOT blindly overwrite sqlalchemy.url.
+#
+# Tests can call:
+#
+# alembic_cfg.set_main_option("sqlalchemy.url", sqlite_url)
+#
+# That SQLite URL must remain intact.
+#
+configured_url = config.get_main_option("sqlalchemy.url")
+
+if not configured_url:
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        raise RuntimeError(
+            "DATABASE_URL is not configured."
+        )
+
+    config.set_main_option(
+        "sqlalchemy.url",
+        database_url.replace("%", "%%"),
+    )
+
+
+# ============================================================
+# SQLAlchemy Models
+# ============================================================
 
 from app.models import Base
-# Import new multi-tenant models so Alembic discovers them
-  # noqa: F401
+
 target_metadata = Base.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
 
+# ============================================================
+# Determine Database Dialect
+# ============================================================
+
+def get_database_url():
+    return config.get_main_option("sqlalchemy.url")
+
+
+def get_dialect_name() -> str:
+    url = make_url(get_database_url())
+    return url.get_backend_name()
+
+
+def get_version_table_schema():
+    """
+    PostgreSQL supports schemas such as `public`.
+
+    SQLite does NOT support PostgreSQL-style schemas.
+
+    Therefore:
+        PostgreSQL -> public
+        SQLite     -> None
+    """
+
+    dialect = get_dialect_name()
+
+    if dialect == "postgresql":
+        return "public"
+
+    return None
+
+
+# ============================================================
+# Alembic Configuration
+# ============================================================
+
+def configure_context_common():
+    """
+    Common Alembic options.
+    """
+
+    return {
+        "target_metadata": target_metadata,
+        "include_name": include_name,
+        "include_object": include_object,
+        "compare_type": True,
+    }
+
+
+# ============================================================
+# Offline Migration
+# ============================================================
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
 
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
     url = config.get_main_option("sqlalchemy.url")
+
+    options = configure_context_common()
+
+    version_schema = get_version_table_schema()
+
+    if version_schema is not None:
+        options["version_table_schema"] = version_schema
+
     context.configure(
         url=url,
-        target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        include_name=include_name,
-        include_object=include_object,
-        compare_type=True,
-        version_table_schema="public"
+        **options,
     )
 
     with context.begin_transaction():
         context.run_migrations()
 
 
+# ============================================================
+# Online Migration
+# ============================================================
+
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
 
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        config.get_section(
+            config.config_ini_section,
+            {},
+        ),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
 
     with connectable.connect() as connection:
+
+        options = configure_context_common()
+
+        version_schema = get_version_table_schema()
+
+        if version_schema is not None:
+            options["version_table_schema"] = version_schema
+
         context.configure(
             connection=connection,
-            target_metadata=target_metadata,
-            include_name=include_name,
-            include_object=include_object,
-            compare_type=True,
-            version_table_schema="public"
+            **options,
         )
 
         with context.begin_transaction():
             context.run_migrations()
 
+
+# ============================================================
+# Run
+# ============================================================
 
 if context.is_offline_mode():
     run_migrations_offline()

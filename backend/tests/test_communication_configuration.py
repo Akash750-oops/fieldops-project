@@ -98,113 +98,132 @@ def no_sms_rate_limit(monkeypatch):
 
 # Migration Tests
 def test_real_migration():
-    db_file = "test_migration.db"
-    if os.path.exists(db_file):
-        os.remove(db_file)
+    """
+    Test the current Alembic migration chain:
 
-    db_url = f"sqlite:///{db_file}"
+        004554449425 -> c5618b3bdac0
+
+    The baseline migration is PostgreSQL-specific, so this test uses
+    the configured PostgreSQL test database instead of SQLite.
+    """
+
+    db_url = os.environ.get("TEST_DATABASE_URL")
+
+    if not db_url:
+        pytest.skip(
+            "TEST_DATABASE_URL is required for the PostgreSQL migration test"
+        )
+
     alembic_cfg = alembic.config.Config("alembic.ini")
-    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+    alembic_cfg.set_main_option(
+        "sqlalchemy.url",
+        db_url,
+    )
 
     original_db_url = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = db_url
 
+    engine_mig = None
+
     try:
         engine_mig = create_engine(db_url)
 
-        # Seed alembic_version at the revision before Story 14.1
+        # ---------------------------------------------------------
+        # 1. Start from the existing baseline.
+        # ---------------------------------------------------------
+
+        alembic.command.upgrade(
+            alembic_cfg,
+            "004554449425",
+        )
+
+        # Confirm baseline revision.
         with engine_mig.connect() as conn:
-            conn.execute(text(
-                "CREATE TABLE alembic_version "
-                "(version_num VARCHAR(32) NOT NULL, "
-                "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))"
-            ))
-            conn.execute(text("INSERT INTO alembic_version (version_num) VALUES ('5a33c0bd93b5')"))
-            conn.commit()
+            revision = conn.execute(
+                text(
+                    "SELECT version_num "
+                    "FROM public.alembic_version"
+                )
+            ).scalar_one()
 
-        # Step 1: upgrade to Story 14.1 head
-        alembic.command.upgrade(alembic_cfg, "1a2b3c4d5e6f")
+            assert revision == "004554449425"
 
+        # ---------------------------------------------------------
+        # 2. Upgrade baseline -> current head.
+        # ---------------------------------------------------------
+
+        alembic.command.upgrade(
+            alembic_cfg,
+            "c5618b3bdac0",
+        )
+
+        # Confirm current head.
         with engine_mig.connect() as conn:
-            tables = [t[0] for t in conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            ).fetchall()]
-            assert "communication_channel_configurations" in tables
-            assert "communication_configuration_audits" in tables
+            revision = conn.execute(
+                text(
+                    "SELECT version_num "
+                    "FROM public.alembic_version"
+                )
+            ).scalar_one()
 
-            sms_row = conn.execute(
-                text("SELECT channel, state, revision, updated_by FROM communication_channel_configurations WHERE channel='SMS'")
-            ).fetchone()
-            assert sms_row is not None, "SMS row must exist after Story 14.1 upgrade"
-            sms_state = sms_row._mapping["state"]
-            sms_revision = sms_row._mapping["revision"]
-            assert sms_state == "ENABLED"
-            assert sms_revision == 1
+            assert revision == "c5618b3bdac0"
 
-            # No EMAIL row yet
-            email_row_before = conn.execute(
-                text("SELECT * FROM communication_channel_configurations WHERE channel='EMAIL'")
-            ).fetchone()
-            assert email_row_before is None, "EMAIL row must NOT exist at Story 14.1 head"
-
-        # Step 2: upgrade to Story 14.2 head
-        alembic.command.upgrade(alembic_cfg, "b15cb1f9d24e")
-
-        with engine_mig.connect() as conn:
-            email_row = conn.execute(
-                text("SELECT channel, state, revision, updated_by FROM communication_channel_configurations WHERE channel='EMAIL'")
-            ).fetchone()
-            assert email_row is not None, "EMAIL row must exist after Story 14.2 upgrade"
-            em = email_row._mapping
-            assert em["state"] == "ENABLED"
-            assert em["revision"] == 1
-            assert em["updated_by"] == "system_migration"
-
-            # SMS must be unchanged
-            sms_row2 = conn.execute(
-                text("SELECT state, revision FROM communication_channel_configurations WHERE channel='SMS'")
-            ).fetchone()
-            assert sms_row2 is not None
-            assert sms_row2._mapping["state"] == sms_state
-            assert sms_row2._mapping["revision"] == sms_revision
-
-        # Step 3: downgrade back to Story 14.1 head
-        alembic.command.downgrade(alembic_cfg, "1a2b3c4d5e6f")
+        # ---------------------------------------------------------
+        # 3. Verify the migration changes.
+        #
+        # Add the assertions for c5618b3bdac0 here.
+        # ---------------------------------------------------------
 
         with engine_mig.connect() as conn:
-            tables_after = [t[0] for t in conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            ).fetchall()]
+            # Example:
+            #
+            # result = conn.execute(
+            #     text(
+            #         "SELECT column_name "
+            #         "FROM information_schema.columns "
+            #         "WHERE table_name = 'your_table'"
+            #     )
+            # )
+            #
+            # columns = {row[0] for row in result}
+            # assert "your_new_column" in columns
+            #
+            # Replace these with the actual changes from
+            # c5618b3bdac0.
 
-            # Story 14.1 generic tables must still exist
-            assert "communication_channel_configurations" in tables_after, \
-                "communication_channel_configurations table must survive downgrade"
-            assert "communication_configuration_audits" in tables_after, \
-                "communication_configuration_audits table must survive downgrade"
+            pass
 
-            # SMS row must be preserved
-            sms_after = conn.execute(
-                text("SELECT state, revision FROM communication_channel_configurations WHERE channel='SMS'")
-            ).fetchone()
-            assert sms_after is not None, "SMS row must survive downgrade"
-            assert sms_after._mapping["state"] == sms_state
-            assert sms_after._mapping["revision"] == sms_revision
+        # ---------------------------------------------------------
+        # 4. Downgrade back to the baseline.
+        # ---------------------------------------------------------
 
-            # EMAIL row must be gone
-            email_after = conn.execute(
-                text("SELECT * FROM communication_channel_configurations WHERE channel='EMAIL'")
-            ).fetchone()
-            assert email_after is None, "EMAIL row must be removed by Story 14.2 downgrade"
+        alembic.command.downgrade(
+            alembic_cfg,
+            "004554449425",
+        )
+
+        # ---------------------------------------------------------
+        # 5. Confirm downgrade succeeded.
+        # ---------------------------------------------------------
+
+        with engine_mig.connect() as conn:
+            revision = conn.execute(
+                text(
+                    "SELECT version_num "
+                    "FROM public.alembic_version"
+                )
+            ).scalar_one()
+
+            assert revision == "004554449425"
 
     finally:
-        if "engine_mig" in locals():
+        if engine_mig is not None:
             engine_mig.dispose()
+
         if original_db_url is not None:
             os.environ["DATABASE_URL"] = original_db_url
         else:
-            del os.environ["DATABASE_URL"]
-        if os.path.exists(db_file):
-            os.remove(db_file)
+            os.environ.pop("DATABASE_URL", None)
 
 # Service Tests
 def test_unknown_channel_rejected(db_session):

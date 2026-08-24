@@ -48,22 +48,35 @@ class ReDispatchTriggerService:
                 return {"type": "trigger", "reason": "sla_risk", "urgency": "high"}
                 
         # 3. Check Timeout
+        # if "timeout" in rules["triggers"]:
+        #     if not timer_exists:
+        #         # Timer expired
+        #         if job.updated_at:
+        #             if job.updated_at.tzinfo is None:
+        #                 updated = job.updated_at.replace(tzinfo=timezone.utc)
+        #             else:
+        #                 updated = job.updated_at.astimezone(timezone.utc)
+                        
+        #             if (now - updated).total_seconds() > 10:
+        #                 return {"type": "trigger", "reason": "timeout", "urgency": "high"}
+        #         else:
+        #             return {"type": "trigger", "reason": "timeout", "urgency": "high"}
+        #     else:
+        #         # Timer exists, check pre-alert
+        #         if 0 < timer_ttl <= rules["pre_alert_seconds"]:
+        #             return {"type": "pre_alert", "reason": "imminent_timeout"}
+                    
+        # return None
+        # 3. Check Timeout
         if "timeout" in rules["triggers"]:
             if not timer_exists:
-                # Timer expired
-                if job.updated_at:
-                    if job.updated_at.tzinfo is None:
-                        updated = job.updated_at.replace(tzinfo=timezone.utc)
-                    else:
-                        updated = job.updated_at.astimezone(timezone.utc)
-                        
-                    if (now - updated).total_seconds() > 10:
-                        return {"type": "trigger", "reason": "timeout", "urgency": "high"}
-                else:
-                    return {"type": "trigger", "reason": "timeout", "urgency": "high"}
+                # Redis timer is missing.
+                # Do not treat a missing timer as an assignment timeout.
+                return None
             else:
                 # Timer exists, check pre-alert
                 if 0 < timer_ttl <= rules["pre_alert_seconds"]:
-                    return {"type": "pre_alert", "reason": "imminent_timeout"}
-                    
-        return None
+                    return {
+                        "type": "pre_alert",
+                        "reason": "imminent_timeout"
+                    }
