@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import logging
 import os
+import json
+import time
 
 from typing import Any, Protocol, runtime_checkable
 
@@ -103,6 +105,8 @@ from app.services.ai.guardrails.tone_validator import (
 from app.services.ai.FieldOpsAI.schemas.communication_configuration import (
     CommunicationChannelDisabledError,
 )
+from app.prompts.analytics import PromptAnalytics
+from app import models
 
 logger = logging.getLogger(__name__)
 
@@ -388,6 +392,30 @@ class CommunicationService:
         *,
         context: CommunicationContext,
     ) -> CommunicationServiceResult:
+        started_at = time.perf_counter()
+        try:
+            result = self._generate(context=context)
+        except Exception:
+            self._record_analytics_safe(
+                context=context,
+                started_at=started_at,
+                used_fallback=False,
+                error=True,
+            )
+            raise
+        self._record_analytics_safe(
+            context=context,
+            started_at=started_at,
+            used_fallback=result.used_fallback,
+            error=False,
+        )
+        return result
+
+    def _generate(
+        self,
+        *,
+        context: CommunicationContext,
+    ) -> CommunicationServiceResult:
         """
         Generate and return one final safe communication.
 
@@ -535,6 +563,40 @@ class CommunicationService:
             # restore_data normally clears this mapping.
             # This final clear also covers every failure path.
             placeholder_map.clear()
+
+    def _record_analytics_safe(
+        self,
+        *,
+        context: CommunicationContext,
+        started_at: float,
+        used_fallback: bool,
+        error: bool,
+    ) -> None:
+        """Record operational metrics without affecting communication delivery."""
+        try:
+            channel = context.channel.value if hasattr(context.channel, "value") else str(context.channel)
+            prompt = self._db.query(models.NotificationTemplate).filter(
+                models.NotificationTemplate.tenant_id == self._tenant_id,
+                models.NotificationTemplate.type == context.notification_type,
+                models.NotificationTemplate.channel == channel.lower(),
+                models.NotificationTemplate.locale == context.locale,
+            ).order_by(models.NotificationTemplate.version.desc()).first()
+            if prompt is None:
+                return
+            output_tokens = len(json.dumps(context.model_dump(mode="json"), default=str).split())
+            PromptAnalytics(
+                self._db,
+                tenant_id=self._tenant_id,
+            ).record_usage(
+                prompt_id=prompt.id,
+                latency=(time.perf_counter() - started_at) * 1000,
+                tokens=output_tokens,
+                fallback=used_fallback,
+                error=error,
+                channel=channel.lower(),
+            )
+        except Exception:
+            logger.warning("Prompt analytics recording failed; communication result is preserved.")
 
     # ======================================================
     # Fallback Processing

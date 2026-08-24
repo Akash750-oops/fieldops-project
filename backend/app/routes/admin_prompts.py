@@ -42,12 +42,45 @@ from app.services.template_version_service import (
     ConflictError as VersionConflictError,
     TemplateVersionError
 )
+from app.prompts.analytics import PromptAnalytics
 
 
 router = APIRouter(
     prefix="/admin/prompts",
     tags=["Admin Prompts"],
 )
+
+
+@router.get("/analytics")
+def get_prompt_analytics(
+    prompt_id: Optional[int] = Query(default=None, ge=1),
+    agent_type: Optional[str] = Query(default=None, min_length=1),
+    channel: Optional[str] = Query(default=None, min_length=1),
+    period: int = Query(default=7, description="Rolling period in days: 7 or 30"),
+    db: Session = Depends(get_db),
+    principal: PromptAdminPrincipal = Depends(require_prompt_admin),
+    redis_client=Depends(get_redis_client),
+):
+    try:
+        analytics = PromptAnalytics(db, redis_client, principal.tenant_id)
+        if prompt_id is not None:
+            metrics = analytics.get_prompt_metrics(prompt_id, period)
+        elif agent_type is not None:
+            metrics = analytics.get_agent_metrics(agent_type, period)
+        elif channel is not None:
+            metrics = analytics.get_channel_metrics(channel, period)
+        else:
+            return {"period": period, "dashboard": analytics.dashboard(period)}
+        return {
+            "period": period,
+            "metrics": metrics.to_dict(),
+            "trends": {
+                key: value.to_dict()
+                for key, value in analytics.get_trends(prompt_id, agent_type, channel).items()
+            },
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
 
 
 # ==========================================================

@@ -21,6 +21,10 @@ celery_app.conf.update(
             "task": "app.tasks.broadcast_sla_countdown",
             "schedule": 30.0,
         },
+        "aggregate-prompt-analytics-hourly": {
+            "task": "app.tasks.aggregate_prompt_analytics_task",
+            "schedule": 3600.0,
+        },
     }
 )
 
