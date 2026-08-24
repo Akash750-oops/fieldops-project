@@ -167,15 +167,42 @@ def assign_job(
         validate_technician_for_assignment(technician, job)
 
         # 7. Perform Assignment
+        # job.assigned_technician_id = technician.technician_id
+        # job.status = "ASSIGNED"
+        
+        # from ..workload_utils import update_workload_count
+        # update_workload_count(db, technician.technician_id, 1)
+
+        # db.commit()
+        # db.refresh(job)
+        # db.refresh(technician)
         job.assigned_technician_id = technician.technician_id
         job.status = "ASSIGNED"
         
+        print("========== BEFORE WORKLOAD UPDATE ==========")
+        print("Job ID:", job.id)
+        print("Technician ID:", technician.technician_id)
+        print("Job assigned_technician_id:", job.assigned_technician_id)
+        print("Job status:", job.status)
+        
         from ..workload_utils import update_workload_count
         update_workload_count(db, technician.technician_id, 1)
-
+        
+        print("========== AFTER WORKLOAD UPDATE ==========")
+        print("Job ID:", job.id)
+        print("Job assigned_technician_id:", job.assigned_technician_id)
+        print("Job status:", job.status)
+        
         db.commit()
+        
+        print("========== COMMIT SUCCESS ==========")
+        
         db.refresh(job)
         db.refresh(technician)
+        
+        print("========== AFTER REFRESH ==========")
+        print("Job assigned_technician_id:", job.assigned_technician_id)
+        print("Job status:", job.status)
 
         return {
             "message": "Technician assigned successfully",
