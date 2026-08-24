@@ -52,6 +52,9 @@ from ..services.twilio_sms import (
 from app.models import User
 from app.services.ai.FieldOpsAI.services.intent_service import IntentService
 from app.services.ai.FieldOpsAI.schemas.intent import IntentContext
+from app.services.ai.FieldOpsAI.services.realtime_sentiment import (
+    RealTimeSentimentScorer,
+)
 
 router = APIRouter(
     tags=["Notifications"]
@@ -892,6 +895,46 @@ async def twilio_inbound_webhook(
             intent_result.confidence,
         )
 
-    return {
-        "status": "ok"
-    }
+        # -----------------------------------------------------
+        # Real-Time Sentiment Analysis - Story 12.2
+        # -----------------------------------------------------
+
+        customer_job = (
+            db.query(Job)
+            .filter(
+                Job.customer_id == str(customer.id),
+                Job.tenant_id == customer.tenant_id,
+                Job.status.notin_(
+                    ["COMPLETED", "CANCELLED", "CLOSED"]
+                ),
+            )
+            .order_by(Job.updated_at.desc())
+            .first()
+        )
+
+        if customer_job:
+            sentiment_scorer = RealTimeSentimentScorer(db=db)
+
+            sentiment_result = sentiment_scorer.score_reply(
+                reply_text=Body,
+                customer_id=customer.id,
+                job_id=customer_job.id,
+                channel="SMS",
+                language="en",
+                context=None,
+            )
+
+            logger.info(
+                "Customer sentiment classified. "
+                "user_id=%s job_id=%s sentiment=%s confidence=%.2f",
+                customer.id,
+                customer_job.id,
+                sentiment_result.sentiment,
+                sentiment_result.confidence,
+            )
+        else:
+            logger.info(
+                "No active job found for customer sentiment analysis. "
+                "user_id=%s",
+                customer.id,
+            )

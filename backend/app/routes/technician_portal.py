@@ -483,8 +483,12 @@ def _get_assigned_jobs_query(db: Session, user_id: str, tenant_id: str):
     tech = _get_tech_for_user(db, user_id, tenant_id)
     if not tech:
         return db.query(Job).filter(Job.id < 0)  # empty query
+    # Jobs are owned by the customer tenant, but access here is based on
+    # the authenticated technician's assigned_technician_id.
+    # This allows Super Admin to dispatch a customer job to a technician
+    # from another tenant while keeping technician access restricted to
+    # jobs explicitly assigned to that technician.
     return db.query(Job).filter(
-        Job.tenant_id == tenant_id,
         Job.assigned_technician_id == tech.technician_id
     )
 
@@ -536,7 +540,6 @@ async def get_job_detail(
     job = db.query(Job).filter(
         Job.id == job_id,
         Job.assigned_technician_id == tech.technician_id,
-        Job.tenant_id == current_user.tenant_id,
     ).first()
 
     if not job:
@@ -560,7 +563,6 @@ async def accept_job(
     job = db.query(Job).filter(
         Job.id == job_id,
         Job.assigned_technician_id == tech.technician_id,
-        Job.tenant_id == current_user.tenant_id,
     ).first()
 
     if not job:
@@ -626,7 +628,6 @@ async def reject_job(
     job = db.query(Job).filter(
         Job.id == job_id,
         Job.assigned_technician_id == tech.technician_id,
-        Job.tenant_id == current_user.tenant_id,
     ).first()
 
     if not job:
@@ -648,7 +649,7 @@ async def reject_job(
     # Create rejection confirmation notification for the technician
     notif = InAppNotification(
         id=str(uuid.uuid4()),
-        tenant_id=job.tenant_id,
+        tenant_id=current_user.tenant_id,
         tech_id=tech.tech_id or str(tech.technician_id),
         job_id=str(job_id),
         type="JOB_REJECTED",
@@ -696,7 +697,6 @@ async def start_job(
     job = db.query(Job).filter(
         Job.id == job_id,
         Job.assigned_technician_id == tech.technician_id,
-        Job.tenant_id == current_user.tenant_id,
     ).first()
     if not job:
         raise HTTPException(status_code=403, detail="Job not found or not assigned to you")
@@ -730,8 +730,8 @@ async def pause_job(
         raise HTTPException(status_code=403, detail="Technician record not found")
 
     job = db.query(Job).filter(
-        Job.id == job_id, Job.assigned_technician_id == tech.technician_id,
-        Job.tenant_id == current_user.tenant_id,
+        Job.id == job_id,
+        Job.assigned_technician_id == tech.technician_id,
     ).first()
     if not job:
         raise HTTPException(status_code=403, detail="Job not found or not assigned to you")
@@ -763,8 +763,8 @@ async def resume_job(
         raise HTTPException(status_code=403, detail="Technician record not found")
 
     job = db.query(Job).filter(
-        Job.id == job_id, Job.assigned_technician_id == tech.technician_id,
-        Job.tenant_id == current_user.tenant_id,
+        Job.id == job_id,
+        Job.assigned_technician_id == tech.technician_id,
     ).first()
     if not job:
         raise HTTPException(status_code=403, detail="Job not found or not assigned to you")
@@ -797,8 +797,8 @@ async def complete_job(
         raise HTTPException(status_code=403, detail="Technician record not found")
 
     job = db.query(Job).filter(
-        Job.id == job_id, Job.assigned_technician_id == tech.technician_id,
-        Job.tenant_id == current_user.tenant_id,
+        Job.id == job_id,
+        Job.assigned_technician_id == tech.technician_id,
     ).first()
     if not job:
         raise HTTPException(status_code=403, detail="Job not found or not assigned to you")
@@ -876,7 +876,6 @@ async def get_notifications(
     # Create missing notifications for pending jobs.
     if tech:
         pending_jobs = db.query(Job).filter(
-            Job.tenant_id == current_user.tenant_id,
             Job.assigned_technician_id == tech.technician_id,
             # func.lower(Job.status).in_(
             #     ["assigned", "active", "planned", "queued"]
@@ -914,8 +913,10 @@ async def get_notifications(
             if str(job.id) not in existing_job_ids:
                 new_notification = InAppNotification(
                     id=str(uuid.uuid4()),
-                    tenant_id=job.tenant_id,
-                    tech_id=str(current_user.user_id),
+                    # Notifications are scoped to the technician's tenant.
+                    # The job itself may belong to a different customer tenant.
+                    tenant_id=current_user.tenant_id,
+                    tech_id=tech.tech_id or str(current_user.user_id),
                     job_id=str(job.id),
                     type="JOB_ASSIGNED",
                     title="New Job Assigned",
@@ -973,7 +974,6 @@ async def get_notifications(
             Job.id,
             Job.status,
         ).filter(
-            Job.tenant_id == current_user.tenant_id,
             Job.id.in_(job_ids),
         ).all()
 
@@ -1152,7 +1152,6 @@ async def get_technician_dashboard(
 
     base = db.query(Job).filter(
         Job.assigned_technician_id == tech.technician_id,
-        Job.tenant_id == current_user.tenant_id,
     )
 
     today = datetime.now(timezone.utc).date()
