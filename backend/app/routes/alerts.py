@@ -5,6 +5,7 @@ import logging
 
 from app.database import get_db
 from app.models import DispatcherAlert
+from app.sentiment.audit import SentimentAuditLogger
 from app.schemas import AlertAcknowledgeRequest, DispatcherAlertResponse
 from app.routes.dispatch import verify_jwt_token
 
@@ -27,6 +28,21 @@ def acknowledge_alert(
         raise HTTPException(status_code=404, detail="Alert not found")
         
     alert.acknowledged = 1 if payload.acknowledged else 0
+    if alert.type == "customer_sentiment":
+        audit_logger = SentimentAuditLogger(db)
+
+        audit_logger.log_manager_action(
+            {
+                "tenant_id": alert.tenant_id,
+                "job_id": alert.job_id,
+                "action": (
+                    "acknowledge"
+                    if payload.acknowledged
+                    else "unacknowledge"
+                ),
+                "notes": None,
+            }
+        )
     db.commit()
     
     logger.info(f"Alert {alert_id} acknowledged by user {authorization}")

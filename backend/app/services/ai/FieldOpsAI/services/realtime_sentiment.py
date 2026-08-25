@@ -7,6 +7,7 @@ from app.services.ai.integrations.sentiment_integration import (
     SentimentIntegration,
 )
 from app.services.dispatcher_alert_service import DispatcherAlertService
+from app.sentiment.audit import SentimentAuditLogger
 
 class RealTimeSentimentScorer:
     """
@@ -22,6 +23,7 @@ class RealTimeSentimentScorer:
     ):
         self.db = db
         self.sentiment_integration = SentimentIntegration()
+        self.audit_logger = SentimentAuditLogger(db)
 
     def _get_previous_messages(
         self,
@@ -69,7 +71,14 @@ class RealTimeSentimentScorer:
         if not reply_text or not reply_text.strip():
             return None
 
-        supported_channels = {"SMS", "EMAIL", "PORTAL"}
+        supported_channels = {
+            "SMS",
+            "EMAIL",
+            "CHAT",
+            "WHATSAPP",
+            "SUPPORT_TICKET",
+            "DISPATCH_NOTE",
+        }
 
         if channel.upper() not in supported_channels:
             raise ValueError(
@@ -155,6 +164,26 @@ class RealTimeSentimentScorer:
         )
 
         self.db.add(sentiment_record)
+        self.audit_logger.log_analysis(
+        {
+            "tenant_id": sentiment_record.tenant_id,
+            "customer_id": sentiment_record.customer_id,
+            "job_id": sentiment_record.job_id,
+            "input_text": sentiment_record.message,
+            "sentiment_label": sentiment_record.sentiment,
+            "confidence": sentiment_record.confidence,
+            "model_used": getattr(
+                result,
+                "model_used",
+                None,
+            ),
+            "cost": getattr(
+                result,
+                "cost",
+                None,
+            ),
+          }
+        )
         self.db.commit()
         self.db.refresh(sentiment_record)
 

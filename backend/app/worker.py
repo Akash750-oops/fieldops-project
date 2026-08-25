@@ -349,6 +349,19 @@ def daily_gps_purge_scheduler_job():
     finally:
         db.close()
 
+def sentiment_audit_archive_scheduler_job():
+    from .tasks import archive_old_sentiment_audits
+
+    db = SessionLocal()
+
+    try:
+        archive_old_sentiment_audits(db)
+    except Exception as e:
+        logger.error(
+            f"Error in background sentiment audit archive job: {e}"
+        )
+    finally:
+        db.close()
 
 def start_scheduler():
     if not scheduler.running:
@@ -361,6 +374,14 @@ def start_scheduler():
         scheduler.add_job(create_monthly_partitions, 'cron', day=1, hour=0, minute=0, id='gps_partition_creator')
         # Run daily GPS purge at 2 AM UTC
         scheduler.add_job(daily_gps_purge_scheduler_job, 'cron', hour=2, minute=0, timezone='UTC', id='gps_daily_purger')
+        scheduler.add_job(
+         sentiment_audit_archive_scheduler_job,
+         'cron',
+         hour=3,
+         minute=0,
+         timezone='UTC',
+         id='sentiment_audit_archiver'
+        )
         scheduler.start()
         logger.info("Background heartbeat scheduler started.")
         # Run once immediately on startup

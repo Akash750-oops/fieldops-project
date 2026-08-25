@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.models import Job, DispatcherAlert, Technician
+from app.sentiment.audit import SentimentAuditLogger
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +205,15 @@ class DispatcherAlertService:
         )
 
         db.add(alert)
+        audit_logger = SentimentAuditLogger(db)
+
+        audit_logger.log_escalation(
+            {
+                "tenant_id": job.tenant_id,
+                "job_id": job.id,
+                "trigger_reason": alert_reason,
+            }
+        )
         db.commit()
 
         payload = {
