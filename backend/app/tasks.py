@@ -38,6 +38,60 @@ def aggregate_prompt_analytics_task():
         db.close()
 
 
+def archive_old_sentiment_audits(
+    db: Session,
+) -> int:
+    """
+    Mark sentiment audit records older than 2 years as archived.
+
+    Audit records are never deleted because the sentiment audit trail
+    is immutable. Records remain in the database and receive an
+    archived_at timestamp.
+    """
+
+    now = datetime.now(timezone.utc)
+
+    retention_cutoff = now - timedelta(days=730)
+
+    try:
+        records = (
+            db.query(models.SentimentAuditRecord)
+            .filter(
+                models.SentimentAuditRecord.timestamp
+                < retention_cutoff,
+                models.SentimentAuditRecord.archived_at
+                .is_(None),
+            )
+            .all()
+        )
+
+        archived_count = 0
+
+        for record in records:
+            record.archived_at = now
+            archived_count += 1
+
+        db.commit()
+
+        logger.info(
+            "Sentiment audit archival completed: "
+            "%s records archived.",
+            archived_count,
+        )
+
+        return archived_count
+
+    except Exception as e:
+        db.rollback()
+
+        logger.error(
+            "Error archiving old sentiment audit records: %s",
+            e,
+        )
+
+        raise
+
+
 def drop_empty_partitions(db: Session):
     """
     Drops any partitioned table under gps_pings that contains 0 rows.

@@ -12,7 +12,7 @@ import redis.asyncio as aioredis
 logger = logging.getLogger(__name__)
 
 from .database import SessionLocal
-from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking, brand_safety_admin, admin_prompts, admin_communication_configuration,message_preview
+from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking, brand_safety_admin, admin_prompts, admin_communication_configuration,message_preview,admin_sentiment_audit
 from .routes import auth as auth_routes
 from .routes.organizations import org_router, platform_router
 from . import models
@@ -268,6 +268,7 @@ app.include_router(templates.router)
 app.include_router(escalations.router)
 app.include_router(alerts.router)
 app.include_router(audit.router)
+app.include_router(admin_sentiment_audit.router)
 app.include_router(dispatch_queue.router)
 app.include_router(dispatch_metrics.router)
 app.include_router(gps.router)
