@@ -22,11 +22,11 @@ const badge = (status: string) => {
   const c: Record<string, string> = {
     PENDING: "#DD6B20",
     ASSIGNED: "#1E40AF",
+    EN_ROUTE: "#7C3AED",
     IN_PROGRESS: "#92400E",
     COMPLETED: "#065F46",
     CANCELLED: "#991B1B",
   };
-
   return {
     fontSize: "11px",
     fontWeight: 600,

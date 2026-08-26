@@ -352,6 +352,14 @@ def assign_job(
         job.assigned_technician_id = technician.technician_id
         job.status = "ASSIGNED"
 
+        # Update customer ServiceRequest status
+        service_request = db.query(models.ServiceRequest).filter(
+            models.ServiceRequest.linked_job_id == job.id
+        ).first()
+
+        if service_request:
+            service_request.status = "ASSIGNED"
+
         # Assignment metadata.
         if hasattr(job, "assigned_at"):
             job.assigned_at = datetime.now(timezone.utc)
