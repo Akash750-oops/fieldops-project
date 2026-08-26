@@ -24,6 +24,7 @@ from ..models import (
     TechnicianProfile, 
 )
 from ..models.user import User
+from ..models import ServiceRequest
 from ..portal_schemas import (
     TechnicianProfileCreate, TechnicianProfileUpdate, TechnicianProfileResponse,
     TechnicianJobResponse, TechnicianJobRejectRequest, TechnicianJobCompleteRequest,
@@ -569,6 +570,16 @@ async def accept_job(
         raise HTTPException(status_code=403, detail="Job not found or not assigned to you")
 
     job.status = "EN_ROUTE"
+
+    # Keep the customer's service request status in sync with the job status
+    service_request = db.query(ServiceRequest).filter(
+        ServiceRequest.linked_job_id == job.id,
+        ServiceRequest.tenant_id == job.tenant_id,
+    ).first()
+
+    if service_request:
+        service_request.status = "EN_ROUTE"
+
     recipient_ids = _get_notification_recipient_ids(
         current_user.user_id,
         tech,
@@ -703,6 +714,16 @@ async def start_job(
 
     old_status = job.status
     job.status = "IN_PROGRESS"
+
+    # Keep the customer's service request status in sync
+    service_request = db.query(ServiceRequest).filter(
+        ServiceRequest.linked_job_id == job.id,
+        ServiceRequest.tenant_id == job.tenant_id,
+    ).first()
+
+    if service_request:
+        service_request.status = "IN_PROGRESS"
+
     job.on_site_at = datetime.now(timezone.utc)
     job.on_site_by = current_user.user_id
 
@@ -805,6 +826,16 @@ async def complete_job(
 
     old_status = job.status
     job.status = "COMPLETED"
+
+    # Keep the customer's service request status in sync
+    service_request = db.query(ServiceRequest).filter(
+        ServiceRequest.linked_job_id == job.id,
+        ServiceRequest.tenant_id == job.tenant_id,
+    ).first()
+
+    if service_request:
+        service_request.status = "COMPLETED"
+
     job.completed_at = datetime.now(timezone.utc)
     job.completed_by = current_user.user_id
     if data.completion_notes:

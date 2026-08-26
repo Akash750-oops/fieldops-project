@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { X, Trash2, CheckCircle2, IndianRupee, Image as ImageIcon, Upload } from "lucide-react";
+import {
+  X,
+  Trash2,
+  CheckCircle2,
+  IndianRupee,
+  Image as ImageIcon,
+  Upload,
+} from "lucide-react";
 import { closeJob, JobClosureData } from "../../services/planningService";
 
 interface JobClosureModalProps {
@@ -9,13 +16,18 @@ interface JobClosureModalProps {
   onSuccess: () => void;
 }
 
-const compressImage = (file: File, maxWidth = 800, quality = 0.7): Promise<string> => {
+const compressImage = (
+  file: File,
+  maxWidth = 800,
+  quality = 0.7
+): Promise<string> => {
   return new Promise((resolve) => {
     const reader = new FileReader();
+
     reader.onload = (event) => {
       const img = new Image();
+
       img.onload = () => {
-        const canvas = document.createElement("canvas");
         let width = img.width;
         let height = img.height;
 
@@ -24,10 +36,12 @@ const compressImage = (file: File, maxWidth = 800, quality = 0.7): Promise<strin
           width = maxWidth;
         }
 
+        const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
 
         const ctx = canvas.getContext("2d");
+
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
           resolve(canvas.toDataURL("image/jpeg", quality));
@@ -35,9 +49,11 @@ const compressImage = (file: File, maxWidth = 800, quality = 0.7): Promise<strin
           resolve((event.target?.result as string) || "");
         }
       };
+
       img.onerror = () => resolve("");
       img.src = (event.target?.result as string) || "";
     };
+
     reader.onerror = () => resolve("");
     reader.readAsDataURL(file);
   });
@@ -52,25 +68,43 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
   const [workSummary, setWorkSummary] = useState("");
   const [beforeImages, setBeforeImages] = useState<string[]>([]);
   const [afterImages, setAfterImages] = useState<string[]>([]);
-  const [labourCost, setLabourCost] = useState<number>(0);
-  const [materialCost, setMaterialCost] = useState<number>(0);
+
+  const [serviceCharge, setServiceCharge] = useState<string>("");
+  const [materialCost, setMaterialCost] = useState<string>("");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const subtotal = (Number(labourCost) || 0) + (Number(materialCost) || 0);
+  // -----------------------------
+  // COST CALCULATIONS
+  // -----------------------------
+
+  const subtotal =
+    (Number(serviceCharge) || 0) +
+    (Number(materialCost) || 0);
+
+  const gstRate = 0.05;
+  const gstAmount = subtotal * gstRate;
+  const totalAmount = subtotal + gstAmount;
+
+  // -----------------------------
+  // IMAGE UPLOAD
+  // -----------------------------
 
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     type: "before" | "after"
   ) => {
     const files = e.target.files;
+
     if (!files || files.length === 0) return;
 
     for (const file of Array.from(files)) {
       try {
         const compressedBase64 = await compressImage(file);
+
         if (compressedBase64) {
           if (type === "before") {
             setBeforeImages((prev) => [...prev, compressedBase64]);
@@ -82,6 +116,7 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
         console.error("Failed to compress image:", err);
       }
     }
+
     e.target.value = "";
   };
 
@@ -93,6 +128,10 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
     setAfterImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // -----------------------------
+  // SUBMIT
+  // -----------------------------
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -102,13 +141,18 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
       return;
     }
 
-    const filteredAfterImages = afterImages.map((img) => img.trim()).filter(Boolean);
+    const filteredAfterImages = afterImages
+      .map((img) => img.trim())
+      .filter(Boolean);
+
     if (filteredAfterImages.length === 0) {
       setError("At least one after image is required.");
       return;
     }
 
-    const filteredBeforeImages = beforeImages.map((img) => img.trim()).filter(Boolean);
+    const filteredBeforeImages = beforeImages
+      .map((img) => img.trim())
+      .filter(Boolean);
 
     setIsSubmitting(true);
 
@@ -117,84 +161,163 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
         work_summary: workSummary.trim(),
         before_images: filteredBeforeImages,
         after_images: filteredAfterImages,
-        labour_cost: Math.max(0, Number(labourCost) || 0),
-        material_cost: Math.max(0, Number(materialCost) || 0),
+
+        // Labour is included inside Service Charge.
+        // Keep 0 here only for backend compatibility.
+        labour_cost: 0,
+
+        material_cost: Math.max(
+          0,
+          Number(materialCost) || 0
+        ),
       };
 
       await closeJob(jobId, payload);
+
       onSuccess();
       onClose();
     } catch (err: any) {
-      const errMsg = err?.response?.data?.detail || err?.message || "Failed to complete job.";
-      setError(typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg));
+      const errMsg =
+        err?.response?.data?.detail ||
+        err?.message ||
+        "Failed to complete job.";
+
+      setError(
+        typeof errMsg === "string"
+          ? errMsg
+          : JSON.stringify(errMsg)
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // -----------------------------
+  // UI
+  // -----------------------------
+
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div
+      style={styles.overlay}
+      onClick={onClose}
+    >
+      <div
+        style={styles.modal}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div style={styles.header}>
           <div style={styles.headerTitleWrap}>
-            <CheckCircle2 size={18} color="#166534" />
-            <h3 style={styles.headerTitle}>Complete Job #{jobId}</h3>
+            <CheckCircle2
+              size={18}
+              color="#166534"
+            />
+
+            <h3 style={styles.headerTitle}>
+              Complete Job #{jobId}
+            </h3>
           </div>
-          <button style={styles.closeBtn} onClick={onClose}>
+
+          <button
+            style={styles.closeBtn}
+            onClick={onClose}
+          >
             <X size={18} />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} style={styles.body}>
-          {error && <div style={styles.errorAlert}>{error}</div>}
+        <form
+          onSubmit={handleSubmit}
+          style={styles.body}
+        >
+          {error && (
+            <div style={styles.errorAlert}>
+              {error}
+            </div>
+          )}
 
           {/* Work Summary */}
           <div style={styles.formGroup}>
             <label style={styles.label}>
-              Work Summary <span style={styles.req}>*</span>
+              Work Summary{" "}
+              <span style={styles.req}>*</span>
             </label>
+
             <textarea
               style={styles.textarea}
-              rows={2}
+              rows={3}
               value={workSummary}
-              onChange={(e) => setWorkSummary(e.target.value)}
+              onChange={(e) =>
+                setWorkSummary(e.target.value)
+              }
               placeholder="Describe work completed, tests run, and final status..."
               required
             />
           </div>
 
-          {/* Images Section (Side by side for compact layout) */}
+          {/* Images Section */}
           <div style={styles.imagesGrid}>
+
             {/* Before Images */}
             <div style={styles.formGroup}>
-              <label style={styles.label}>Before Images (Optional)</label>
+              <label style={styles.label}>
+                Before Images (Optional)
+              </label>
+
               <div style={styles.imagePreviewList}>
                 {beforeImages.map((img, idx) => (
-                  <div key={idx} style={styles.imagePreviewRow}>
-                    {img.startsWith("data:") || img.startsWith("http") ? (
-                      <img src={img} alt={`Before ${idx + 1}`} style={styles.thumbnail} />
+                  <div
+                    key={idx}
+                    style={styles.imagePreviewRow}
+                  >
+                    {img.startsWith("data:") ||
+                    img.startsWith("http") ? (
+                      <img
+                        src={img}
+                        alt={`Before ${idx + 1}`}
+                        style={styles.thumbnail}
+                      />
                     ) : (
-                      <ImageIcon size={14} color="#64748b" />
+                      <ImageIcon
+                        size={14}
+                        color="#64748b"
+                      />
                     )}
-                    <span style={styles.imageLabel}>Before #{idx + 1}</span>
+
+                    <span style={styles.imageLabel}>
+                      Before #{idx + 1}
+                    </span>
+
                     <button
                       type="button"
                       style={styles.iconBtn}
-                      onClick={() => handleRemoveBeforeImage(idx)}
+                      onClick={() =>
+                        handleRemoveBeforeImage(idx)
+                      }
                     >
-                      <Trash2 size={14} color="#ef4444" />
+                      <Trash2
+                        size={14}
+                        color="#ef4444"
+                      />
                     </button>
                   </div>
                 ))}
               </div>
+
               <label style={styles.fileUploadBtn}>
-                <Upload size={13} /> {beforeImages.length > 0 ? "+ Add Another Image" : "Choose File"}
+                <Upload size={13} />
+
+                {beforeImages.length > 0
+                  ? "+ Add Another Image"
+                  : "Choose File"}
+
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) => handleFileUpload(e, "before")}
+                  onChange={(e) =>
+                    handleFileUpload(e, "before")
+                  }
                   style={{ display: "none" }}
                 />
               </label>
@@ -203,33 +326,63 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
             {/* After Images */}
             <div style={styles.formGroup}>
               <label style={styles.label}>
-                After Images (Min 1) <span style={styles.req}>*</span>
+                After Images (Min 1){" "}
+                <span style={styles.req}>*</span>
               </label>
+
               <div style={styles.imagePreviewList}>
                 {afterImages.map((img, idx) => (
-                  <div key={idx} style={styles.imagePreviewRow}>
-                    {img.startsWith("data:") || img.startsWith("http") ? (
-                      <img src={img} alt={`After ${idx + 1}`} style={styles.thumbnail} />
+                  <div
+                    key={idx}
+                    style={styles.imagePreviewRow}
+                  >
+                    {img.startsWith("data:") ||
+                    img.startsWith("http") ? (
+                      <img
+                        src={img}
+                        alt={`After ${idx + 1}`}
+                        style={styles.thumbnail}
+                      />
                     ) : (
-                      <ImageIcon size={14} color="#166534" />
+                      <ImageIcon
+                        size={14}
+                        color="#166534"
+                      />
                     )}
-                    <span style={styles.imageLabel}>After #{idx + 1}</span>
+
+                    <span style={styles.imageLabel}>
+                      After #{idx + 1}
+                    </span>
+
                     <button
                       type="button"
                       style={styles.iconBtn}
-                      onClick={() => handleRemoveAfterImage(idx)}
+                      onClick={() =>
+                        handleRemoveAfterImage(idx)
+                      }
                     >
-                      <Trash2 size={14} color="#ef4444" />
+                      <Trash2
+                        size={14}
+                        color="#ef4444"
+                      />
                     </button>
                   </div>
                 ))}
               </div>
+
               <label style={styles.fileUploadBtn}>
-                <Upload size={13} /> {afterImages.length > 0 ? "+ Add Another Image" : "Choose File"}
+                <Upload size={13} />
+
+                {afterImages.length > 0
+                  ? "+ Add Another Image"
+                  : "Choose File"}
+
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) => handleFileUpload(e, "after")}
+                  onChange={(e) =>
+                    handleFileUpload(e, "after")
+                  }
                   style={{ display: "none" }}
                 />
               </label>
@@ -238,36 +391,110 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
 
           {/* Financial Breakdown */}
           <div style={styles.costGrid}>
+
+            {/* Service Charge */}
             <div style={styles.formGroup}>
-              <label style={styles.label}>Labour Cost (₹)</label>
+              <label style={styles.label}>
+                Service Charge (₹)
+              </label>
+
               <input
                 type="number"
                 step="0.01"
                 min="0"
                 style={styles.input}
-                value={labourCost}
-                onChange={(e) => setLabourCost(parseFloat(e.target.value) || 0)}
+                value={serviceCharge}
+                onChange={(e) => {
+                  const value =
+                    e.target.value.replace(
+                      /^0+(?=\d)/,
+                      ""
+                    );
+
+                  setServiceCharge(value);
+                }}
               />
             </div>
 
+            {/* Material Cost */}
             <div style={styles.formGroup}>
-              <label style={styles.label}>Material Cost (₹)</label>
+              <label style={styles.label}>
+                Material Cost (₹)
+              </label>
+
               <input
                 type="number"
                 step="0.01"
                 min="0"
                 style={styles.input}
                 value={materialCost}
-                onChange={(e) => setMaterialCost(parseFloat(e.target.value) || 0)}
+                onChange={(e) => {
+                  const value =
+                    e.target.value.replace(
+                      /^0+(?=\d)/,
+                      ""
+                    );
+
+                  setMaterialCost(value);
+                }}
               />
             </div>
 
+            {/* Subtotal */}
             <div style={styles.formGroup}>
-              <label style={styles.label}>Subtotal (₹)</label>
+              <label style={styles.label}>
+                Subtotal (₹)
+              </label>
+
               <input
                 type="text"
-                style={{ ...styles.input, backgroundColor: "#f1f5f9", fontWeight: 700, color: "#166534" }}
+                style={{
+                  ...styles.input,
+                  backgroundColor: "#f1f5f9",
+                  fontWeight: 700,
+                  color: "#166534",
+                }}
                 value={`₹ ${subtotal.toFixed(2)}`}
+                readOnly
+                disabled
+              />
+            </div>
+
+            {/* GST */}
+            <div style={styles.formGroup}>
+              <label style={styles.label}>
+                GST (5%)
+              </label>
+
+              <input
+                type="text"
+                style={{
+                  ...styles.input,
+                  backgroundColor: "#f1f5f9",
+                  fontWeight: 700,
+                  color: "#166534",
+                }}
+                value={`₹ ${gstAmount.toFixed(2)}`}
+                readOnly
+                disabled
+              />
+            </div>
+
+            {/* Total */}
+            <div style={styles.formGroup}>
+              <label style={styles.label}>
+                Total (₹)
+              </label>
+
+              <input
+                type="text"
+                style={{
+                  ...styles.input,
+                  backgroundColor: "#dcfce7",
+                  fontWeight: 700,
+                  color: "#166534",
+                }}
+                value={`₹ ${totalAmount.toFixed(2)}`}
                 readOnly
                 disabled
               />
@@ -276,11 +503,23 @@ export const JobClosureModal: React.FC<JobClosureModalProps> = ({
 
           {/* Footer Actions */}
           <div style={styles.footer}>
-            <button type="button" style={styles.cancelBtn} onClick={onClose} disabled={isSubmitting}>
+            <button
+              type="button"
+              style={styles.cancelBtn}
+              onClick={onClose}
+              disabled={isSubmitting}
+            >
               Cancel
             </button>
-            <button type="submit" style={styles.submitBtn} disabled={isSubmitting}>
-              {isSubmitting ? "Submitting..." : "Submit Job Closure"}
+
+            <button
+              type="submit"
+              style={styles.submitBtn}
+              disabled={isSubmitting}
+            >
+              {isSubmitting
+                ? "Submitting..."
+                : "Submit Job Closure"}
             </button>
           </div>
         </form>
@@ -304,15 +543,19 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 1100,
     padding: "16px",
   },
+
   modal: {
     backgroundColor: "#ffffff",
-    borderRadius: "14px",
-    width: "100%",
-    maxWidth: "580px",
-    boxShadow: "0 20px 30px -5px rgba(0,0,0,0.15)",
+    borderRadius: "16px",
+    width: "90%",
+    maxWidth: "900px",
+    minHeight: "auto",
+    boxShadow:
+      "0 20px 30px -5px rgba(0,0,0,0.15)",
     border: "1px solid #e2e8f0",
     overflow: "hidden",
   },
+
   header: {
     padding: "12px 20px",
     borderBottom: "1px solid #e2e8f0",
@@ -321,17 +564,20 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     backgroundColor: "#f8fafc",
   },
+
   headerTitleWrap: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
   },
+
   headerTitle: {
     fontSize: "16px",
     fontWeight: 700,
     color: "#0f172a",
     margin: 0,
   },
+
   closeBtn: {
     background: "none",
     border: "none",
@@ -340,12 +586,14 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "4px",
     borderRadius: "4px",
   },
+
   body: {
-    padding: "16px 20px",
+    padding: "26px 34px 24px",
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
+    gap: "20px",
   },
+
   errorAlert: {
     padding: "8px 12px",
     backgroundColor: "#fef2f2",
@@ -354,24 +602,29 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "13px",
     border: "1px solid #fecaca",
   },
+
   formGroup: {
     display: "flex",
     flexDirection: "column",
     gap: "4px",
   },
+
   imagesGrid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
     gap: "12px",
   },
+
   label: {
     fontSize: "13px",
     fontWeight: 600,
     color: "#334155",
   },
+
   req: {
     color: "#dc2626",
   },
+
   textarea: {
     padding: "8px 10px",
     borderRadius: "6px",
@@ -381,6 +634,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: "inherit",
     resize: "none",
   },
+
   input: {
     width: "100%",
     padding: "7px 10px",
@@ -390,6 +644,7 @@ const styles: Record<string, React.CSSProperties> = {
     outline: "none",
     boxSizing: "border-box",
   },
+
   fileUploadBtn: {
     display: "inline-flex",
     alignItems: "center",
@@ -405,6 +660,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignSelf: "flex-start",
     marginTop: "2px",
   },
+
   imagePreviewList: {
     display: "flex",
     flexDirection: "column",
@@ -412,6 +668,7 @@ const styles: Record<string, React.CSSProperties> = {
     maxHeight: "80px",
     overflowY: "auto",
   },
+
   imagePreviewRow: {
     display: "flex",
     alignItems: "center",
@@ -421,6 +678,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: "6px",
     border: "1px solid #e2e8f0",
   },
+
   thumbnail: {
     width: "24px",
     height: "24px",
@@ -428,6 +686,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: "4px",
     border: "1px solid #cbd5e1",
   },
+
   imageLabel: {
     fontSize: "12px",
     color: "#334155",
@@ -438,17 +697,20 @@ const styles: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
+
   iconBtn: {
     background: "none",
     border: "none",
     cursor: "pointer",
     padding: "2px",
   },
+
   costGrid: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr 1fr",
+    gridTemplateColumns: "repeat(3, 1fr)",
     gap: "12px",
   },
+
   footer: {
     display: "flex",
     justifyContent: "flex-end",
@@ -457,6 +719,7 @@ const styles: Record<string, React.CSSProperties> = {
     paddingTop: "12px",
     borderTop: "1px solid #e2e8f0",
   },
+
   cancelBtn: {
     padding: "8px 16px",
     borderRadius: "6px",
@@ -467,6 +730,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "13px",
     cursor: "pointer",
   },
+
   submitBtn: {
     padding: "8px 18px",
     borderRadius: "6px",

@@ -194,8 +194,30 @@ export default function TechnicianJobsPage() {
     }
     if (["IN_PROGRESS", "PAUSED"].includes(st)) {
       btns.push(
-        <button key="complete" style={s.btn("#D1FAE5", "#065F46")} onClick={() => setCompleteModal(job.id)}>
-          <CheckCircle size={14} /> Complete
+        <button
+          key="complete"
+          style={{
+            background: "rgba(220, 252, 231, 0.35)",
+            color: "#059669",
+            border: "1.5px solid #059669",
+            borderRadius: "8px",
+            padding: "10px 20px",
+            minWidth: "120px",
+            height: "40px",
+            fontSize: "12px",
+            fontWeight: 700,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "6px",
+            textTransform: "uppercase",
+            letterSpacing: "0.5px",
+            transition: "all 0.2s ease",
+          }}
+          onClick={() => setCompleteModal(job.id)}
+        >
+          Complete
         </button>
       );
     }
@@ -222,8 +244,9 @@ export default function TechnicianJobsPage() {
                 <div style={s.jobTitle}>{job.service_type || "Service Request"}</div>
               </div>
               <div style={{ display: "flex", gap: "6px" }}>
-                <span style={s.badge(priorityStyle[job.priority]?.bg || "#E5E7EB", priorityStyle[job.priority]?.fg || "#374151")}>{job.priority || "MEDIUM"}</span>
-                <span style={s.badge(statusStyle[job.status]?.bg || "#E5E7EB", statusStyle[job.status]?.fg || "#374151")}>{job.status}</span>
+                <span style={s.badge(priorityStyle[job.priority]?.bg || "#E5E7EB", priorityStyle[job.priority]?.fg || "#374151")}>
+                  {job.priority || "MEDIUM"}
+                </span>
               </div>
             </div>
             <div style={s.meta}>
@@ -236,7 +259,32 @@ export default function TechnicianJobsPage() {
                 {job.issue_description}
               </div>
             )}
-            <div style={s.actions}>{getActions(job)}</div>
+            <div
+              style={{
+                ...s.actions,
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color:
+                    job.status === "COMPLETED"
+                      ? "#059669"
+                      : job.status === "IN_PROGRESS"
+                        ? "#D97706"
+                        : "#5B21B6",
+                }}
+              >
+                {job.status === "COMPLETED" ? "✓ COMPLETED" : job.status}
+              </span>
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                {getActions(job)}
+              </div>
+            </div>
           </div>
         ))
       )}
