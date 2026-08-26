@@ -45,3 +45,4 @@ html2text==2025.4.15
 premailer==3.10.0
 beautifulsoup4==4.15.0
 pytest-asyncio==1.4.0
+reportlab==5.0.1

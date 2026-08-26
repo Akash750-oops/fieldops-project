@@ -158,6 +158,14 @@ export default function CustomerServiceRequestsPage({
     }
 
     // -----------------------------------------
+    // SERVICE TYPE VALIDATION
+    // -----------------------------------------
+    if (!form.service_type) {
+      setError("Please select a service type");
+      return;
+    }
+
+    // -----------------------------------------
     // PRIORITY VALIDATION
     // -----------------------------------------
     if (!form.priority || form.priority === "select priority") {
@@ -418,9 +426,11 @@ export default function CustomerServiceRequestsPage({
             >
               {/* Service Type */}
               <div>
-                <label style={labelStyle}>Service Type</label>
-
+                <label style={labelStyle}>
+                  Service Type <span style={{ color: "red" }}>*</span>
+                </label>
                 <select
+                  required
                   style={{
                     ...inputStyle,
                     color: form.service_type ? "#111827" : "#9CA3AF",
@@ -969,9 +979,12 @@ export default function CustomerServiceRequestsPage({
               >
                 {/* Service Type */}
                 <div>
-                  <label style={labelStyle}>Service Type</label>
+                  <label style={labelStyle}>
+                    Service Type <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
 
                   <select
+                    required
                     style={{
                       ...inputStyle,
                       color: form.service_type ? "#111827" : "#9CA3AF",
