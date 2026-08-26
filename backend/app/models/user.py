@@ -35,9 +35,14 @@ class User(Base):
     role = Column(String(30), nullable=False, index=True)  # UserRole enum value
     tenant_id = Column(String(50),ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     phone_number = Column(String(20), nullable=True)
+    fcm_token = Column(String(255), nullable=True)
+    device_type = Column(String(20), nullable=True)
+    
 
     # Account status
     is_active = Column(Boolean, nullable=False, default=True)
+    is_email_verified = Column(Boolean, nullable=False, default=False)
+    is_on_duty = Column(Boolean, nullable=False, default=True)
     is_email_verified = Column(Boolean, nullable=False, default=False)
 
     # Security: account lockout

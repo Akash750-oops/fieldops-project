@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, text
 # CURRENT MIGRATION
 # ============================================================
 
-CURRENT_HEAD = "004554449425"
+CURRENT_HEAD = "bda2aafc2c59"
 
 
 # ============================================================

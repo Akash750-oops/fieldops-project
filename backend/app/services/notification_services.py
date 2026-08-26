@@ -1933,3 +1933,60 @@ class NotificationRouter:
             event.notification_channels.append(
                 channel
             )
+
+async def route_escalation(
+    self,
+    manager_id: str,
+    manager_email: str | None,
+    manager_phone: str | None,
+    payload: dict,
+) -> dict:
+    """
+    Route a sentiment escalation to the assigned manager.
+    """
+
+    results = {
+        "sms": False,
+        "email": False,
+        "push": False,
+        "dashboard": False,
+    }
+
+    # Dashboard notification through existing WebSocket manager.
+    if self.ws:
+        try:
+            await self.ws.broadcast(
+                f"tenant:{payload.get('tenant_id')}:managers",
+                {
+                    "type": "sentiment_escalation",
+                    "payload": payload,
+                },
+            )
+            results["dashboard"] = True
+        except Exception:
+            logger.exception(
+                "Failed to send escalation dashboard notification"
+            )
+
+    # Email will be connected using SendGridService.
+    if manager_email:
+        try:
+            results["email"] = bool(
+                await self.email.send_email(
+                    manager_email,
+                    "Negative Sentiment Escalation",
+                    (
+                        f"<h3>Customer Escalation</h3>"
+                        f"<p>Job ID: {payload.get('job_id')}</p>"
+                        f"<p>Customer: {payload.get('customer_name')}</p>"
+                        f"<p>Sentiment: {payload.get('sentiment_score')}</p>"
+                        f"<p>{payload.get('reply_text')}</p>"
+                    ),
+                )
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send escalation email"
+            )
+
+    return results

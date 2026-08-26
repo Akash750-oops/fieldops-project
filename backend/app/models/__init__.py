@@ -58,9 +58,13 @@ from .customer_profile import CustomerProfileModel  # noqa: F401
 from .service_request import ServiceRequest  # noqa: F401
 from .organization_onboarding import OrganizationOnboarding  # noqa: F401
 from .sentiment import SentimentThreadMessage  # noqa: F401
-from .retention import (  # noqa: F401
+from .retention import (
     RetentionWorkflow,
     RetentionDiscountCode,
     RetentionCRMTask,
     RetentionServiceCredit,
+
 )
+
+from .sentiment_audit import SentimentAuditRecord
+from .sentiment_escalation import SentimentEscalation

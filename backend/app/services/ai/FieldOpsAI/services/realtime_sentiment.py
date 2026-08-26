@@ -2,12 +2,17 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 import re
-from app.models import Job, SentimentThreadMessage
+from app.models import Job, SentimentThreadMessage, User
 from app.services.ai.integrations.sentiment_integration import (
     SentimentIntegration,
 )
 from app.services.dispatcher_alert_service import DispatcherAlertService
 from app.sentiment.retention import RetentionWorkflowService
+from app.sentiment.audit import SentimentAuditLogger
+
+from app.sentiment.escalation import (
+    SentimentEscalationService,
+)
 
 class RealTimeSentimentScorer:
     """
@@ -23,6 +28,9 @@ class RealTimeSentimentScorer:
     ):
         self.db = db
         self.sentiment_integration = SentimentIntegration()
+        self.audit_logger = SentimentAuditLogger(db)
+        self.escalation_service = SentimentEscalationService(db)
+
 
     def _get_previous_messages(
         self,
@@ -54,7 +62,7 @@ class RealTimeSentimentScorer:
             for record in reversed(records)
         ]
 
-    def score_reply(
+    async def score_reply(
         self,
         reply_text: str,
         customer_id: int,
@@ -158,6 +166,26 @@ class RealTimeSentimentScorer:
         self.db.add(sentiment_record)
         self.db.commit()
         self.db.refresh(sentiment_record)
+
+        escalation = self.escalation_service.create_escalation(
+            message=sentiment_record,
+        )
+
+        if escalation:
+            customer = (
+        self.db.query(User)
+        .filter(User.id == str(customer_id))
+        .first()
+    )
+
+            if customer:
+                await self.escalation_service.send_auto_response(
+                customer_phone=customer.phone_number
+        )
+
+            await self.escalation_service.notify_manager(
+                escalation
+    )
 
         job = self.db.query(Job).filter(Job.id == job_id).first()
         if job:

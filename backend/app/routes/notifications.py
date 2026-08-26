@@ -915,7 +915,7 @@ async def twilio_inbound_webhook(
         if customer_job:
             sentiment_scorer = RealTimeSentimentScorer(db=db)
 
-            sentiment_result = sentiment_scorer.score_reply(
+            sentiment_result = await sentiment_scorer.score_reply(
                 reply_text=Body,
                 customer_id=customer.id,
                 job_id=customer_job.id,
