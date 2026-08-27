@@ -257,3 +257,40 @@ def correlation_id() -> str:
     Deterministic correlation ID.
     """
     return "corr-123456"
+
+import json
+from pathlib import Path
+
+_test_report_results: dict[str, Any] = {
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "tests": [],
+}
+
+
+def pytest_runtest_logreport(report):
+    if report.when != "call":
+        return
+    outcome = report.outcome  # "passed" | "failed" | "skipped"
+    _test_report_results.setdefault(outcome, 0)
+    _test_report_results[outcome] += 1
+    _test_report_results["tests"].append(
+        {"nodeid": report.nodeid, "outcome": outcome}
+    )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    reports_dir = Path("reports")
+    reports_dir.mkdir(exist_ok=True)
+
+    summary = {
+        "total": len(_test_report_results["tests"]),
+        "passed": _test_report_results.get("passed", 0),
+        "failed": _test_report_results.get("failed", 0),
+        "skipped": _test_report_results.get("skipped", 0),
+        "tests": _test_report_results["tests"],
+    }
+
+    with open(reports_dir / "comms_agent_test_report.json", "w") as f:
+        json.dump(summary, f, indent=2)

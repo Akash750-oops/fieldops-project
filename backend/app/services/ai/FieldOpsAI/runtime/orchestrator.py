@@ -146,22 +146,23 @@ class AIOrchestrator(RuntimeInterface):
     """
 
     def __init__(
-        self,
-        *,
-        failover_executor: ProviderFailoverExecutor | None = None,
-        provider_health_monitor: ProviderHealthMonitor | None = None,
-        provider_client_factory: (
-            Callable[[BaseAIProvider], Any] | None
-        ) = None,
-        client: Any | None = None,
-        sanitizer: PIISanitizer | None = None,
-        prompt_builder: PromptBuilder | None = None,
-        response_parser: ResponseParser | None = None,
-        budget_manager: SyncTokenBudgetManager | None = None,
-        provider_cache: SyncProviderCache | None = None,
-        circuit_breaker: CircuitBreaker | None = None,
-        redis_client: Any | None = None,
-    ) -> None:
+    self,
+    *,
+    config: Any | None = None,
+    failover_executor: ProviderFailoverExecutor | None = None,
+    provider_health_monitor: ProviderHealthMonitor | None = None,
+    provider_client_factory: (
+        Callable[[BaseAIProvider], Any] | None
+    ) = None,
+    client: Any | None = None,
+    sanitizer: PIISanitizer | None = None,
+    prompt_builder: PromptBuilder | None = None,
+    response_parser: ResponseParser | None = None,
+    budget_manager: SyncTokenBudgetManager | None = None,
+    provider_cache: SyncProviderCache | None = None,
+    circuit_breaker: CircuitBreaker | None = None,
+    redis_client: Any | None = None,
+) -> None:
         """
         Initialize the AI orchestrator.
 

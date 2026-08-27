@@ -377,7 +377,19 @@ def default_brand_safety_rules() -> tuple[
             match_type=BrandSafetyMatchType.PHRASE,
             pattern="guaranteed fix",
         ),
-    )
+        BrandSafetyRule(
+        rule_id="OFF_BRAND_CANCEL_SERVICE_THREAT",
+        category=BrandSafetyRuleCategory.OFF_BRAND,
+        match_type=BrandSafetyMatchType.PHRASE,
+        pattern="cancel your service",
+        ),
+        BrandSafetyRule(
+            rule_id="OFF_BRAND_COLLECTIONS_THREAT",
+            category=BrandSafetyRuleCategory.OFF_BRAND,
+            match_type=BrandSafetyMatchType.PHRASE,
+            pattern="report you to collections",
+        ),
+            )
 
 
 # ==========================================================
@@ -491,7 +503,7 @@ class BrandSafetyValidator:
             "BRAND_POLITICAL_CONTENT"
         ),
         BrandSafetyRuleCategory.OFF_BRAND: (
-            "BRAND_OFF_BRAND_LANGUAGE"
+            "BRAND_TONE_VIOLATION"
         ),
         BrandSafetyRuleCategory.BLOCKED_PHRASE: (
             "BRAND_BLOCKED_PHRASE"
