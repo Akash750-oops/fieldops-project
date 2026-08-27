@@ -48,7 +48,7 @@ def _get_tech_for_user(
     db: Session,
     user_id: str,
     tenant_id: str,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.TECHNICIAN)),
+    #current_user: AuthenticatedUser = Depends(require_role(UserRole.TECHNICIAN)),
 ) -> Optional[Technician]:
     """Find the technician record belonging to this user and organization."""
 
@@ -73,7 +73,7 @@ def _get_tech_for_user(
         TechnicianProfile.tenant_id == tenant_id,
     ).first()
 
-    user = db.query(User).filter(User.id == current_user.user_id,User.tenant_id == current_user.tenant_id,).first()
+    user = db.query(User).filter(User.id == str(user_id),User.tenant_id == tenant_id,).first()
     
     target_name = (
         profile.full_name

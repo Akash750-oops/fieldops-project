@@ -28,6 +28,8 @@ from app.services.ai.FieldOpsAI.schemas.provider import (
     UsageStats,
 )
 
+
+
 logger = logging.getLogger(__name__)
 
 ALLOWED_MODEL = "openai/gpt-oss-120b"

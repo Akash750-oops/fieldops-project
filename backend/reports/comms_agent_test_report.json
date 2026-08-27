@@ -1,0 +1,592 @@
+{
+  "total": 146,
+  "passed": 146,
+  "failed": 0,
+  "skipped": 0,
+  "tests": [
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-SMS-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-SMS-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-SMS-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-SMS-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-SMS-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-SMS-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-EMAIL-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-EMAIL-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-EMAIL-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-EMAIL-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-EMAIL-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-EMAIL-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-PUSH-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-PUSH-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-PUSH-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-PUSH-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-PUSH-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-PUSH-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-IN_APP-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-IN_APP-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-IN_APP-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-IN_APP-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-IN_APP-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[en-IN_APP-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-SMS-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-SMS-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-SMS-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-SMS-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-SMS-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-SMS-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-EMAIL-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-EMAIL-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-EMAIL-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-EMAIL-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-EMAIL-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-EMAIL-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-PUSH-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-PUSH-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-PUSH-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-PUSH-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-PUSH-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-PUSH-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-IN_APP-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-IN_APP-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-IN_APP-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-IN_APP-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-IN_APP-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[es-IN_APP-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-SMS-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-SMS-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-SMS-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-SMS-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-SMS-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-SMS-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-EMAIL-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-EMAIL-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-EMAIL-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-EMAIL-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-EMAIL-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-EMAIL-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-PUSH-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-PUSH-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-PUSH-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-PUSH-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-PUSH-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-PUSH-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-IN_APP-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-IN_APP-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-IN_APP-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-IN_APP-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-IN_APP-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[ta-IN_APP-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-SMS-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-SMS-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-SMS-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-SMS-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-SMS-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-SMS-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-EMAIL-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-EMAIL-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-EMAIL-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-EMAIL-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-EMAIL-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-EMAIL-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-PUSH-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-PUSH-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-PUSH-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-PUSH-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-PUSH-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-PUSH-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-IN_APP-job_assigned]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-IN_APP-technician_en_route]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-IN_APP-technician_on_site]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-IN_APP-work_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-IN_APP-job_completed]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_core_generation_matrix[hi-IN_APP-job_cancelled]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_fastapi_testclient_generation",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_groq_api_is_mocked_with_aioresponses",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_groq_429_is_mocked_with_aioresponses",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_groq_401_is_mocked_with_aioresponses",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_groq_500_is_mocked_with_aioresponses",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_failure_timeout_triggers_fallback",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_failure_429_propagates",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_failure_401_propagates",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_failure_500_propagates",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_failure_budget_exceeded",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_failure_guardrail_violation_fallback",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_failure_guardrail_requires_fallback_without_db",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_failure_guardrail_block",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_failure_fallback_template_error",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_failure_fallback_validation",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_failure_ai_wrong_return_type",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_failure_invalid_context",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_validation_sms_length_passes",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_validation_sms_length_fails",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_validation_email_subject_fails",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_validation_push_title_fails",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_validation_invalid_url",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_validation_invalid_phone",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_validation_encoding",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_validation_full_pipeline",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_escalation_human_request",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_escalation_vip_customer",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_escalation_negative_sentiment",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_escalation_urgent_job",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_terminated_agent_cannot_generate",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_channel_override_portal",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_channel_override_case_insensitive",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_unsupported_channel_rejected",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_template_key_overrides_notification_type",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_empty_template_key_rejected",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_ai_generation_under_5_seconds",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_fallback_under_50ms",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_validation_under_100ms",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_channel_output_schema[SMS]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_channel_output_schema[EMAIL]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_channel_output_schema[PUSH]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_channel_output_schema[IN_APP]",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_no_real_groq_api_call",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_suite_configuration",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_agent_parses_real_provider_success_response",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_agent_handles_real_provider_429",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_agent_handles_real_provider_401",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_agent_handles_real_provider_500_with_fallback",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_validation_brand_compliance_fails",
+      "outcome": "passed"
+    },
+    {
+      "nodeid": "tests/agents/test_comms_agent.py::test_validation_brand_compliance_passes",
+      "outcome": "passed"
+    }
+  ]
+}
