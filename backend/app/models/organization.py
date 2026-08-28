@@ -109,7 +109,6 @@ class Organization(Base):
     notification_templates = relationship("NotificationTemplate",back_populates="organization")
     notification_deliveries = relationship("NotificationDelivery",back_populates="organization")
 
-
     __table_args__ = (
         CheckConstraint(
             "status IN ('ACTIVE', 'SUSPENDED', 'DELETED')",

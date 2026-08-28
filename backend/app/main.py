@@ -23,7 +23,7 @@ from .services.tracking_manager import connection_manager
 from .services.broadcast_scheduler import BroadcastScheduler
 from .routes.tracking import redis_gps_listener
 from .services.default_template import seed_default_templates
-
+from app.sentiment.dashboard import router as sentiment_dashboard_router
 scheduler = None
 redis_async_client = None
 redis_pubsub_client = None
@@ -291,6 +291,9 @@ app.mount("/socket.io", sio_app)
 
 #----------Message Preview--------------------
 app.include_router(message_preview.router)
+
+#----------Sentiment Dashboard---------------
+app.include_router(sentiment_dashboard_router)
 
 # Lifespan events handled via asynccontextmanager lifespan handler
 
