@@ -69,3 +69,4 @@ from .retention import (
 
 from .sentiment_audit import SentimentAuditRecord
 from .sentiment_escalation import SentimentEscalation
+from .runtime_metrics import RuntimeMetricRollup  # noqa: F401

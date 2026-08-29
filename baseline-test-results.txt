@@ -1,0 +1,1736 @@
+2026-08-29 11:36:20,284 - INFO - fieldops - Firebase Admin initialized successfully.
+2026-08-29 11:36:20,287 - INFO - fieldops - Twilio client initialized.
+........................................................................ [  2%]
+........................................................................ [  5%]
+......................FFFF.....................................F........ [  7%]
+........................................................................ [ 10%]
+........................................................................ [ 13%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+........................................................................ [ 21%]
+........................................................................ [ 23%]
+........................................................................ [ 26%]
+........................................................................ [ 28%]
+................................F.....F.........................FFFF.... [ 31%]
+F.FF.......................................................s............ [ 34%]
+.....F................................................................
+=================================== FAILURES ===================================
+__________________ test_groq_api_is_mocked_with_aioresponses ___________________
+
+    @pytest.mark.asyncio
+    async def test_groq_api_is_mocked_with_aioresponses():
+        """
+        Direct aioresponses demonstration.
+    
+        No real Groq request is performed.
+        """
+    
+        import aiohttp
+    
+        with aioresponses() as mocked:
+    
+            mocked.post(
+                GROQ_URL,
+                status=200,
+                payload=groq_response(),
+            )
+    
+            async with aiohttp.ClientSession() as session:
+    
+>               async with session.post(
+                    GROQ_URL,
+                    json={
+                        "model": GROQ_MODEL,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": "Generate a job update.",
+                            }
+                        ],
+                    },
+                    headers={
+                        "Authorization": "Bearer test-token",
+                    },
+                ) as response:
+
+backend/tests/agents/test_comms_agent.py:651: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/aiohttp/client.py:1693: in __aenter__
+    self._resp: _RetType_co = await self._coro
+                              ^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/unittest/mock.py:2273: in _execute_mock_call
+    result = await effect(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/aioresponses/core.py:559: in _request_mock
+    response = await self.match(method, url, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/aioresponses/core.py:482: in match
+    response_or_exc = await matcher.build_response(
+.venv/lib/python3.12/site-packages/aioresponses/core.py:228: in build_response
+    resp = self._build_response(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = RequestMatch('https://api.groq.com/openai/v1/chat/completions')
+url = URL('https://api.groq.com/openai/v1/chat/completions'), method = 'post'
+request_headers = {'Authorization': 'Bearer test-token'}, status = 200
+body = b'{"id": "chatcmpl-test-123", "object": "chat.completion", "created": 1787983583, "model": "openai/gpt-oss-120b", "cho... the way."}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}}'
+content_type = 'application/json'
+payload = {'id': 'chatcmpl-test-123', 'object': 'chat.completion', 'created': 1787983583, 'model': 'openai/gpt-oss-120b', ...}
+headers = <CIMultiDict()>
+response_class = <class 'aiohttp.client_reqrep.ClientResponse'>, reason = 'OK'
+
+    def _build_response(self, url: 'Union[URL, str]',
+                        method: str = hdrs.METH_GET,
+                        request_headers: Optional[typedefs.LooseHeaders] = None,
+                        status: int = 200,
+                        body: Union[str, bytes] = '',
+                        content_type: str = 'application/json',
+                        payload: Optional[Dict] = None,
+                        headers: Optional[CIMultiDict] = None,
+                        response_class: Optional[Type[ClientResponse]] = None,
+                        reason: Optional[str] = None) -> ClientResponse:
+        if response_class is None:
+            response_class = ClientResponse
+        if payload is not None:
+            body = json.dumps(payload)
+        if not isinstance(body, bytes):
+            body = str.encode(body)
+        if request_headers is None:
+            request_headers = CIMultiDict()
+        loop = Mock()
+        loop.get_debug = Mock()
+        loop.get_debug.return_value = True
+        kwargs: Dict[str, Any] = {}
+        kwargs['request_info'] = RequestInfo(
+            url=url,
+            method=method,
+            headers=CIMultiDictProxy(self._prepare_request_headers(request_headers)),
+            real_url=url
+        )
+        kwargs['writer'] = None
+        kwargs['continue100'] = None
+        kwargs['timer'] = TimerNoop()
+        kwargs['traces'] = []
+        kwargs['loop'] = loop
+        kwargs['session'] = None
+    
+        # We need to initialize headers manually
+        _headers = CIMultiDict({hdrs.CONTENT_TYPE: content_type})
+        if headers:
+            _headers.update(headers)
+        raw_headers = self._build_raw_headers(_headers)
+>       resp = response_class(method, url, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ClientResponse.__init__() missing 1 required keyword-only argument: 'stream_writer'
+
+.venv/lib/python3.12/site-packages/aioresponses/core.py:197: TypeError
+__________________ test_groq_429_is_mocked_with_aioresponses ___________________
+
+    @pytest.mark.asyncio
+    async def test_groq_429_is_mocked_with_aioresponses():
+    
+        import aiohttp
+    
+        with aioresponses() as mocked:
+    
+            mocked.post(
+                GROQ_URL,
+                status=429,
+                payload={
+                    "error": {
+                        "message": "Rate limit exceeded",
+                    }
+                },
+            )
+    
+            async with aiohttp.ClientSession() as session:
+    
+>               async with session.post(
+                    GROQ_URL,
+                    json={
+                        "model": GROQ_MODEL,
+                        "messages": [],
+                    },
+                ) as response:
+
+backend/tests/agents/test_comms_agent.py:697: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/aiohttp/client.py:1693: in __aenter__
+    self._resp: _RetType_co = await self._coro
+                              ^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/unittest/mock.py:2273: in _execute_mock_call
+    result = await effect(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/aioresponses/core.py:559: in _request_mock
+    response = await self.match(method, url, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/aioresponses/core.py:482: in match
+    response_or_exc = await matcher.build_response(
+.venv/lib/python3.12/site-packages/aioresponses/core.py:228: in build_response
+    resp = self._build_response(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = RequestMatch('https://api.groq.com/openai/v1/chat/completions')
+url = URL('https://api.groq.com/openai/v1/chat/completions'), method = 'post'
+request_headers = <CIMultiDict()>, status = 429
+body = b'{"error": {"message": "Rate limit exceeded"}}'
+content_type = 'application/json'
+payload = {'error': {'message': 'Rate limit exceeded'}}
+headers = <CIMultiDict()>
+response_class = <class 'aiohttp.client_reqrep.ClientResponse'>
+reason = 'Too Many Requests'
+
+    def _build_response(self, url: 'Union[URL, str]',
+                        method: str = hdrs.METH_GET,
+                        request_headers: Optional[typedefs.LooseHeaders] = None,
+                        status: int = 200,
+                        body: Union[str, bytes] = '',
+                        content_type: str = 'application/json',
+                        payload: Optional[Dict] = None,
+                        headers: Optional[CIMultiDict] = None,
+                        response_class: Optional[Type[ClientResponse]] = None,
+                        reason: Optional[str] = None) -> ClientResponse:
+        if response_class is None:
+            response_class = ClientResponse
+        if payload is not None:
+            body = json.dumps(payload)
+        if not isinstance(body, bytes):
+            body = str.encode(body)
+        if request_headers is None:
+            request_headers = CIMultiDict()
+        loop = Mock()
+        loop.get_debug = Mock()
+        loop.get_debug.return_value = True
+        kwargs: Dict[str, Any] = {}
+        kwargs['request_info'] = RequestInfo(
+            url=url,
+            method=method,
+            headers=CIMultiDictProxy(self._prepare_request_headers(request_headers)),
+            real_url=url
+        )
+        kwargs['writer'] = None
+        kwargs['continue100'] = None
+        kwargs['timer'] = TimerNoop()
+        kwargs['traces'] = []
+        kwargs['loop'] = loop
+        kwargs['session'] = None
+    
+        # We need to initialize headers manually
+        _headers = CIMultiDict({hdrs.CONTENT_TYPE: content_type})
+        if headers:
+            _headers.update(headers)
+        raw_headers = self._build_raw_headers(_headers)
+>       resp = response_class(method, url, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ClientResponse.__init__() missing 1 required keyword-only argument: 'stream_writer'
+
+.venv/lib/python3.12/site-packages/aioresponses/core.py:197: TypeError
+__________________ test_groq_401_is_mocked_with_aioresponses ___________________
+
+    @pytest.mark.asyncio
+    async def test_groq_401_is_mocked_with_aioresponses():
+    
+        import aiohttp
+    
+        with aioresponses() as mocked:
+    
+            mocked.post(
+                GROQ_URL,
+                status=401,
+                payload={
+                    "error": {
+                        "message": "Invalid API key",
+                    }
+                },
+            )
+    
+            async with aiohttp.ClientSession() as session:
+    
+>               async with session.post(
+                    GROQ_URL,
+                    json={},
+                ) as response:
+
+backend/tests/agents/test_comms_agent.py:733: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/aiohttp/client.py:1693: in __aenter__
+    self._resp: _RetType_co = await self._coro
+                              ^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/unittest/mock.py:2273: in _execute_mock_call
+    result = await effect(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/aioresponses/core.py:559: in _request_mock
+    response = await self.match(method, url, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/aioresponses/core.py:482: in match
+    response_or_exc = await matcher.build_response(
+.venv/lib/python3.12/site-packages/aioresponses/core.py:228: in build_response
+    resp = self._build_response(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = RequestMatch('https://api.groq.com/openai/v1/chat/completions')
+url = URL('https://api.groq.com/openai/v1/chat/completions'), method = 'post'
+request_headers = <CIMultiDict()>, status = 401
+body = b'{"error": {"message": "Invalid API key"}}'
+content_type = 'application/json'
+payload = {'error': {'message': 'Invalid API key'}}, headers = <CIMultiDict()>
+response_class = <class 'aiohttp.client_reqrep.ClientResponse'>
+reason = 'Unauthorized'
+
+    def _build_response(self, url: 'Union[URL, str]',
+                        method: str = hdrs.METH_GET,
+                        request_headers: Optional[typedefs.LooseHeaders] = None,
+                        status: int = 200,
+                        body: Union[str, bytes] = '',
+                        content_type: str = 'application/json',
+                        payload: Optional[Dict] = None,
+                        headers: Optional[CIMultiDict] = None,
+                        response_class: Optional[Type[ClientResponse]] = None,
+                        reason: Optional[str] = None) -> ClientResponse:
+        if response_class is None:
+            response_class = ClientResponse
+        if payload is not None:
+            body = json.dumps(payload)
+        if not isinstance(body, bytes):
+            body = str.encode(body)
+        if request_headers is None:
+            request_headers = CIMultiDict()
+        loop = Mock()
+        loop.get_debug = Mock()
+        loop.get_debug.return_value = True
+        kwargs: Dict[str, Any] = {}
+        kwargs['request_info'] = RequestInfo(
+            url=url,
+            method=method,
+            headers=CIMultiDictProxy(self._prepare_request_headers(request_headers)),
+            real_url=url
+        )
+        kwargs['writer'] = None
+        kwargs['continue100'] = None
+        kwargs['timer'] = TimerNoop()
+        kwargs['traces'] = []
+        kwargs['loop'] = loop
+        kwargs['session'] = None
+    
+        # We need to initialize headers manually
+        _headers = CIMultiDict({hdrs.CONTENT_TYPE: content_type})
+        if headers:
+            _headers.update(headers)
+        raw_headers = self._build_raw_headers(_headers)
+>       resp = response_class(method, url, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ClientResponse.__init__() missing 1 required keyword-only argument: 'stream_writer'
+
+.venv/lib/python3.12/site-packages/aioresponses/core.py:197: TypeError
+__________________ test_groq_500_is_mocked_with_aioresponses ___________________
+
+    @pytest.mark.asyncio
+    async def test_groq_500_is_mocked_with_aioresponses():
+    
+        import aiohttp
+    
+        with aioresponses() as mocked:
+    
+            mocked.post(
+                GROQ_URL,
+                status=500,
+                payload={
+                    "error": {
+                        "message": "Internal server error",
+                    }
+                },
+            )
+    
+            async with aiohttp.ClientSession() as session:
+    
+>               async with session.post(
+                    GROQ_URL,
+                    json={},
+                ) as response:
+
+backend/tests/agents/test_comms_agent.py:760: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/aiohttp/client.py:1693: in __aenter__
+    self._resp: _RetType_co = await self._coro
+                              ^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/unittest/mock.py:2273: in _execute_mock_call
+    result = await effect(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/aioresponses/core.py:559: in _request_mock
+    response = await self.match(method, url, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/aioresponses/core.py:482: in match
+    response_or_exc = await matcher.build_response(
+.venv/lib/python3.12/site-packages/aioresponses/core.py:228: in build_response
+    resp = self._build_response(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = RequestMatch('https://api.groq.com/openai/v1/chat/completions')
+url = URL('https://api.groq.com/openai/v1/chat/completions'), method = 'post'
+request_headers = <CIMultiDict()>, status = 500
+body = b'{"error": {"message": "Internal server error"}}'
+content_type = 'application/json'
+payload = {'error': {'message': 'Internal server error'}}
+headers = <CIMultiDict()>
+response_class = <class 'aiohttp.client_reqrep.ClientResponse'>
+reason = 'Internal Server Error'
+
+    def _build_response(self, url: 'Union[URL, str]',
+                        method: str = hdrs.METH_GET,
+                        request_headers: Optional[typedefs.LooseHeaders] = None,
+                        status: int = 200,
+                        body: Union[str, bytes] = '',
+                        content_type: str = 'application/json',
+                        payload: Optional[Dict] = None,
+                        headers: Optional[CIMultiDict] = None,
+                        response_class: Optional[Type[ClientResponse]] = None,
+                        reason: Optional[str] = None) -> ClientResponse:
+        if response_class is None:
+            response_class = ClientResponse
+        if payload is not None:
+            body = json.dumps(payload)
+        if not isinstance(body, bytes):
+            body = str.encode(body)
+        if request_headers is None:
+            request_headers = CIMultiDict()
+        loop = Mock()
+        loop.get_debug = Mock()
+        loop.get_debug.return_value = True
+        kwargs: Dict[str, Any] = {}
+        kwargs['request_info'] = RequestInfo(
+            url=url,
+            method=method,
+            headers=CIMultiDictProxy(self._prepare_request_headers(request_headers)),
+            real_url=url
+        )
+        kwargs['writer'] = None
+        kwargs['continue100'] = None
+        kwargs['timer'] = TimerNoop()
+        kwargs['traces'] = []
+        kwargs['loop'] = loop
+        kwargs['session'] = None
+    
+        # We need to initialize headers manually
+        _headers = CIMultiDict({hdrs.CONTENT_TYPE: content_type})
+        if headers:
+            _headers.update(headers)
+        raw_headers = self._build_raw_headers(_headers)
+>       resp = response_class(method, url, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ClientResponse.__init__() missing 1 required keyword-only argument: 'stream_writer'
+
+.venv/lib/python3.12/site-packages/aioresponses/core.py:197: TypeError
+__________________________ test_no_real_groq_api_call __________________________
+
+    @pytest.mark.asyncio
+    async def test_no_real_groq_api_call():
+    
+        import aiohttp
+    
+        with aioresponses() as mocked:
+    
+            mocked.post(
+                GROQ_URL,
+                status=200,
+                payload=groq_response(
+                    text="Mocked Groq response.",
+                ),
+            )
+    
+            async with aiohttp.ClientSession() as session:
+    
+>               async with session.post(
+                    GROQ_URL,
+                    json={
+                        "model": GROQ_MODEL,
+                        "messages": [],
+                    },
+                ) as response:
+
+backend/tests/agents/test_comms_agent.py:1919: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/aiohttp/client.py:1693: in __aenter__
+    self._resp: _RetType_co = await self._coro
+                              ^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/unittest/mock.py:2273: in _execute_mock_call
+    result = await effect(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/aioresponses/core.py:559: in _request_mock
+    response = await self.match(method, url, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/aioresponses/core.py:482: in match
+    response_or_exc = await matcher.build_response(
+.venv/lib/python3.12/site-packages/aioresponses/core.py:228: in build_response
+    resp = self._build_response(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = RequestMatch('https://api.groq.com/openai/v1/chat/completions')
+url = URL('https://api.groq.com/openai/v1/chat/completions'), method = 'post'
+request_headers = <CIMultiDict()>, status = 200
+body = b'{"id": "chatcmpl-test-123", "object": "chat.completion", "created": 1787983584, "model": "openai/gpt-oss-120b", "cho...response."}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}}'
+content_type = 'application/json'
+payload = {'id': 'chatcmpl-test-123', 'object': 'chat.completion', 'created': 1787983584, 'model': 'openai/gpt-oss-120b', ...}
+headers = <CIMultiDict()>
+response_class = <class 'aiohttp.client_reqrep.ClientResponse'>, reason = 'OK'
+
+    def _build_response(self, url: 'Union[URL, str]',
+                        method: str = hdrs.METH_GET,
+                        request_headers: Optional[typedefs.LooseHeaders] = None,
+                        status: int = 200,
+                        body: Union[str, bytes] = '',
+                        content_type: str = 'application/json',
+                        payload: Optional[Dict] = None,
+                        headers: Optional[CIMultiDict] = None,
+                        response_class: Optional[Type[ClientResponse]] = None,
+                        reason: Optional[str] = None) -> ClientResponse:
+        if response_class is None:
+            response_class = ClientResponse
+        if payload is not None:
+            body = json.dumps(payload)
+        if not isinstance(body, bytes):
+            body = str.encode(body)
+        if request_headers is None:
+            request_headers = CIMultiDict()
+        loop = Mock()
+        loop.get_debug = Mock()
+        loop.get_debug.return_value = True
+        kwargs: Dict[str, Any] = {}
+        kwargs['request_info'] = RequestInfo(
+            url=url,
+            method=method,
+            headers=CIMultiDictProxy(self._prepare_request_headers(request_headers)),
+            real_url=url
+        )
+        kwargs['writer'] = None
+        kwargs['continue100'] = None
+        kwargs['timer'] = TimerNoop()
+        kwargs['traces'] = []
+        kwargs['loop'] = loop
+        kwargs['session'] = None
+    
+        # We need to initialize headers manually
+        _headers = CIMultiDict({hdrs.CONTENT_TYPE: content_type})
+        if headers:
+            _headers.update(headers)
+        raw_headers = self._build_raw_headers(_headers)
+>       resp = response_class(method, url, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ClientResponse.__init__() missing 1 required keyword-only argument: 'stream_writer'
+
+.venv/lib/python3.12/site-packages/aioresponses/core.py:197: TypeError
+________________________ test_off_brand_language_fails _________________________
+
+    def test_off_brand_language_fails() -> None:
+        """
+        Rude or dismissive language must be blocked.
+        """
+    
+        result = BrandSafetyValidator().check(
+            context=build_context(),
+            decision=build_sms_decision(
+                "This is not our problem."
+            ),
+        )
+    
+        assert result.passed is False
+    
+>       assert (
+            result.violations[0].code
+            == "BRAND_OFF_BRAND_LANGUAGE"
+        )
+E       AssertionError: assert 'BRAND_TONE_VIOLATION' == 'BRAND_OFF_BRAND_LANGUAGE'
+E         
+E         - BRAND_OFF_BRAND_LANGUAGE
+E         + BRAND_TONE_VIOLATION
+
+backend/tests/test_brand_safety_validator.py:241: AssertionError
+________________ test_multiple_rules_create_multiple_violations ________________
+
+    def test_multiple_rules_create_multiple_violations() -> None:
+        """
+        Every matched rule must receive an audit-safe violation.
+        """
+    
+        result = BrandSafetyValidator().check(
+            context=build_context(),
+            decision=build_sms_decision(
+                "This is not our problem. Vote for the candidate."
+            ),
+        )
+    
+        assert result.passed is False
+        assert len(result.violations) == 2
+    
+        codes = {
+            violation.code
+            for violation in result.violations
+        }
+    
+>       assert codes == {
+            "BRAND_OFF_BRAND_LANGUAGE",
+            "BRAND_POLITICAL_CONTENT",
+        }
+E       AssertionError: assert {'BRAND_POLIT...NE_VIOLATION'} == {'BRAND_OFF_B...ICAL_CONTENT'}
+E         
+E         Extra items in the left set:
+E         'BRAND_TONE_VIOLATION'
+E         Extra items in the right set:
+E         'BRAND_OFF_BRAND_LANGUAGE'
+E         Use -v to get more diff
+
+backend/tests/test_brand_safety_validator.py:387: AssertionError
+__________________ test_atomic_compare_and_delete_probe_lock ___________________
+
+fake_redis = <fakeredis._connection.FakeRedis(<redis.connection.ConnectionPool(<fakeredis._connection.FakeRedisConnection(version=(...type=None),orig_host_address=4773c3b60a004648a3d5691f7a42cafb,orig_socket_timeout=5,orig_socket_connect_timeout=5)>)>)>
+fake_clock = <tests.test_circuit_breaker.FakeClock object at 0x709a0492ac90>
+
+    def test_atomic_compare_and_delete_probe_lock(fake_redis, fake_clock) -> None:
+        cb = CircuitBreaker(fake_redis, clock=fake_clock)
+        permit = cb.check_permission("groq")
+        err = ProviderExecutionError("500 Internal", status_code=500, is_retryable=True)
+        for _ in range(5):
+            cb.record_failure(permit, err)
+    
+        fake_clock.advance(305.0)
+        p1 = cb.check_permission("groq")
+    
+        # Construct wrong permit matching same scope but different token
+        wrong_permit = CircuitPermit(provider_scope=p1.provider_scope, is_half_open_probe=True, probe_token="wrongtoken123")
+    
+        # Attempting to release with wrong permit does NOT delete lock
+>       cb.release_probe_lock(wrong_permit)
+
+backend/tests/test_circuit_breaker.py:249: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreaker object at 0x709a049293d0>
+permit = CircuitPermit(provider_scope='0b79cf2de0ee6b8ee227d9ebfe69b91aa92b1d2509641c4b743518447dbc4c68', is_half_open_probe=True, probe_token='wrongtoken123')
+
+    def release_probe_lock(
+        self,
+        permit: CircuitPermit,
+    ) -> bool:
+        """
+        Release a HALF_OPEN probe lock only when the permit
+        still owns the current Redis lock.
+        """
+    
+        if (
+            not self.config.enabled
+            or not permit.is_half_open_probe
+            or not permit.probe_token
+        ):
+            return False
+    
+        _, _, _, _, probe_lock_key = self._get_keys(
+            permit.provider_scope
+        )
+    
+        try:
+            result = self.redis.eval(
+                RELEASE_LOCK_LUA,
+                1,
+                probe_lock_key,
+                permit.probe_token,
+            )
+    
+            return bool(result)
+    
+        except Exception:
+            logger.warning(
+                "Redis failure during circuit breaker "
+                "probe lock release."
+            )
+    
+>           raise CircuitBreakerInfrastructureError(
+                "Circuit breaker probe lock release failed."
+            ) from None
+E           app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreakerInfrastructureError: Circuit breaker probe lock release failed.
+
+backend/app/services/ai/FieldOpsAI/runtime/circuit_breaker.py:379: CircuitBreakerInfrastructureError
+------------------------------ Captured log call -------------------------------
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:618 Retryable provider failure threshold reached and circuit transitioned to OPEN.
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:374 Redis failure during circuit breaker probe lock release.
+___ test_non_retryable_probe_failure_releases_lock_without_reopening_circuit ___
+
+fake_redis = <fakeredis._connection.FakeRedis(<redis.connection.ConnectionPool(<fakeredis._connection.FakeRedisConnection(version=(...type=None),orig_host_address=4b20bdaace0641abb58b9a41dab7e078,orig_socket_timeout=5,orig_socket_connect_timeout=5)>)>)>
+fake_clock = <tests.test_circuit_breaker.FakeClock object at 0x709a04945460>
+
+    def test_non_retryable_probe_failure_releases_lock_without_reopening_circuit(fake_redis, fake_clock) -> None:
+        cb = CircuitBreaker(fake_redis, clock=fake_clock)
+        permit = cb.check_permission("groq")
+        err = ProviderExecutionError("500 Internal", status_code=500, is_retryable=True)
+        for _ in range(5):
+            cb.record_failure(permit, err)
+    
+        fake_clock.advance(305.0)
+        p1 = cb.check_permission("groq")
+    
+        non_retryable = ProviderConfigurationError("Invalid Key")
+        # Non-retryable failure in HALF_OPEN releases lock but does NOT reopen circuit (stays HALF_OPEN)
+>       cb.record_failure(p1, non_retryable)
+
+backend/tests/test_circuit_breaker.py:275: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreaker object at 0x709a0492aff0>
+permit = CircuitPermit(provider_scope='0b79cf2de0ee6b8ee227d9ebfe69b91aa92b1d2509641c4b743518447dbc4c68', is_half_open_probe=True, probe_token='1688a237003fc25faa0ef34ac1466980')
+error = ProviderConfigurationError('Invalid Key')
+
+    def record_failure(
+        self,
+        permit: CircuitPermit,
+        error: BaseException,
+    ) -> None:
+        """
+        Record a provider failure.
+    
+        A HALF_OPEN permit may change circuit state only when
+        it still owns the current probe lock.
+        """
+    
+        if not self.config.enabled:
+            return
+    
+        (
+            state_key,
+            failures_key,
+            successes_key,
+            opened_at_key,
+            probe_lock_key,
+        ) = self._get_keys(
+            permit.provider_scope
+        )
+    
+        now_timestamp = self._now()
+    
+        retryable = is_retryable_provider_error(
+            error
+        )
+    
+        try:
+            if permit.is_half_open_probe:
+                if not permit.probe_token:
+                    raise ValueError(
+                        "HALF_OPEN permit requires a probe token."
+                    )
+    
+                result = self.redis.eval(
+                    HALF_OPEN_FAILURE_LUA,
+                    4,
+                    probe_lock_key,
+                    state_key,
+                    successes_key,
+                    opened_at_key,
+                    permit.probe_token,
+                    1 if retryable else 0,
+                    str(now_timestamp),
+                )
+    
+                status = int(result)
+    
+                if status == -1:
+                    logger.warning(
+                        "Stale HALF_OPEN failure permit ignored."
+                    )
+                    return
+    
+                if status == 2:
+                    logger.warning(
+                        "HALF_OPEN probe failed and circuit "
+                        "transitioned to OPEN."
+                    )
+    
+                return
+    
+            if not retryable:
+                return
+    
+            state_value = self.redis.get(
+                state_key
+            )
+    
+            state = (
+                CircuitState(state_value)
+                if state_value
+                else CircuitState.CLOSED
+            )
+    
+            if state != CircuitState.CLOSED:
+                return
+    
+            member_id = (
+                f"{now_timestamp}:"
+                f"{uuid.uuid4().hex}"
+            )
+    
+            cutoff = (
+                now_timestamp
+                - self.config.failure_window_seconds
+            )
+    
+            with self.redis.pipeline(
+                transaction=True
+            ) as pipe:
+                pipe.zremrangebyscore(
+                    failures_key,
+                    0.0,
+                    cutoff,
+                )
+    
+                pipe.zadd(
+                    failures_key,
+                    {
+                        member_id: now_timestamp,
+                    },
+                )
+    
+                pipe.zcard(
+                    failures_key
+                )
+    
+                pipe.expire(
+                    failures_key,
+                    self.config.failure_window_seconds * 2,
+                )
+    
+                results = pipe.execute()
+    
+            failure_count = int(
+                results[2]
+            )
+    
+            if (
+                failure_count
+                >= self.config.failure_threshold
+            ):
+                with self.redis.pipeline(
+                    transaction=True
+                ) as pipe:
+                    pipe.set(
+                        state_key,
+                        CircuitState.OPEN.value,
+                    )
+    
+                    pipe.set(
+                        opened_at_key,
+                        str(now_timestamp),
+                    )
+    
+                    pipe.execute()
+    
+                logger.warning(
+                    "Retryable provider failure threshold "
+                    "reached and circuit transitioned to OPEN."
+                )
+    
+        except ValueError:
+            raise
+    
+        except Exception:
+            logger.warning(
+                "Redis failure during circuit breaker "
+                "failure recording."
+            )
+    
+>           raise CircuitBreakerInfrastructureError(
+                "Circuit breaker failure recording failed."
+            ) from None
+E           app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreakerInfrastructureError: Circuit breaker failure recording failed.
+
+backend/app/services/ai/FieldOpsAI/runtime/circuit_breaker.py:632: CircuitBreakerInfrastructureError
+------------------------------ Captured log call -------------------------------
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:618 Retryable provider failure threshold reached and circuit transitioned to OPEN.
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:627 Redis failure during circuit breaker failure recording.
+_________________ test_retryable_probe_failure_reopens_circuit _________________
+
+fake_redis = <fakeredis._connection.FakeRedis(<redis.connection.ConnectionPool(<fakeredis._connection.FakeRedisConnection(version=(...type=None),orig_host_address=2a2edbc0d09e4c3a884acb725112c190,orig_socket_timeout=5,orig_socket_connect_timeout=5)>)>)>
+fake_clock = <tests.test_circuit_breaker.FakeClock object at 0x709a04bed820>
+
+    def test_retryable_probe_failure_reopens_circuit(fake_redis, fake_clock) -> None:
+        cb = CircuitBreaker(fake_redis, clock=fake_clock)
+        permit = cb.check_permission("groq")
+        err = ProviderExecutionError("500 Internal", status_code=500, is_retryable=True)
+        for _ in range(5):
+            cb.record_failure(permit, err)
+    
+        fake_clock.advance(305.0)
+        p1 = cb.check_permission("groq")
+    
+        # Retryable failure in HALF_OPEN releases lock AND reopens circuit to OPEN
+>       cb.record_failure(p1, err)
+
+backend/tests/test_circuit_breaker.py:296: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreaker object at 0x7099f7a1fec0>
+permit = CircuitPermit(provider_scope='0b79cf2de0ee6b8ee227d9ebfe69b91aa92b1d2509641c4b743518447dbc4c68', is_half_open_probe=True, probe_token='0d8ff87386abf7e8fc3a9588eaf562ee')
+error = ProviderExecutionError('500 Internal')
+
+    def record_failure(
+        self,
+        permit: CircuitPermit,
+        error: BaseException,
+    ) -> None:
+        """
+        Record a provider failure.
+    
+        A HALF_OPEN permit may change circuit state only when
+        it still owns the current probe lock.
+        """
+    
+        if not self.config.enabled:
+            return
+    
+        (
+            state_key,
+            failures_key,
+            successes_key,
+            opened_at_key,
+            probe_lock_key,
+        ) = self._get_keys(
+            permit.provider_scope
+        )
+    
+        now_timestamp = self._now()
+    
+        retryable = is_retryable_provider_error(
+            error
+        )
+    
+        try:
+            if permit.is_half_open_probe:
+                if not permit.probe_token:
+                    raise ValueError(
+                        "HALF_OPEN permit requires a probe token."
+                    )
+    
+                result = self.redis.eval(
+                    HALF_OPEN_FAILURE_LUA,
+                    4,
+                    probe_lock_key,
+                    state_key,
+                    successes_key,
+                    opened_at_key,
+                    permit.probe_token,
+                    1 if retryable else 0,
+                    str(now_timestamp),
+                )
+    
+                status = int(result)
+    
+                if status == -1:
+                    logger.warning(
+                        "Stale HALF_OPEN failure permit ignored."
+                    )
+                    return
+    
+                if status == 2:
+                    logger.warning(
+                        "HALF_OPEN probe failed and circuit "
+                        "transitioned to OPEN."
+                    )
+    
+                return
+    
+            if not retryable:
+                return
+    
+            state_value = self.redis.get(
+                state_key
+            )
+    
+            state = (
+                CircuitState(state_value)
+                if state_value
+                else CircuitState.CLOSED
+            )
+    
+            if state != CircuitState.CLOSED:
+                return
+    
+            member_id = (
+                f"{now_timestamp}:"
+                f"{uuid.uuid4().hex}"
+            )
+    
+            cutoff = (
+                now_timestamp
+                - self.config.failure_window_seconds
+            )
+    
+            with self.redis.pipeline(
+                transaction=True
+            ) as pipe:
+                pipe.zremrangebyscore(
+                    failures_key,
+                    0.0,
+                    cutoff,
+                )
+    
+                pipe.zadd(
+                    failures_key,
+                    {
+                        member_id: now_timestamp,
+                    },
+                )
+    
+                pipe.zcard(
+                    failures_key
+                )
+    
+                pipe.expire(
+                    failures_key,
+                    self.config.failure_window_seconds * 2,
+                )
+    
+                results = pipe.execute()
+    
+            failure_count = int(
+                results[2]
+            )
+    
+            if (
+                failure_count
+                >= self.config.failure_threshold
+            ):
+                with self.redis.pipeline(
+                    transaction=True
+                ) as pipe:
+                    pipe.set(
+                        state_key,
+                        CircuitState.OPEN.value,
+                    )
+    
+                    pipe.set(
+                        opened_at_key,
+                        str(now_timestamp),
+                    )
+    
+                    pipe.execute()
+    
+                logger.warning(
+                    "Retryable provider failure threshold "
+                    "reached and circuit transitioned to OPEN."
+                )
+    
+        except ValueError:
+            raise
+    
+        except Exception:
+            logger.warning(
+                "Redis failure during circuit breaker "
+                "failure recording."
+            )
+    
+>           raise CircuitBreakerInfrastructureError(
+                "Circuit breaker failure recording failed."
+            ) from None
+E           app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreakerInfrastructureError: Circuit breaker failure recording failed.
+
+backend/app/services/ai/FieldOpsAI/runtime/circuit_breaker.py:632: CircuitBreakerInfrastructureError
+------------------------------ Captured log call -------------------------------
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:618 Retryable provider failure threshold reached and circuit transitioned to OPEN.
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:627 Redis failure during circuit breaker failure recording.
+________________ test_three_consecutive_successes_close_circuit ________________
+
+fake_redis = <fakeredis._connection.FakeRedis(<redis.connection.ConnectionPool(<fakeredis._connection.FakeRedisConnection(version=(...type=None),orig_host_address=484b110e5b614df4b12829748ab05e19,orig_socket_timeout=5,orig_socket_connect_timeout=5)>)>)>
+fake_clock = <tests.test_circuit_breaker.FakeClock object at 0x709a0492b950>
+
+    def test_three_consecutive_successes_close_circuit(fake_redis, fake_clock) -> None:
+        cb = CircuitBreaker(fake_redis, clock=fake_clock)
+        permit = cb.check_permission("groq")
+        err = ProviderExecutionError("500 Internal", status_code=500, is_retryable=True)
+    
+        for _ in range(5):
+            cb.record_failure(permit, err)
+    
+        fake_clock.advance(305.0)
+    
+        # Probe 1
+        p1 = cb.check_permission("groq")
+>       cb.record_success(p1)
+
+backend/tests/test_circuit_breaker.py:314: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreaker object at 0x709a04a9ae70>
+permit = CircuitPermit(provider_scope='0b79cf2de0ee6b8ee227d9ebfe69b91aa92b1d2509641c4b743518447dbc4c68', is_half_open_probe=True, probe_token='3b95b2ecb1795402097b943f812d99fc')
+
+    def record_success(
+        self,
+        permit: CircuitPermit,
+    ) -> None:
+        """
+        Record a successful provider completion.
+    
+        A HALF_OPEN result is counted only when the permit
+        still owns the current probe lock.
+        """
+    
+        if not self.config.enabled:
+            return
+    
+        (
+            state_key,
+            failures_key,
+            successes_key,
+            opened_at_key,
+            probe_lock_key,
+        ) = self._get_keys(
+            permit.provider_scope
+        )
+    
+        try:
+            if permit.is_half_open_probe:
+                if not permit.probe_token:
+                    raise ValueError(
+                        "HALF_OPEN permit requires a probe token."
+                    )
+    
+                result = self.redis.eval(
+                    HALF_OPEN_SUCCESS_LUA,
+                    5,
+                    probe_lock_key,
+                    state_key,
+                    successes_key,
+                    failures_key,
+                    opened_at_key,
+                    permit.probe_token,
+                    self.config.half_open_success_threshold,
+                )
+    
+                status = int(result)
+    
+                if status == -1:
+                    logger.warning(
+                        "Stale HALF_OPEN success permit ignored."
+                    )
+                    return
+    
+                if status == 2:
+                    logger.info(
+                        "Circuit breaker recovered and "
+                        "transitioned to CLOSED."
+                    )
+    
+                return
+    
+            state_value = self.redis.get(state_key)
+    
+            state = (
+                CircuitState(state_value)
+                if state_value
+                else CircuitState.CLOSED
+            )
+    
+            if state == CircuitState.CLOSED:
+                now_timestamp = self._now()
+    
+                cutoff = (
+                    now_timestamp
+                    - self.config.failure_window_seconds
+                )
+    
+                self.redis.zremrangebyscore(
+                    failures_key,
+                    0.0,
+                    cutoff,
+                )
+    
+        except ValueError:
+            raise
+    
+        except Exception:
+            logger.warning(
+                "Redis failure during circuit breaker "
+                "success recording."
+            )
+    
+>           raise CircuitBreakerInfrastructureError(
+                "Circuit breaker success recording failed."
+            ) from None
+E           app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreakerInfrastructureError: Circuit breaker success recording failed.
+
+backend/app/services/ai/FieldOpsAI/runtime/circuit_breaker.py:473: CircuitBreakerInfrastructureError
+------------------------------ Captured log call -------------------------------
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:618 Retryable provider failure threshold reached and circuit transitioned to OPEN.
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:468 Redis failure during circuit breaker success recording.
+_________________ test_budget_failure_releases_half_open_probe _________________
+
+fake_redis = <fakeredis._connection.FakeRedis(<redis.connection.ConnectionPool(<fakeredis._connection.FakeRedisConnection(version=(...type=None),orig_host_address=e14234aa2576426caebb74278326f13b,orig_socket_timeout=5,orig_socket_connect_timeout=5)>)>)>
+fake_clock = <tests.test_circuit_breaker.FakeClock object at 0x709a0499d9d0>
+
+    def test_budget_failure_releases_half_open_probe(fake_redis, fake_clock) -> None:
+        budget_config = TokenBudgetConfig(daily_token_limit=5, per_request={"sentiment": 10}, atomic_strategy="transaction")
+        budget_manager = SyncTokenBudgetManager(fake_redis, budget_config)
+    
+        cb = CircuitBreaker(fake_redis, clock=fake_clock)
+        permit = cb.check_permission("groq")
+        err = ProviderExecutionError("500 Error", status_code=500, is_retryable=True)
+        for _ in range(5):
+            cb.record_failure(permit, err)
+    
+        # Advance cooldown to HALF_OPEN
+        fake_clock.advance(305.0)
+    
+        mock_client = MagicMock()
+    
+        orchestrator = AIOrchestrator(
+            client=mock_client,
+            budget_manager=budget_manager,
+            circuit_breaker=cb,
+        )
+        orchestrator._load_task_prompt = MagicMock(return_value="Prompt")
+    
+        # Request fails due to budget limit (exceeds 5 token limit)
+        with pytest.raises(ProviderExecutionError):
+            orchestrator.execute(
+                task=AITask.SENTIMENT,
+                context={"tenant_id": "tenant-1"},
+            )
+    
+        # Probe lock was safely released on budget failure! Next call acquires probe cleanly
+>       probe_permit = cb.check_permission("groq")
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+backend/tests/test_circuit_breaker.py:450: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreaker object at 0x709a049c82f0>
+provider = 'groq'
+
+    def check_permission(self, provider: str) -> CircuitPermit:
+        """
+        Check if request is permitted for the given provider.
+        Returns a CircuitPermit on success.
+        Raises CircuitOpenError if blocked, or CircuitBreakerInfrastructureError on Redis failure.
+        """
+        provider_hash = self._get_provider_hash(provider)
+        if not self.config.enabled:
+            return CircuitPermit(provider_scope=provider_hash, is_half_open_probe=False, probe_token=None)
+    
+        state_key, failures_key, successes_key, opened_at_key, probe_lock_key = self._get_keys(provider_hash)
+        now_ts = self._now()
+    
+        try:
+            state_val = self.redis.get(state_key)
+            state = CircuitState(state_val) if state_val else CircuitState.CLOSED
+    
+            if state == CircuitState.OPEN:
+                opened_at_val = self.redis.get(opened_at_key)
+                opened_at = float(opened_at_val) if opened_at_val else 0.0
+    
+                if now_ts - opened_at >= self.config.open_cooldown_seconds:
+                    # Cooldown expired -> transition to HALF_OPEN
+                    with self.redis.pipeline(transaction=True) as pipe:
+                        pipe.set(state_key, CircuitState.HALF_OPEN.value)
+                        pipe.set(successes_key, 0)
+                        pipe.execute()
+                    state = CircuitState.HALF_OPEN
+                else:
+                    logger.warning("Circuit breaker is OPEN. Requests blocked for provider.")
+                    raise CircuitOpenError("AI circuit breaker is OPEN.")
+    
+            if state == CircuitState.HALF_OPEN:
+                # Acquire probe lock with cryptographically random token
+                token = secrets.token_hex(16)
+                acquired = self.redis.set(
+                    probe_lock_key,
+                    token,
+                    nx=True,
+                    ex=self.config.half_open_probe_ttl_seconds,
+                )
+                if acquired:
+                    logger.info("Probe lock acquired for HALF_OPEN circuit breaker.")
+                    return CircuitPermit(
+                        provider_scope=provider_hash,
+                        is_half_open_probe=True,
+                        probe_token=token,
+                    )
+                else:
+                    logger.warning("Circuit breaker is HALF_OPEN and probe lock is held.")
+>                   raise CircuitOpenError("AI circuit breaker is HALF_OPEN and probe is in progress.")
+E                   app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitOpenError: AI circuit breaker is HALF_OPEN and probe is in progress.
+
+backend/app/services/ai/FieldOpsAI/runtime/circuit_breaker.py:311: CircuitOpenError
+------------------------------ Captured log call -------------------------------
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:618 Retryable provider failure threshold reached and circuit transitioned to OPEN.
+WARNING  app.services.ai.FieldOpsAI.runtime.orchestrator:orchestrator.py:833 Token budget exceeded for provider 'groq'.
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:374 Redis failure during circuit breaker probe lock release.
+WARNING  app.services.ai.FieldOpsAI.providers.provider_failover:provider_failover.py:1069 Non-retryable provider failure. Stopping failover.
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:310 Circuit breaker is HALF_OPEN and probe lock is held.
+_________________ test_stale_probe_success_cannot_change_state _________________
+
+fake_redis = <fakeredis._connection.FakeRedis(<redis.connection.ConnectionPool(<fakeredis._connection.FakeRedisConnection(version=(...type=None),orig_host_address=62fc0c26fac6443b9ba3d85674c8006c,orig_socket_timeout=5,orig_socket_connect_timeout=5)>)>)>
+fake_clock = <tests.test_circuit_breaker.FakeClock object at 0x709a04946cf0>
+
+    def test_stale_probe_success_cannot_change_state(
+        fake_redis,
+        fake_clock,
+    ) -> None:
+        cb = CircuitBreaker(
+            fake_redis,
+            clock=fake_clock,
+        )
+    
+        closed_permit = cb.check_permission(
+            "groq"
+        )
+    
+        error = ProviderExecutionError(
+            "Provider unavailable",
+            status_code=503,
+            is_retryable=True,
+        )
+    
+        for _ in range(5):
+            cb.record_failure(
+                closed_permit,
+                error,
+            )
+    
+        fake_clock.advance(305.0)
+    
+        stale_permit = cb.check_permission(
+            "groq"
+        )
+    
+        (
+            _,
+            _,
+            successes_key,
+            _,
+            probe_lock_key,
+        ) = cb._get_keys(
+            stale_permit.provider_scope
+        )
+    
+        fake_redis.set(
+            probe_lock_key,
+            "new-owner-token",
+            ex=180,
+        )
+    
+>       cb.record_success(
+            stale_permit
+        )
+
+backend/tests/test_circuit_breaker.py:520: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreaker object at 0x709a04972d20>
+permit = CircuitPermit(provider_scope='0b79cf2de0ee6b8ee227d9ebfe69b91aa92b1d2509641c4b743518447dbc4c68', is_half_open_probe=True, probe_token='103620524e0fc0156a7035cacfbf3e58')
+
+    def record_success(
+        self,
+        permit: CircuitPermit,
+    ) -> None:
+        """
+        Record a successful provider completion.
+    
+        A HALF_OPEN result is counted only when the permit
+        still owns the current probe lock.
+        """
+    
+        if not self.config.enabled:
+            return
+    
+        (
+            state_key,
+            failures_key,
+            successes_key,
+            opened_at_key,
+            probe_lock_key,
+        ) = self._get_keys(
+            permit.provider_scope
+        )
+    
+        try:
+            if permit.is_half_open_probe:
+                if not permit.probe_token:
+                    raise ValueError(
+                        "HALF_OPEN permit requires a probe token."
+                    )
+    
+                result = self.redis.eval(
+                    HALF_OPEN_SUCCESS_LUA,
+                    5,
+                    probe_lock_key,
+                    state_key,
+                    successes_key,
+                    failures_key,
+                    opened_at_key,
+                    permit.probe_token,
+                    self.config.half_open_success_threshold,
+                )
+    
+                status = int(result)
+    
+                if status == -1:
+                    logger.warning(
+                        "Stale HALF_OPEN success permit ignored."
+                    )
+                    return
+    
+                if status == 2:
+                    logger.info(
+                        "Circuit breaker recovered and "
+                        "transitioned to CLOSED."
+                    )
+    
+                return
+    
+            state_value = self.redis.get(state_key)
+    
+            state = (
+                CircuitState(state_value)
+                if state_value
+                else CircuitState.CLOSED
+            )
+    
+            if state == CircuitState.CLOSED:
+                now_timestamp = self._now()
+    
+                cutoff = (
+                    now_timestamp
+                    - self.config.failure_window_seconds
+                )
+    
+                self.redis.zremrangebyscore(
+                    failures_key,
+                    0.0,
+                    cutoff,
+                )
+    
+        except ValueError:
+            raise
+    
+        except Exception:
+            logger.warning(
+                "Redis failure during circuit breaker "
+                "success recording."
+            )
+    
+>           raise CircuitBreakerInfrastructureError(
+                "Circuit breaker success recording failed."
+            ) from None
+E           app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreakerInfrastructureError: Circuit breaker success recording failed.
+
+backend/app/services/ai/FieldOpsAI/runtime/circuit_breaker.py:473: CircuitBreakerInfrastructureError
+------------------------------ Captured log call -------------------------------
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:618 Retryable provider failure threshold reached and circuit transitioned to OPEN.
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:468 Redis failure during circuit breaker success recording.
+________________ test_stale_probe_failure_cannot_reopen_circuit ________________
+
+fake_redis = <fakeredis._connection.FakeRedis(<redis.connection.ConnectionPool(<fakeredis._connection.FakeRedisConnection(version=(...type=None),orig_host_address=7eb3591798ac4609bc60b044a186c79c,orig_socket_timeout=5,orig_socket_connect_timeout=5)>)>)>
+fake_clock = <tests.test_circuit_breaker.FakeClock object at 0x709a049705c0>
+
+    def test_stale_probe_failure_cannot_reopen_circuit(
+        fake_redis,
+        fake_clock,
+    ) -> None:
+        cb = CircuitBreaker(
+            fake_redis,
+            clock=fake_clock,
+        )
+    
+        closed_permit = cb.check_permission(
+            "groq"
+        )
+    
+        error = ProviderExecutionError(
+            "Provider unavailable",
+            status_code=503,
+            is_retryable=True,
+        )
+    
+        for _ in range(5):
+            cb.record_failure(
+                closed_permit,
+                error,
+            )
+    
+        fake_clock.advance(305.0)
+    
+        stale_permit = cb.check_permission(
+            "groq"
+        )
+    
+        probe_lock_key = cb._get_keys(
+            stale_permit.provider_scope
+        )[4]
+    
+        fake_redis.set(
+            probe_lock_key,
+            "new-owner-token",
+            ex=180,
+        )
+    
+>       cb.record_failure(
+            stale_permit,
+            error,
+        )
+
+backend/tests/test_circuit_breaker.py:579: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreaker object at 0x709a04971430>
+permit = CircuitPermit(provider_scope='0b79cf2de0ee6b8ee227d9ebfe69b91aa92b1d2509641c4b743518447dbc4c68', is_half_open_probe=True, probe_token='b058350d666cc7106c7bd57d6090c238')
+error = ProviderExecutionError('Provider unavailable')
+
+    def record_failure(
+        self,
+        permit: CircuitPermit,
+        error: BaseException,
+    ) -> None:
+        """
+        Record a provider failure.
+    
+        A HALF_OPEN permit may change circuit state only when
+        it still owns the current probe lock.
+        """
+    
+        if not self.config.enabled:
+            return
+    
+        (
+            state_key,
+            failures_key,
+            successes_key,
+            opened_at_key,
+            probe_lock_key,
+        ) = self._get_keys(
+            permit.provider_scope
+        )
+    
+        now_timestamp = self._now()
+    
+        retryable = is_retryable_provider_error(
+            error
+        )
+    
+        try:
+            if permit.is_half_open_probe:
+                if not permit.probe_token:
+                    raise ValueError(
+                        "HALF_OPEN permit requires a probe token."
+                    )
+    
+                result = self.redis.eval(
+                    HALF_OPEN_FAILURE_LUA,
+                    4,
+                    probe_lock_key,
+                    state_key,
+                    successes_key,
+                    opened_at_key,
+                    permit.probe_token,
+                    1 if retryable else 0,
+                    str(now_timestamp),
+                )
+    
+                status = int(result)
+    
+                if status == -1:
+                    logger.warning(
+                        "Stale HALF_OPEN failure permit ignored."
+                    )
+                    return
+    
+                if status == 2:
+                    logger.warning(
+                        "HALF_OPEN probe failed and circuit "
+                        "transitioned to OPEN."
+                    )
+    
+                return
+    
+            if not retryable:
+                return
+    
+            state_value = self.redis.get(
+                state_key
+            )
+    
+            state = (
+                CircuitState(state_value)
+                if state_value
+                else CircuitState.CLOSED
+            )
+    
+            if state != CircuitState.CLOSED:
+                return
+    
+            member_id = (
+                f"{now_timestamp}:"
+                f"{uuid.uuid4().hex}"
+            )
+    
+            cutoff = (
+                now_timestamp
+                - self.config.failure_window_seconds
+            )
+    
+            with self.redis.pipeline(
+                transaction=True
+            ) as pipe:
+                pipe.zremrangebyscore(
+                    failures_key,
+                    0.0,
+                    cutoff,
+                )
+    
+                pipe.zadd(
+                    failures_key,
+                    {
+                        member_id: now_timestamp,
+                    },
+                )
+    
+                pipe.zcard(
+                    failures_key
+                )
+    
+                pipe.expire(
+                    failures_key,
+                    self.config.failure_window_seconds * 2,
+                )
+    
+                results = pipe.execute()
+    
+            failure_count = int(
+                results[2]
+            )
+    
+            if (
+                failure_count
+                >= self.config.failure_threshold
+            ):
+                with self.redis.pipeline(
+                    transaction=True
+                ) as pipe:
+                    pipe.set(
+                        state_key,
+                        CircuitState.OPEN.value,
+                    )
+    
+                    pipe.set(
+                        opened_at_key,
+                        str(now_timestamp),
+                    )
+    
+                    pipe.execute()
+    
+                logger.warning(
+                    "Retryable provider failure threshold "
+                    "reached and circuit transitioned to OPEN."
+                )
+    
+        except ValueError:
+            raise
+    
+        except Exception:
+            logger.warning(
+                "Redis failure during circuit breaker "
+                "failure recording."
+            )
+    
+>           raise CircuitBreakerInfrastructureError(
+                "Circuit breaker failure recording failed."
+            ) from None
+E           app.services.ai.FieldOpsAI.runtime.circuit_breaker.CircuitBreakerInfrastructureError: Circuit breaker failure recording failed.
+
+backend/app/services/ai/FieldOpsAI/runtime/circuit_breaker.py:632: CircuitBreakerInfrastructureError
+------------------------------ Captured log call -------------------------------
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:618 Retryable provider failure threshold reached and circuit transitioned to OPEN.
+WARNING  app.services.ai.FieldOpsAI.runtime.circuit_breaker:circuit_breaker.py:627 Redis failure during circuit breaker failure recording.
+____________________________ test_route_duplication ____________________________
+
+db_session = <sqlalchemy.orm.session.Session object at 0x709a049cbb90>
+no_sms_rate_limit = None
+
+    def test_route_duplication(db_session,no_sms_rate_limit,):
+        # Assert exactly one registration for GET and PUT endpoints
+        get_count = sum(1 for route in app.routes if getattr(route, "path", None) == "/admin/communication-config/channels/{channel}" and "GET" in route.methods)
+        put_count = sum(1 for route in app.routes if getattr(route, "path", None) == "/admin/communication-config/channels/{channel}" and "PUT" in route.methods)
+>       assert get_count == 1
+E       assert 0 == 1
+
+backend/tests/test_communication_configuration.py:517: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/pythonjsonlogger/jsonlogger.py:11
+  /home/akash/fieldops-project/.venv/lib/python3.12/site-packages/pythonjsonlogger/jsonlogger.py:11: DeprecationWarning: pythonjsonlogger.jsonlogger has been moved to pythonjsonlogger.json
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /home/akash/fieldops-project/.venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+backend/tests/agents/test_bus.py:321
+  /home/akash/fieldops-project/backend/tests/agents/test_bus.py:321: PytestUnknownMarkWarning: Unknown pytest.mark.performance - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.performance
+
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /home/akash/fieldops-project/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+backend/tests/agents/test_health.py:210
+  /home/akash/fieldops-project/backend/tests/agents/test_health.py:210: PytestUnknownMarkWarning: Unknown pytest.mark.performance - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.performance
+
+backend/tests/agents/test_integration.py:449
+  /home/akash/fieldops-project/backend/tests/agents/test_integration.py:449: PytestUnknownMarkWarning: Unknown pytest.mark.performance - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.performance
+
+fieldops-project/backend/tests/test_admin_prompts.py::test_invalid_signature_returns_401
+  /home/akash/fieldops-project/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:147: InsecureKeyLengthWarning: The HMAC key is 12 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+fieldops-project/backend/tests/test_admin_prompts.py: 55 warnings
+  /home/akash/fieldops-project/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:368: InsecureKeyLengthWarning: The HMAC key is 15 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    decoded = self.decode_complete(
+
+fieldops-project/backend/tests/test_admin_prompts.py: 55 warnings
+  /home/akash/fieldops-project/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:147: InsecureKeyLengthWarning: The HMAC key is 15 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+fieldops-project/backend/tests/test_communication_agent.py::test_generate_with_ai_failure
+  /usr/lib/python3.12/threading.py:589: RuntimeWarning: coroutine 'to_thread' was never awaited
+    self._cond = Condition(Lock())
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+fieldops-project/backend/tests/test_communication_agent.py::test_render_fallback_rejects_unsupported_channel
+  /home/akash/fieldops-project/.venv/lib/python3.12/site-packages/pydantic/main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `enum` - serialized value may not be as expected [field_name='recipient_type', input_value='CUSTOMER', input_type=str])
+    return self.__pydantic_serializer__.to_python(
+
+fieldops-project/backend/tests/test_communication_configuration.py::test_authorization_tests
+fieldops-project/backend/tests/test_communication_configuration.py::test_delivery_enabled_standard_calls_twilio
+fieldops-project/backend/tests/test_communication_configuration.py::test_delivery_state_change_during_batch
+fieldops-project/backend/tests/test_communication_configuration.py::test_sms_cache_aware_delivery
+fieldops-project/backend/tests/test_communication_configuration.py::test_14_4_sms_immediate_provider_boundary
+  /home/akash/fieldops-project/backend/app/redis_client.py:26: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    result = operation(*args, **kwargs)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED backend/tests/agents/test_comms_agent.py::test_groq_api_is_mocked_with_aioresponses
+FAILED backend/tests/agents/test_comms_agent.py::test_groq_429_is_mocked_with_aioresponses
+FAILED backend/tests/agents/test_comms_agent.py::test_groq_401_is_mocked_with_aioresponses
+FAILED backend/tests/agents/test_comms_agent.py::test_groq_500_is_mocked_with_aioresponses
+FAILED backend/tests/agents/test_comms_agent.py::test_no_real_groq_api_call
+FAILED backend/tests/test_brand_safety_validator.py::test_off_brand_language_fails
+FAILED backend/tests/test_brand_safety_validator.py::test_multiple_rules_create_multiple_violations
+FAILED backend/tests/test_circuit_breaker.py::test_atomic_compare_and_delete_probe_lock
+FAILED backend/tests/test_circuit_breaker.py::test_non_retryable_probe_failure_releases_lock_without_reopening_circuit
+FAILED backend/tests/test_circuit_breaker.py::test_retryable_probe_failure_reopens_circuit
+FAILED backend/tests/test_circuit_breaker.py::test_three_consecutive_successes_close_circuit
+FAILED backend/tests/test_circuit_breaker.py::test_budget_failure_releases_half_open_probe
+FAILED backend/tests/test_circuit_breaker.py::test_stale_probe_success_cannot_change_state
+FAILED backend/tests/test_circuit_breaker.py::test_stale_probe_failure_cannot_reopen_circuit
+FAILED backend/tests/test_communication_configuration.py::test_route_duplication
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+/home/akash/fieldops-project/.venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:952: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)
+15 failed, 990 passed, 1 skipped, 124 warnings in 94.02s (0:01:34)

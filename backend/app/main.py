@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 from .database import SessionLocal
 from app.routes import admin_dlq
-from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking, brand_safety_admin, admin_prompts, admin_communication_configuration, message_preview, admin_retention, admin_queue
+from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking, brand_safety_admin, admin_prompts, admin_communication_configuration, message_preview, admin_retention, admin_queue, admin_metrics
 from .routes import auth as auth_routes
 from .routes.organizations import org_router, platform_router
 from .routes import sentiment_escalations
@@ -23,6 +23,7 @@ from .worker import start_scheduler, stop_scheduler
 from .services.tracking_manager import connection_manager
 from .services.broadcast_scheduler import BroadcastScheduler
 from .routes.tracking import redis_gps_listener
+from .runtime.metrics import runtime_metrics_collector
 from .services.default_template import seed_default_templates
 from app.sentiment.dashboard import router as sentiment_dashboard_router
 scheduler = None
@@ -34,6 +35,7 @@ listener_task = None
 async def lifespan(app: FastAPI):
     global scheduler, redis_async_client, redis_pubsub_client, listener_task
     start_scheduler()
+    await runtime_metrics_collector.start()
 
     # Ensure all tables & missing columns exist
     try:
@@ -112,6 +114,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await runtime_metrics_collector.stop()
         try:
             from app.services.ai.FieldOpsAI.runtime.orchestrator import ai_orchestrator
             await ai_orchestrator.provider_health_monitor.stop()
@@ -283,7 +286,7 @@ app.include_router(admin_communication_configuration.router)
 app.include_router(admin_retention.router)
 app.include_router(admin_queue.router)
 app.include_router(admin_dlq.router)
-
+app.include_router(admin_metrics.router)
 # ──── Portal Routes ────
 from .routes import technician_portal, customer_portal
 app.include_router(technician_portal.router)
