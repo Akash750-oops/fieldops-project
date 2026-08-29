@@ -30,3 +30,6 @@ celery_app.conf.update(
 
 # Automatically register tasks
 celery_app.autodiscover_tasks(["app"])
+celery_app.conf.imports = (
+    "app.tasks",
+)
