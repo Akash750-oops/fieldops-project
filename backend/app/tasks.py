@@ -11,8 +11,13 @@ from .database import SessionLocal
 from . import models
 from .logger import logger
 from .services.eta_service import ETAService
+from .services.task_queue import PriorityTaskQueue
+from .redis_client import get_redis_client
 from .services.socket_manager import ws_manager
+from .services.task_queue_worker import consume_task_queue
 
+
+from .services.task_queue import PriorityTaskQueue
 
 @celery_app.task(name="app.tasks.aggregate_prompt_analytics_task")
 def aggregate_prompt_analytics_task():
