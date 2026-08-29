@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 import time
 import uuid
 from typing import Optional
-
+from .runtime.dlq import DeadLetterQueue
+from .services.enterprise_audit import AuditAction, audit_log
 from .celery_app import celery_app
 from .database import SessionLocal
 from . import models
@@ -774,3 +775,87 @@ def auto_transition_on_geofence(job_id, ping_id, distance):
     finally:
         db.close()
 
+@celery_app.task(
+    name="app.tasks.auto_requeue_dlq"
+)
+def auto_requeue_dlq(limit: int = 100):
+    """
+    Automatically requeue failed DLQ tasks.
+
+    Tasks are taken from the operational Redis DLQ and
+    submitted back to the priority task queue.
+
+    Successfully requeued items are removed from the
+    Redis DLQ and recorded in the audit log.
+    """
+
+    redis = get_redis_client()
+
+    if redis is None:
+        logger.warning(
+            "DLQ auto-requeue skipped: Redis unavailable"
+        )
+
+        return {
+            "success": False,
+            "requeued": 0,
+            "reason": "redis_unavailable",
+        }
+
+    db = SessionLocal()
+
+    try:
+        dlq = DeadLetterQueue(
+            redis_client=redis,
+            db=db,
+        )
+
+        queue = PriorityTaskQueue(redis)
+
+        results = dlq.auto_requeue(
+            queue=queue,
+            limit=limit,
+        )
+
+        for result in results:
+            audit_log(
+                db,
+                action=AuditAction.TASK_DLQ,
+                tenant_id=result["tenant_id"],
+                entity_type="task",
+                entity_id=result["old_task_id"],
+                details={
+                    "operation": "auto_requeue",
+                    "dlq_id": result["dlq_id"],
+                    "old_task_id": result["old_task_id"],
+                    "new_task_id": result["new_task_id"],
+                },
+                severity="WARNING",
+            )
+
+        db.commit()
+
+        logger.info(
+            "DLQ auto-requeue completed: %s tasks requeued",
+            len(results),
+        )
+
+        return {
+            "success": True,
+            "requeued": len(results),
+            "items": results,
+        }
+
+    except Exception as exc:
+        db.rollback()
+
+        logger.error(
+            "DLQ auto-requeue failed: %s",
+            exc,
+            exc_info=True,
+        )
+
+        raise
+
+    finally:
+        db.close()

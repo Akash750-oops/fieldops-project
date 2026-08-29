@@ -12,6 +12,7 @@ import redis.asyncio as aioredis
 logger = logging.getLogger(__name__)
 
 from .database import SessionLocal
+from app.routes import admin_dlq
 from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking, brand_safety_admin, admin_prompts, admin_communication_configuration, message_preview, admin_retention, admin_queue
 from .routes import auth as auth_routes
 from .routes.organizations import org_router, platform_router
@@ -281,6 +282,7 @@ app.include_router(admin_prompts.router)
 app.include_router(admin_communication_configuration.router)
 app.include_router(admin_retention.router)
 app.include_router(admin_queue.router)
+app.include_router(admin_dlq.router)
 
 # ──── Portal Routes ────
 from .routes import technician_portal, customer_portal

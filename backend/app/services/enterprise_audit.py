@@ -177,6 +177,9 @@ class AuditAction:
 
     # AI / Intent Recognition
     INTENT_CLASSIFIED = "INTENT_CLASSIFIED"
+        # Task runtime / reliability
+    TASK_RETRY = "TASK_RETRY"
+    TASK_DLQ = "TASK_DLQ"
 
     # Security
     UNAUTHORIZED_ACCESS = "UNAUTHORIZED_ACCESS"
