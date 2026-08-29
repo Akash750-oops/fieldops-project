@@ -25,6 +25,7 @@ from uuid import uuid4
 import structlog
 
 from app.context import correlation_id_ctx
+from app.runtime.metrics import runtime_metrics_collector
 from app.services.ai.FieldOpsAI.agents.base import (
     AgentState,
     BaseAgent,
@@ -99,6 +100,7 @@ class AgentLifecycle:
         teardown_timeout_seconds: float = 5.0,
         state_manager: "Any | None" = None,
         health_monitor: "Any | None" = None,
+        metrics_collector: "Any | None" = None,
     ) -> None:
         """
         Initialize lifecycle management without performing external I/O.
@@ -126,6 +128,9 @@ class AgentLifecycle:
         health_monitor:
             Optional AgentHealthMonitor. When supplied, agent heartbeats
             are recorded to track operational health and liveness.
+        metrics_collector:
+            Optional runtime MetricsCollector. Collection failures never
+            interrupt agent execution.
         """
 
         if not isinstance(agent, BaseAgent):
@@ -172,6 +177,7 @@ class AgentLifecycle:
         self._pool = pool
         self._state_manager = state_manager
         self._health_monitor = health_monitor
+        self._metrics_collector = metrics_collector or runtime_metrics_collector
 
         self._run_timeout_seconds = (
             float(configured_run_timeout)
@@ -575,6 +581,20 @@ class AgentLifecycle:
                     "tokens_used": result.tokens_used,
                 },
             )
+
+        if self._metrics_collector is not None:
+            try:
+                self._metrics_collector.record_task(
+                    latency=result.latency_ms / 1000,
+                    status=result.status.value,
+                    agent_id=str(self._agent.agent_id),
+                    tenant_id=self._agent.tenant_id,
+                )
+            except Exception:
+                self._logger.exception(
+                    "agent_lifecycle_metrics_collection_failed",
+                    correlation_id=active_correlation_id,
+                )
 
         return result
 
