@@ -429,8 +429,10 @@ async def test_cancel_queued_task_before_it_runs():
 
     async def marking_runner(spec: TaskSpec):
         nonlocal executed
+        await asyncio.sleep(0.1)
         executed = True
         return "ran"
+
 
     # Engine with no worker started (task_queue set but .start() not called
     # implicitly until execute_task enqueues) — cancel before draining.

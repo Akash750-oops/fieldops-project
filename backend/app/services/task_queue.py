@@ -117,6 +117,25 @@ class PriorityTaskQueue:
         self.redis.zadd(queue_key, {json.dumps(payload): score})
 
         return task_id
+    
+    def cancel(self, task_id: str, tenant_id: str) -> bool:
+        """Remove a queued task from Redis before it is dequeued."""
+
+        queue_key = self._queue_key(tenant_id)
+
+        for raw_task in self.redis.zrange(queue_key, 0, -1):
+            task = json.loads(raw_task)
+
+            if task.get("task_id") == task_id:
+                removed = self.redis.zrem(queue_key, raw_task)
+
+                if removed:
+                    if self.redis.zcard(queue_key) == 0:
+                        self.redis.srem(self.TENANT_REGISTRY, tenant_id)
+
+                    return True
+
+        return False
 
     def depth(self, tenant_id: str) -> int:
         """Return number of tasks currently waiting for one organization."""
