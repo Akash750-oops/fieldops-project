@@ -733,8 +733,10 @@ class AIRuntimeEngine:
             # REDIS QUEUE (NORMAL, LOW)
             # ==============================================================
 
-            await self.start()
-
+            
+            if not self._started:
+                await self.start()
+            
             queue_task_id = await asyncio.to_thread(
                 self._task_queue.enqueue,
                 task={"task_spec": spec.model_dump(mode="json")},
@@ -743,12 +745,24 @@ class AIRuntimeEngine:
             )
 
             handle.queue_task_id = queue_task_id
+            
+            if handle.cancelled:
+                if not handle.future.done():
+                    result = TaskResult(
+                        task_id=spec.task_id,
+                        status=TaskStatus.CANCELLED,
+                        error="Cancelled while queued",
+                        finished_at=datetime.now(timezone.utc),
+                    )
+                    self._metrics.record(result)
+                    handle.future.set_result(result)
+                return await future
 
             try:
                 return await future
             except asyncio.CancelledError:
-                await self._cancel_handle(spec.task_id)
                 raise
+                
 
         finally:
             # Don't remove a queued handle until the worker has completed it.
@@ -773,6 +787,8 @@ class AIRuntimeEngine:
         handle.cancelled = True
 
         running = self._running_tasks.get(task_id)
+        if running is None and handle.queue_task_id is not None:
+            running = self._running_tasks.get(handle.queue_task_id)
 
         if running is not None:
             running.cancel()
@@ -781,21 +797,47 @@ class AIRuntimeEngine:
                 await running
 
             return True
-
-        if not handle.future.done():
-            result = TaskResult(
-                task_id=task_id,
-                status=TaskStatus.CANCELLED,
-                error="Cancelled",
-                finished_at=datetime.now(timezone.utc),
+        
+        if (
+            running is None
+            and self._task_queue is not None
+            and handle.queue_task_id is not None
+        ):
+            removed = await asyncio.to_thread(
+                self._task_queue.cancel,
+                handle.queue_task_id,
+                handle.spec.tenant_id,
             )
 
-            self._metrics.record(result)
-            handle.future.set_result(result)
+            if removed:
+                if not handle.future.done():
+                    result = TaskResult(
+                        task_id=task_id,
+                        status=TaskStatus.CANCELLED,
+                        error="Cancelled",
+                        finished_at=datetime.now(timezone.utc),
+                    )
 
-            return True
+                    self._metrics.record(result)
+                    handle.future.set_result(result)
+
+                return True
+
+            if not handle.future.done():
+                result = TaskResult(
+                    task_id=task_id,
+                    status=TaskStatus.CANCELLED,
+                    error="Cancelled",
+                    finished_at=datetime.now(timezone.utc),
+                )
+
+                self._metrics.record(result)
+                handle.future.set_result(result)
+
+                return True
 
         return False
+        
 
     async def _cancel_handle(self, task_id: str) -> None:
         handle = self._handles.get(task_id)
@@ -885,7 +927,7 @@ class AIRuntimeEngine:
             return
 
         handle = self._find_handle(queue_task_id)
-
+        
         payload = queue_task.get("payload", {})
         spec_data = payload.get("task_spec")
 
@@ -936,7 +978,7 @@ class AIRuntimeEngine:
                 self._metrics.record(result)
                 handle.future.set_result(result)
 
-            self._handles.pop(queue_task_id, None)
+            self._handles.pop(handle.spec.task_id, None)
             return
 
         created_at = queue_task.get("created_at")
@@ -949,6 +991,40 @@ class AIRuntimeEngine:
             except (TypeError, ValueError):
                 queue_wait = 0.0
 
+        # Check cancellation again immediately before execution.
+        # This closes the race where cancel_task() runs after the
+        # first queued-state check but before _run_task().
+        if handle is not None and handle.cancelled:
+            if not handle.future.done():
+                result = TaskResult(
+                    task_id=spec.task_id,
+                    status=TaskStatus.CANCELLED,
+                    error="Cancelled while queued",
+                    finished_at=datetime.now(timezone.utc),
+                )
+
+                self._metrics.record(result)
+                handle.future.set_result(result)
+
+            self._handles.pop(handle.spec.task_id, None)
+            return
+        handle = self._find_handle(spec.task_id)
+
+        if handle is not None and handle.cancelled:
+            if not handle.future.done():
+                result = TaskResult(
+                    task_id=spec.task_id,
+                    status=TaskStatus.CANCELLED,
+                    error="Cancelled before execution",
+                    finished_at=datetime.now(timezone.utc),
+                    queue_wait_seconds=queue_wait,
+                )
+                self._metrics.record(result)
+                handle.future.set_result(result)
+
+            self._handles.pop(handle.spec.task_id, None)
+            return
+    
         result = await self._run_task(spec, queue_wait=queue_wait)
 
         # IMPORTANT: handles are keyed by the ORIGINAL spec.task_id, but
@@ -982,6 +1058,23 @@ class AIRuntimeEngine:
     # ========================================================================
 
     async def _run_task(self, spec: TaskSpec, *, queue_wait: float) -> TaskResult:
+        handle = self._find_handle(spec.task_id)
+
+        if handle is not None and handle.cancelled:
+            result = TaskResult(
+                task_id=spec.task_id,
+                status=TaskStatus.CANCELLED,
+                error="Cancelled before execution",
+                finished_at=datetime.now(timezone.utc),
+                queue_wait_seconds=queue_wait,
+            )
+
+            self._metrics.record(result)
+
+            if not handle.future.done():
+                handle.future.set_result(result)
+
+            return result
 
         await self._semaphore.acquire()
 
@@ -1036,7 +1129,8 @@ class AIRuntimeEngine:
 
             self._metrics.record(result)
 
-            handle = self._handles.get(spec.task_id)
+            handle = self._find_handle(spec.task_id)          # <-- change this line
+
 
             if handle is not None and not handle.future.done():
                 handle.future.set_result(result)

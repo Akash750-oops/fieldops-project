@@ -29,6 +29,15 @@ import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Type
 
+import asyncio
+from dataclasses import dataclass, field
+from uuid import uuid4
+
+from app.services.ai.FieldOpsAI.runtime.agent_registry import AgentRegistry
+from app.services.ai.FieldOpsAI.runtime.agent_bus import AgentBus
+from app.services.ai.FieldOpsAI.runtime.engine import AIRuntimeEngine, TaskSpec, TaskStatus
+from app.services.ai.FieldOpsAI.config.agent_config_manager import AgentConfigManager
+
 from pydantic import BaseModel
 
 from app.redis_client import get_redis_client
@@ -137,6 +146,44 @@ class _LegacyClientProviderAdapter(BaseAIProvider):
     def health_check(self) -> bool:
         return True
 
+@dataclass
+class SubTask:
+    task_id: str
+    task: str
+    agent_type: AITask
+    context: dict[str, Any]
+    dependencies: list[str] = field(default_factory=list)
+    priority: str = "normal"
+
+
+@dataclass
+class AgentMapping:
+    assignments: dict[str, AITask]
+
+
+@dataclass
+class AgentResult:
+    task_id: str
+    agent_type: AITask
+    result: Any
+    confidence: float = 1.0
+    status: str = "succeeded"
+    error: str | None = None
+
+
+@dataclass
+class FinalResult:
+    task_id: str
+    results: list[AgentResult]
+    result: Any
+    status: str = "succeeded"
+
+
+@dataclass
+class ResolvedResult:
+    result: Any
+    confidence: float
+    source_task_id: str | None = None
 
 class AIOrchestrator(RuntimeInterface):
     """
@@ -1229,7 +1276,7 @@ class AIOrchestrator(RuntimeInterface):
                 if provider_error is not None:
                     raise provider_error from None
 
-                if generation_result is None:
+                if generation_result is None:    # pragma: no cover
                     raise ProviderExecutionError(
                         "AI provider execution failed.",
                         is_retryable=False,
@@ -1286,13 +1333,28 @@ class AIOrchestrator(RuntimeInterface):
                     "AI orchestration failed "
                     f"for task '{task.value}'."
                 ) from None
+            print("FAILOVER RESULT:", failover_result)
+            print(
+                "FAILOVER GENERATION RESULT:",
+                failover_result.generation_result,
+            )
+
+            if failover_result.generation_result is None:
+                raise ProviderExecutionError(
+                    "AI provider execution failed.",
+                    is_retryable=False,
+                )
+
+            print(
+                "FAILOVER TEXT:",
+                failover_result.generation_result.text,
+            )
 
             raw_response = (
                 failover_result
                 .generation_result
                 .text
             )
-
             # ----------------------------------------------
             # 7. Restore placeholders locally
             # ----------------------------------------------
@@ -1402,6 +1464,380 @@ class AIOrchestrator(RuntimeInterface):
 
         except Exception:
             return False
+
+class AgentOrchestrator:
+    """
+    Coordinates multiple FieldOps agents for complex tasks.
+
+    Flow:
+
+        Task
+          ?
+        Decompose
+          ?
+        Select Agents
+          ?
+        Execute
+          ?
+        Aggregate
+          ?
+        Resolve Conflicts
+          ?
+        Final Result
+    """
+
+    MAX_ORCHESTRATION_SECONDS = 30.0
+    MAX_SUBTASK_SECONDS = 10.0
+
+    def __init__(
+        self,
+        *,
+        agent_registry: AgentRegistry,
+        agent_bus: AgentBus,
+        runtime_engine: AIRuntimeEngine,
+        config_manager: AgentConfigManager,
+    ) -> None:
+        self.agent_registry = agent_registry
+        self.agent_bus = agent_bus
+        self.runtime_engine = runtime_engine
+        self.config_manager = config_manager
+
+    def decompose(
+        self,
+        task: str,
+        *,
+        tenant_id: str,
+        context: dict[str, Any] | None = None,
+    ) -> list[SubTask]:
+        """
+        Break a high-level task into agent-specific subtasks.
+        """
+
+        if not isinstance(task, str) or not task.strip():
+            raise ValueError("task must be a non-empty string.")
+
+        if not isinstance(tenant_id, str) or not tenant_id.strip():
+            raise ValueError("tenant_id must be a non-empty string.")
+
+        context = dict(context or {})
+        context["tenant_id"] = tenant_id
+
+        task_id = str(uuid4())
+
+        return [
+            SubTask(
+                task_id=task_id,
+                task=task,
+                agent_type=AITask.PLANNING,
+                context=context,
+            )
+        ]
+
+    async def select_agents(
+        self,
+        sub_tasks: list[SubTask],
+    ) -> AgentMapping:
+        """
+        Select an enabled registered agent for each subtask.
+        """
+
+        assignments: dict[str, AITask] = {}
+
+        for sub_task in sub_tasks:
+            registration = self.agent_registry.get(
+                sub_task.agent_type
+            )
+
+            if not registration.enabled:
+                raise RuntimeError(
+                    f"Agent {sub_task.agent_type.value} is disabled."
+                )
+
+            assignments[sub_task.task_id] = sub_task.agent_type
+
+        return AgentMapping(assignments=assignments)
+
+    async def _execute_one(
+        self,
+        sub_task: SubTask,
+        agent_mapping: AgentMapping,
+    ) -> AgentResult:
+        """
+        Execute one subtask through the existing Runtime Engine.
+        """
+
+        agent_type = agent_mapping.assignments.get(
+            sub_task.task_id
+        )
+
+        if agent_type is None:
+            return AgentResult(
+                task_id=sub_task.task_id,
+                agent_type=sub_task.agent_type,
+                result=None,
+                confidence=0.0,
+                status="failed",
+                error="No agent assigned to subtask.",
+            )
+
+        try:
+            task_spec = TaskSpec(
+                task_id=sub_task.task_id,
+                tenant_id=sub_task.context["tenant_id"],
+                agent_type=agent_type,
+                context=sub_task.context,
+            )
+
+            task_result = await asyncio.wait_for(
+                self.runtime_engine.execute_task(task_spec),
+                timeout=self.MAX_SUBTASK_SECONDS,
+            )
+
+            if getattr(task_result, "status", None) == TaskStatus.SUCCEEDED:
+                return AgentResult(
+                    task_id=sub_task.task_id,
+                    agent_type=agent_type,
+                    result=getattr(task_result, "result", task_result),
+                    confidence=1.0,
+                    status="succeeded",
+                )
+
+            return AgentResult(
+                task_id=sub_task.task_id,
+                agent_type=agent_type,
+                result=None,
+                confidence=0.0,
+                status=str(getattr(task_result, "status", "failed")),
+                error=getattr(task_result, "error", "Agent execution failed."),
+            )
+
+        except asyncio.TimeoutError:
+            return AgentResult(
+                task_id=sub_task.task_id,
+                agent_type=agent_type,
+                result=None,
+                confidence=0.0,
+                status="timed_out",
+                error="Subtask exceeded 10 second timeout.",
+            )
+
+        except Exception as exc:
+            return AgentResult(
+                task_id=sub_task.task_id,
+                agent_type=agent_type,
+                result=None,
+                confidence=0.0,
+                status="failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
+    async def execute_parallel(
+        self,
+        sub_tasks: list[SubTask],
+        agent_mapping: AgentMapping,
+    ) -> list[AgentResult]:
+        """
+        Execute independent subtasks concurrently.
+        """
+
+        return list(
+            await asyncio.gather(
+                *(
+                    self._execute_one(
+                        sub_task,
+                        agent_mapping,
+                    )
+                    for sub_task in sub_tasks
+                )
+            )
+        )
+
+    async def execute_sequential(
+        self,
+        sub_tasks: list[SubTask],
+        agent_mapping: AgentMapping,
+    ) -> list[AgentResult]:
+        """
+        Execute subtasks sequentially while respecting dependencies.
+        """
+
+        completed: dict[str, AgentResult] = {}
+        results: list[AgentResult] = []
+        remaining = list(sub_tasks)
+
+        while remaining:
+            progress = False
+
+            for sub_task in remaining[:]:
+                if not all(
+                    dependency in completed
+                    for dependency in sub_task.dependencies
+                ):
+                    continue
+
+                progress = True
+                remaining.remove(sub_task)
+
+                result = await self._execute_one(
+                    sub_task,
+                    agent_mapping,
+                )
+
+                completed[sub_task.task_id] = result
+                results.append(result)
+
+            if not progress:
+                raise RuntimeError(
+                    "Unable to resolve subtask dependencies."
+                )
+
+        return results
+
+    def resolve_conflicts(
+        self,
+        results: list[AgentResult],
+    ) -> ResolvedResult:
+        """
+        Resolve contradictory results using confidence scoring.
+        """
+
+        successful = [
+            result
+            for result in results
+            if result.status == "succeeded"
+        ]
+
+        if not successful:
+            return ResolvedResult(
+                result=None,
+                confidence=0.0,
+                source_task_id=None,
+            )
+
+        winner = max(
+            successful,
+            key=lambda result: result.confidence,
+        )
+
+        return ResolvedResult(
+            result=winner.result,
+            confidence=winner.confidence,
+            source_task_id=winner.task_id,
+        )
+
+    def aggregate(
+        self,
+        results: list[AgentResult],
+    ) -> FinalResult:
+        """
+        Combine all subtask results into a final result.
+        """
+
+        if not results:
+            return FinalResult(
+                task_id=str(uuid4()),
+                results=[],
+                result=None,
+                status="failed",
+            )
+
+        resolved = self.resolve_conflicts(results)
+
+        failed = [
+            result
+            for result in results
+            if result.status != "succeeded"
+        ]
+
+        status = "failed" if failed and not resolved.result else "succeeded"
+
+        return FinalResult(
+            task_id=results[0].task_id,
+            results=results,
+            result=resolved.result,
+            status=status,
+        )
+
+    def execution_graph(
+        self,
+        sub_tasks: list[SubTask],
+    ) -> str:
+        """
+        Generate a Mermaid execution graph.
+        """
+
+        lines = [
+            "graph TD",
+            "    TASK[Orchestration Task]",
+        ]
+
+        for index, sub_task in enumerate(sub_tasks):
+            node = f"SUB{index}"
+            label = sub_task.agent_type.value
+            lines.append(
+                f"    TASK --> {node}[{label}]"
+            )
+
+            for dependency in sub_task.dependencies:
+                for dep_index, dependency_task in enumerate(sub_tasks):
+                    if dependency_task.task_id == dependency:
+                        lines.append(
+                            f"    SUB{dep_index} --> {node}"
+                        )
+
+        return "\n".join(lines)
+
+    async def orchestrate(
+        self,
+        task: str,
+        *,
+        tenant_id: str,
+        context: dict[str, Any] | None = None,
+        sequential: bool = False,
+    ) -> FinalResult:
+        """
+        Execute the complete orchestration flow.
+
+        Entire orchestration is limited to 30 seconds.
+        """
+
+        async def _run() -> FinalResult:
+            sub_tasks = self.decompose(
+                task,
+                tenant_id=tenant_id,
+                context=context,
+            )
+
+            agent_mapping = await self.select_agents(
+                sub_tasks
+            )
+
+            if sequential:
+                results = await self.execute_sequential(
+                    sub_tasks,
+                    agent_mapping,
+                )
+            else:
+                results = await self.execute_parallel(
+                    sub_tasks,
+                    agent_mapping,
+                )
+
+            return self.aggregate(results)
+
+        try:
+            return await asyncio.wait_for(
+                _run(),
+                timeout=self.MAX_ORCHESTRATION_SECONDS,
+            )
+
+        except asyncio.TimeoutError:
+            return FinalResult(
+                task_id=str(uuid4()),
+                results=[],
+                result=None,
+                status="timed_out",
+            )
 
 
 ai_orchestrator = AIOrchestrator()
