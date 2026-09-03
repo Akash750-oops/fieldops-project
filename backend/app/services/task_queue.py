@@ -257,7 +257,7 @@ class PriorityTaskQueue:
 
         self.redis.rpush(self.DLQ_KEY, json.dumps(dlq_entry))
 
-    def is_backpressured(self) -> bool:
+    def is_backpressured(self, tenant_id: Optional[str] = None) -> bool:
         """Return True when total queue depth is above the threshold."""
 
         return self.total_depth() > self.BACKPRESSURE_THRESHOLD
@@ -284,7 +284,7 @@ class PriorityTaskQueue:
             "tenant_id": tenant_id,
             "depth": self.depth(tenant_id),
             "oldest_task_age": self.oldest_task_age(tenant_id),
-            "throughput_global": self.throughput(),
+            "throughput": self.throughput(),
         }
 
     def total_depth(self) -> int:

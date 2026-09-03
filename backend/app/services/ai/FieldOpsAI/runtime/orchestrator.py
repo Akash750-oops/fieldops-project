@@ -1120,7 +1120,18 @@ class AIOrchestrator(RuntimeInterface):
                 ) as error:
                     provider_error = error
 
+                # except Exception:
+                #     provider_error = (
+                #         ProviderExecutionError(
+                #             "AI provider execution "
+                #             "failed.",
+                #             is_retryable=False,
+                #         )
+                #     )
+
                 except Exception:
+                    import traceback
+                    traceback.print_exc()
                     provider_error = (
                         ProviderExecutionError(
                             "AI provider execution "
