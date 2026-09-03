@@ -42,6 +42,7 @@ import traceback
 import uuid
 
 from dataclasses import dataclass, field
+from collections import deque
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Awaitable, Callable, Optional
@@ -412,7 +413,15 @@ class EngineMetrics:
     total_queue_wait_seconds: float = 0.0
 
     started_at: float = field(default_factory=time.monotonic)
-    _durations: list[float] = field(default_factory=list)
+
+    # Keep only a bounded latency history.
+    # This prevents sustained load from growing memory indefinitely.
+    _durations: deque[float] = field(
+        default_factory=lambda: deque(maxlen=10_000)
+    )
+
+    # Total number of tasks for which duration was recorded.
+    total_duration_samples: int = 0
 
     def record(self, result: TaskResult) -> None:
         if result.status == TaskStatus.SUCCEEDED:
@@ -426,6 +435,7 @@ class EngineMetrics:
 
         if result.duration_seconds is not None:
             self.total_duration_seconds += result.duration_seconds
+            self.total_duration_samples += 1
             self._durations.append(result.duration_seconds)
 
         if result.queue_wait_seconds is not None:
@@ -454,18 +464,29 @@ class EngineMetrics:
 
     @property
     def avg_latency_seconds(self) -> float:
-        if not self._durations:
+        if self.total_duration_samples == 0:
             return 0.0
-        return self.total_duration_seconds / len(self._durations)
+
+        return (
+            self.total_duration_seconds
+            / self.total_duration_samples
+        )
 
     @property
     def throughput(self) -> float:
         elapsed = time.monotonic() - self.started_at
+
         if elapsed <= 0:
             return 0.0
+
         return self.completed / elapsed
 
-    def snapshot(self, *, queue_depth: int, in_flight: int) -> dict[str, Any]:
+    def snapshot(
+        self,
+        *,
+        queue_depth: int,
+        in_flight: int,
+    ) -> dict[str, Any]:
         return {
             "submitted": self.total_submitted,
             "completed": self.completed,
@@ -475,16 +496,25 @@ class EngineMetrics:
             "timed_out": self.total_timed_out,
             "success_rate": round(self.success_rate, 4),
             "error_rate": round(self.error_rate, 4),
-            "avg_latency_seconds": round(self.avg_latency_seconds, 4),
-            "avg_queue_wait_seconds": round(
-                (self.total_queue_wait_seconds / self.completed) if self.completed else 0.0,
+            "avg_latency_seconds": round(
+                self.avg_latency_seconds,
                 4,
             ),
-            "throughput_tasks_per_second": round(self.throughput, 4),
+            "avg_queue_wait_seconds": round(
+                (
+                    self.total_queue_wait_seconds / self.completed
+                )
+                if self.completed
+                else 0.0,
+                4,
+            ),
+            "throughput_tasks_per_second": round(
+                self.throughput,
+                4,
+            ),
             "queue_depth": queue_depth,
             "in_flight": in_flight,
         }
-
 
 # ============================================================================
 # TYPES
@@ -1156,6 +1186,7 @@ class AIRuntimeEngine:
         )
 
         self._metrics.record(result)
+        self._handles.pop(spec.task_id, None)
 
         return result
 
