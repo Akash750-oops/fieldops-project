@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.dispatcher_alert_service import DispatcherAlertService
 import pytest
 from app.services.ai.FieldOpsAI.services.realtime_sentiment import (
@@ -555,6 +555,156 @@ async def test_escalation_with_customer_notifies_customer_and_manager(monkeypatc
         customer_phone="9876543210"
     )
 
+    scorer.escalation_service.notify_manager.assert_awaited_once_with(
+        escalation
+    )
+
+@pytest.mark.asyncio
+async def test_score_reply_when_alert_job_does_not_exist(monkeypatch):
+    db = MagicMock()
+
+    scorer = RealTimeSentimentScorer(db=db)
+
+    class FakeResult:
+        sentiment = "NEGATIVE"
+        confidence = 0.95
+        emotion = "anger"
+        urgency = "HIGH"
+        requires_human = True
+        summary = "Customer is unhappy"
+
+    monkeypatch.setattr(
+        scorer.sentiment_integration,
+        "analyze",
+        lambda **kwargs: FakeResult(),
+    )
+
+    # Force the alert-job lookup to return no job.
+    db.query.return_value.filter.return_value.first.return_value = None
+
+    # Still allow the sentiment record to be saved.
+    scorer._get_tenant_id = MagicMock(return_value="tenant-1")
+
+    # Prevent escalation from affecting this branch test.
+    scorer.escalation_service.create_escalation = MagicMock(
+        return_value=None
+    )
+
+    result = await scorer.score_reply(
+        reply_text="This is terrible service",
+        customer_id="customer-1",
+        job_id=999999,
+        channel="SMS",
+    )
+
+    assert result.sentiment == "NEGATIVE"
+    db.add.assert_called_once()
+    db.commit.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_score_reply_when_escalation_is_created():
+    db = MagicMock()
+
+    scorer = RealTimeSentimentScorer(db=db)
+
+    class FakeResult:
+        sentiment = "NEGATIVE"
+        confidence = 0.95
+        emotion = "anger"
+        urgency = "HIGH"
+        requires_human = True
+        summary = "Customer is unhappy"
+
+    scorer.sentiment_integration.analyze = MagicMock(
+        return_value=FakeResult()
+    )
+
+    scorer._get_tenant_id = MagicMock(
+        return_value="tenant-1"
+    )
+
+    escalation = MagicMock()
+
+    scorer.escalation_service.create_escalation = MagicMock(
+        return_value=escalation
+    )
+
+    scorer.escalation_service.notify_manager = AsyncMock()
+
+    customer = MagicMock()
+    customer.phone_number = "+919999999999"
+
+    query_mock = MagicMock()
+    query_mock.filter.return_value.first.return_value = customer
+    db.query.return_value = query_mock
+
+    with patch(
+        "app.services.ai.FieldOpsAI.services.realtime_sentiment.DispatcherAlertService.trigger_sentiment_alert"
+    ):
+        result = await scorer.score_reply(
+            reply_text="This is terrible service",
+            customer_id="customer-1",
+            job_id=1,
+            channel="SMS",
+        )
+
+    assert result.sentiment == "NEGATIVE"
+
+    scorer.escalation_service.create_escalation.assert_called_once()
+    scorer.escalation_service.notify_manager.assert_called_once_with(
+        escalation
+    )
+
+@pytest.mark.asyncio
+async def test_score_reply_when_customer_does_not_exist():
+    db = MagicMock()
+
+    scorer = RealTimeSentimentScorer(db=db)
+
+    class FakeResult:
+        sentiment = "NEGATIVE"
+        confidence = 0.95
+        emotion = "anger"
+        urgency = "HIGH"
+        requires_human = True
+        summary = "Customer is unhappy"
+
+    scorer.sentiment_integration.analyze = MagicMock(
+        return_value=FakeResult()
+    )
+
+    scorer._get_tenant_id = MagicMock(
+        return_value="tenant-1"
+    )
+
+    escalation = MagicMock()
+
+    scorer.escalation_service.create_escalation = MagicMock(
+        return_value=escalation
+    )
+
+    scorer.escalation_service.send_auto_response = AsyncMock()
+    scorer.escalation_service.notify_manager = AsyncMock()
+
+    # Customer lookup returns None.
+    query_mock = MagicMock()
+    query_mock.filter.return_value.first.return_value = None
+    db.query.return_value = query_mock
+
+    with patch(
+        "app.services.ai.FieldOpsAI.services.realtime_sentiment.DispatcherAlertService.trigger_sentiment_alert"
+    ):
+        result = await scorer.score_reply(
+            reply_text="This is terrible service",
+            customer_id="customer-1",
+            job_id=1,
+            channel="SMS",
+        )
+
+    assert result.sentiment == "NEGATIVE"
+
+    scorer.escalation_service.create_escalation.assert_called_once()
+    scorer.escalation_service.send_auto_response.assert_not_awaited()
     scorer.escalation_service.notify_manager.assert_awaited_once_with(
         escalation
     )

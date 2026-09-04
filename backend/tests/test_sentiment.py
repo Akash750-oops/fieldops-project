@@ -30,7 +30,7 @@ Covers:
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
-
+import json
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine, text
@@ -791,6 +791,33 @@ def test_get_core_metrics_handles_none_sentiment(service):
     assert result["total_replies"] == 1
     assert result["average_confidence"] == 0.0
 
+def test_get_core_metrics_handles_zero_distribution_total(service):
+    base = MagicMock()
+
+    base.count.return_value = 0
+
+    distribution_query = MagicMock()
+    distribution_query.group_by.return_value = distribution_query
+    distribution_query.all.return_value = [
+        ("POSITIVE", 0),
+    ]
+
+    confidence_query = MagicMock()
+    confidence_query.scalar.return_value = None
+
+    base.with_entities.side_effect = [
+        distribution_query,
+        confidence_query,
+    ]
+
+    service._base_query = MagicMock(
+        return_value=base,
+    )
+
+    result = service.get_core_metrics("tenant-1")
+
+    assert result["total_replies"] == 0
+
 
 # ============================================================
 # TREND
@@ -879,6 +906,29 @@ def test_get_sentiment_trend_calculates_weighted_average(service):
 
     assert len(result["buckets"]) == 1
     assert result["buckets"][0]["average_score"] == 0.5
+
+def test_get_sentiment_trend_handles_zero_total(service):
+    period = datetime(
+        2026,
+        8,
+        20,
+        tzinfo=timezone.utc,
+    )
+
+    _mock_trend_query(
+        service,
+        [
+            (period, "POSITIVE", 0),
+        ],
+    )
+
+    result = service.get_sentiment_trend(
+        "tenant-1",
+    )
+
+    assert len(result["buckets"]) == 1
+    assert result["buckets"][0]["total_replies"] == 0
+    assert result["buckets"][0]["average_score"] == 0.0
 
 
 def test_get_sentiment_trend_calculates_moving_average(service):
@@ -1229,6 +1279,24 @@ def test_get_technician_leaderboard_calculates_mixed_score(service):
 
     assert result[0]["average_score"] == 0.4
 
+def test_get_technician_leaderboard_ignores_unknown_sentiment(service):
+    _mock_technician_query(
+        service,
+        [
+            (1, "Tech A", "POSITIVE", 2),
+            (1, "Tech A", "UNKNOWN", 5),
+        ],
+    )
+
+    result = service.get_technician_leaderboard(
+        "tenant-1",
+    )
+
+    assert len(result) == 1
+    assert result[0]["technician_id"] == 1
+    assert result[0]["total_replies"] == 2
+    assert result[0]["average_score"] == 1.0
+
 
 # ============================================================
 # GROUPED BREAKDOWN
@@ -1323,7 +1391,35 @@ def test_build_grouped_breakdown_normalizes_sentiment(service):
     assert counts["POSITIVE"] == 5
     assert counts["NEGATIVE"] == 5
 
+def test_build_grouped_breakdown_ignores_unknown_sentiment(service):
+    rows = [
+        ("AC Repair", "POSITIVE", 5),
+        ("AC Repair", "UNKNOWN", 10),
+    ]
 
+    result = service._build_grouped_breakdown(
+        rows,
+        group_key_label="service_type",
+    )
+
+    assert len(result) == 1
+    assert result[0]["service_type"] == "AC Repair"
+    assert result[0]["total_replies"] == 5
+    assert result[0]["sentiment_counts"]["POSITIVE"] == 5
+
+def test_build_grouped_breakdown_skips_zero_total_group(service):
+    rows = [
+        ("AC Repair", "POSITIVE", 0),
+    ]
+
+    result = service._build_grouped_breakdown(
+        rows,
+        group_key_label="service_type",
+    )
+
+    assert result == []
+
+      
 def test_build_grouped_breakdown_returns_empty_for_empty_rows(
     service,
 ):
@@ -2365,6 +2461,95 @@ async def test_get_dashboard_endpoint(monkeypatch):
     assert result == payload
     service.get_dashboard_bundle.assert_called_once()
 
+
+@pytest.mark.asyncio
+async def test_get_dashboard_endpoint_returns_cached_payload(monkeypatch):
+    current_user = MagicMock()
+    current_user.is_super_admin = True
+    current_user.tenant_id = "tenant-1"
+
+    db = MagicMock()
+
+    payload = {
+        "metrics": {"total_replies": 10},
+        "trend": {},
+        "technician_leaderboard": [],
+        "job_type_breakdown": [],
+        "channel_breakdown": [],
+        "alert_feed": [],
+        "alert_summary": {},
+    }
+
+    redis_client = MagicMock()
+    redis_client.get.return_value = json.dumps(payload)
+
+    service = MagicMock()
+
+    monkeypatch.setattr(
+        dashboard,
+        "SentimentDashboardService",
+        lambda db: service,
+    )
+
+    result = await dashboard.get_dashboard(
+        tenant_id="tenant-1",
+        start_date=None,
+        end_date=None,
+        granularity="daily",
+        db=db,
+        current_user=current_user,
+        redis_client=redis_client,
+    )
+
+    assert result == payload
+    redis_client.get.assert_called_once()
+    service.get_dashboard_bundle.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_get_dashboard_endpoint_handles_empty_cache(monkeypatch):
+    current_user = MagicMock()
+    current_user.is_super_admin = True
+    current_user.tenant_id = "tenant-1"
+
+    db = MagicMock()
+
+    payload = {
+        "metrics": {},
+        "trend": {},
+        "technician_leaderboard": [],
+        "job_type_breakdown": [],
+        "channel_breakdown": [],
+        "alert_feed": [],
+        "alert_summary": {},
+    }
+
+    redis_client = MagicMock()
+    redis_client.get.return_value = None
+
+    service = MagicMock()
+    service.get_dashboard_bundle.return_value = payload
+
+    monkeypatch.setattr(
+        dashboard,
+        "SentimentDashboardService",
+        lambda db: service,
+    )
+
+    result = await dashboard.get_dashboard(
+        tenant_id="tenant-1",
+        start_date=None,
+        end_date=None,
+        granularity="daily",
+        db=db,
+        current_user=current_user,
+        redis_client=redis_client,
+    )
+
+    assert result == payload
+    redis_client.get.assert_called_once()
+    service.get_dashboard_bundle.assert_called_once()
+
+
 @pytest.mark.asyncio
 async def test_get_metrics_endpoint(monkeypatch):
     current_user = MagicMock()
@@ -2453,6 +2638,55 @@ async def test_export_dashboard_data_endpoint(monkeypatch):
     result = await dashboard.export_dashboard_data(
         tenant_id="tenant-1",
         format="csv",
+        export_type="trend",
+        start_date=None,
+        end_date=None,
+        granularity="daily",
+        db=db,
+        current_user=current_user,
+        redis_client=None,
+    )
+
+    assert result is expected_response
+
+@pytest.mark.asyncio
+async def test_export_dashboard_data_endpoint_png(monkeypatch):
+    current_user = MagicMock()
+    current_user.is_super_admin = True
+    current_user.tenant_id = "tenant-1"
+
+    db = MagicMock()
+
+    service = MagicMock()
+
+    monkeypatch.setattr(
+        dashboard,
+        "SentimentDashboardService",
+        lambda db: service,
+    )
+
+    expected_response = MagicMock()
+
+    monkeypatch.setattr(
+        dashboard,
+        "_get_export_rows",
+        lambda service, export_type, tenant_id, start_date, end_date, granularity: (
+            [["2026-08-28", 10, 0.8, 0.7]],
+            ["period", "total_replies", "average_score", "moving_average"],
+            0,
+            2,
+        ),
+    )
+
+    monkeypatch.setattr(
+        dashboard,
+        "_export_png",
+        lambda rows, headers, export_type, label_index, value_index: expected_response,
+    )
+
+    result = await dashboard.export_dashboard_data(
+        tenant_id="tenant-1",
+        format="png",
         export_type="trend",
         start_date=None,
         end_date=None,
