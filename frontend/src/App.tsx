@@ -1747,6 +1747,12 @@ function AppContent() {
     loadFromStorage();
   }, [loadFromStorage]);
 
+  useEffect(() => {
+    if(isAuthenticated) {
+      setShowOnboarding(false);
+    }
+  }, [isAuthenticated]);
+
   // Show organization onboarding page
   if (!isAuthenticated && showOnboarding) {
     return (
