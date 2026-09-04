@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 from .database import SessionLocal
 from app.routes import admin_dlq
-from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking, brand_safety_admin, admin_prompts, admin_communication_configuration, message_preview, admin_retention, admin_queue, admin_metrics
+from .routes import jobs, technicians, assignment, planning, dispatch, notifications, in_app_notifications, templates, escalations, alerts, audit, dispatch_queue, dispatch_metrics, gps, admin_gps, eta, tracking, brand_safety_admin, admin_prompts, admin_communication_configuration, message_preview, admin_retention, admin_queue, admin_metrics, admin_tools
 from .routes import auth as auth_routes
 from .routes.organizations import org_router, platform_router
 from .routes import sentiment_escalations
@@ -287,6 +287,7 @@ app.include_router(admin_retention.router)
 app.include_router(admin_queue.router)
 app.include_router(admin_dlq.router)
 app.include_router(admin_metrics.router)
+app.include_router(admin_tools.router)
 # ──── Portal Routes ────
 from .routes import technician_portal, customer_portal
 app.include_router(technician_portal.router)

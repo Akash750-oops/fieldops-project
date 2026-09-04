@@ -1,7 +1,7 @@
 from unittest.mock import Mock
 
 import pytest
-
+from app.sentiment.escalation import SentimentEscalationService
 from app.services.ai.FieldOpsAI.agents.sentiment_engine import (
     SentimentEngine,
 )

@@ -351,6 +351,16 @@ def test_no_sla_breach(service):
     result = service.check_sla_breach(escalation)
 
     assert result is None
+
+def test_check_sla_breach_returns_none_for_non_open_escalation(service):
+    escalation = MagicMock()
+    escalation.status = "RESOLVED"
+
+    result = service.check_sla_breach(escalation)
+
+    assert result is None
+
+
 # ============================================================
 # 11. Suppression returns True
 # ============================================================
@@ -923,6 +933,39 @@ async def test_notify_manager_push_success(service):
     mock_notification.assert_called_once()
     mock_message.assert_called_once()
     mock_send.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_notify_manager_push_skipped_without_fcm_token(service):
+    escalation = make_escalation()
+
+    manager = MagicMock(
+        id="manager-1",
+        email=None,
+        phone_number=None,
+        fcm_token=None,
+    )
+
+    service.db.query.return_value.filter.return_value.first.return_value = (
+        manager
+    )
+
+    service.build_escalation_payload = MagicMock(
+        return_value={"job_id": 101}
+    )
+
+    mock_ws = MagicMock()
+    mock_ws.broadcast = AsyncMock()
+
+    with patch(
+        "app.services.socket_manager.default_ws_manager",
+        mock_ws,
+        create=True,
+    ):
+        result = await service.notify_manager(escalation)
+
+    assert result["push"] is False
+    
 
 # ============================================================
 # API TESTS
