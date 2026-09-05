@@ -159,7 +159,7 @@ class OrgAdminCreateRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=128)
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
-    role: Optional[str] = Field(default="admin")
+    role: str = Field(default="dispatcher")
 
 
 class OrgResponse(BaseModel):
@@ -874,11 +874,21 @@ async def create_org_admin(
         raise HTTPException(status_code=403, detail="Access denied to this organization")
 
     # Prevent creation of Super Admin accounts via user provisioning
-    requested_role = (payload.role or "").lower().strip()
+    requested_role = (payload.role or "admin").lower().strip()
+
     if requested_role in ["super_admin", "superadmin", "super admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Creating Super Admin accounts is not permitted.",
+        )
+
+    try:
+        role = UserRole(requested_role)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid role: {requested_role}. Valid roles: "
+                f"{', '.join(r.value for r in UserRole)}",
         )
 
     org = db.query(Organization).filter(
@@ -927,7 +937,7 @@ async def create_org_admin(
         password_hash=hash_password(payload.password),
         first_name=payload.first_name.strip(),
         last_name=payload.last_name.strip(),
-        role=(payload.role or UserRole.SUPER_ADMIN.value).lower(),
+        role=role.value,
         tenant_id=org_id,
         is_active=True,
         is_email_verified=True,  # Admin-created accounts are pre-verified
@@ -941,7 +951,7 @@ async def create_org_admin(
         role=current_user.role.value,
         entity_type="user",
         entity_id=admin.id,
-        new_value={"email": admin.email, "role": "admin"},
+        new_value={"email": admin.email, "role": admin.role},
         request=request,
     )
 
