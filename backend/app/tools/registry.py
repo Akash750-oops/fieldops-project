@@ -4,6 +4,7 @@ import pkgutil
 from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any, Callable
+
 from app.redis_client import get_redis_client
 
 from app.tools.examples import (
@@ -23,6 +24,8 @@ class RegisteredTool:
     dependencies: set[str] = field(default_factory=set)
     permissions: set[str] = field(default_factory=set)
     health: str = "healthy"
+    cacheable: bool = True
+    cache_ttl: int = 60
 
 
 class ToolRegistry:
@@ -30,13 +33,13 @@ class ToolRegistry:
         self._tools: dict[str, ToolSchema] = {}
         self._registered_tools: dict[str, RegisteredTool] = {}
         self._tool_versions: dict[str, dict[str, RegisteredTool]] = {}
+
         self._redis = (
             redis_client
             if redis_client is not None
             else get_redis_client()
         )
 
-        
     def tool(
         self,
         schema: ToolSchema,
@@ -44,6 +47,8 @@ class ToolRegistry:
         capabilities: set[str] | None = None,
         dependencies: set[str] | None = None,
         permissions: set[str] | None = None,
+        cacheable: bool = True,
+        cache_ttl: int = 60,
     ):
         def decorator(func: Callable[..., Any]):
             @wraps(func)
@@ -57,6 +62,8 @@ class ToolRegistry:
                 capabilities=capabilities,
                 dependencies=dependencies,
                 permissions=permissions,
+                cacheable=cacheable,
+                cache_ttl=cache_ttl,
             )
 
             return wrapper
@@ -88,7 +95,6 @@ class ToolRegistry:
 
         return discovered
 
-
     def register_tool(
         self,
         tool: ToolSchema,
@@ -97,7 +103,13 @@ class ToolRegistry:
         capabilities: set[str] | None = None,
         dependencies: set[str] | None = None,
         permissions: set[str] | None = None,
+        cacheable: bool = True,
+        cache_ttl: int = 60,
     ) -> str:
+
+        if cache_ttl <= 0:
+            raise ValueError("cache_ttl must be greater than 0")
+
         tool_id = tool.contract.name
 
         self._tools[tool_id] = tool
@@ -109,13 +121,18 @@ class ToolRegistry:
             capabilities=capabilities or set(),
             dependencies=dependencies or set(),
             permissions=permissions or set(),
+            cacheable=cacheable,
+            cache_ttl=cache_ttl,
         )
 
         self._registered_tools[tool_id] = registered_tool
 
         version = tool.contract.version
 
-        self._tool_versions.setdefault(tool_id, {})[version] = registered_tool
+        self._tool_versions.setdefault(
+            tool_id,
+            {},
+        )[version] = registered_tool
 
         return tool_id
 
@@ -155,8 +172,7 @@ class ToolRegistry:
             )
         except Exception:
             return False
-        
-    
+
     def search_tools(
         self,
         name: str | None = None,
@@ -205,7 +221,6 @@ class ToolRegistry:
         tool.health = health
         return True
 
-
     def get_dependencies(self, tool_id: str) -> set[str] | None:
         tool = self._registered_tools.get(tool_id)
 
@@ -220,7 +235,6 @@ class ToolRegistry:
             for tool_id, tool in self._registered_tools.items()
         }
 
-
     def validate_dependencies(self, tool_id: str) -> list[str]:
         """Return dependencies that are not registered."""
         tool = self._registered_tools.get(tool_id)
@@ -233,7 +247,6 @@ class ToolRegistry:
             for dependency in tool.dependencies
             if dependency not in self._registered_tools
         ]
-    
 
     def check_permission(
         self,
@@ -246,7 +259,6 @@ class ToolRegistry:
             return False
 
         return permission in tool.permissions
-
 
     def get_version(self, tool_id: str) -> str | None:
         tool = self._registered_tools.get(tool_id)
