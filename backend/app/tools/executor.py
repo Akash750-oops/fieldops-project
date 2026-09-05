@@ -17,9 +17,11 @@ class ToolExecutor:
         self,
         registry: ToolRegistry,
         validator: ToolInputValidator | None = None,
+        cache=None,
     ):
         self.registry = registry
         self.validator = validator or ToolInputValidator()
+        self.cache = cache
 
     def execute(
         self,
@@ -50,6 +52,33 @@ class ToolExecutor:
                 "; ".join(validation_result.errors)
             )
 
-        return registered_tool.handler(
-            **(validation_result.data or {})
+        validated_parameters = validation_result.data or {}
+
+        if (
+            self.cache is not None
+            and registered_tool.cacheable
+        ):
+            cached_result = self.cache.get(
+                tool_id,
+                validated_parameters,
+            )
+
+            if cached_result is not None:
+                return cached_result
+
+        result = registered_tool.handler(
+            **validated_parameters
         )
+
+        if (
+            self.cache is not None
+            and registered_tool.cacheable
+        ):
+            self.cache.set(
+                tool_id,
+                validated_parameters,
+                result,
+                ttl=registered_tool.cache_ttl,
+            )
+
+        return result
