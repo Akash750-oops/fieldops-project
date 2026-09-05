@@ -66,7 +66,7 @@ export default function ProfilePage() {
   const [userPassword, setUserPassword] = useState("");
   const [userFirstName, setUserFirstName] = useState("");
   const [userLastName, setUserLastName] = useState("");
-  const [userRole, setUserRole] = useState("admin");
+  const [userRole, setUserRole] = useState("dispatcher");
   const [isSubmittingUser, setIsSubmittingUser] = useState(false);
 
   // Organizations list
