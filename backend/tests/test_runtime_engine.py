@@ -17,6 +17,7 @@ Run with:
 """
 
 import asyncio
+from unittest.mock import patch
 import time
 
 import fakeredis
@@ -554,3 +555,93 @@ async def test_execute_after_shutdown_raises():
     spec = TaskSpec(agent_type="demo", tenant_id="org-1")
     with pytest.raises(RuntimeError):
         await engine.execute_task(spec)
+
+
+def test_sandbox_entrypoint_async_success():
+    from unittest.mock import MagicMock
+
+    connection = MagicMock()
+
+    async def run_agent(agent_type, context):
+        return {"agent": agent_type, "value": context["value"]}
+
+    with patch("importlib.import_module") as mock_import:
+        module = MagicMock()
+        module.run_agent = run_agent
+        mock_import.return_value = module
+
+        from app.services.ai.FieldOpsAI.runtime.engine import _sandbox_entrypoint
+
+        _sandbox_entrypoint(
+            "fake_module:run_agent",
+            "task-1",
+            "demo",
+            {"value": "ok"},
+            128,
+            connection,
+        )
+
+    connection.send.assert_called_once_with(
+        ("ok", {"agent": "demo", "value": "ok"})
+    )
+
+
+def test_sandbox_entrypoint_memory_error():
+    from unittest.mock import MagicMock
+
+    connection = MagicMock()
+
+    with patch("importlib.import_module") as mock_import:
+        module = MagicMock()
+
+        def run_agent(agent_type, context):
+            raise MemoryError()
+
+        module.run_agent = run_agent
+        mock_import.return_value = module
+
+        from app.services.ai.FieldOpsAI.runtime.engine import _sandbox_entrypoint
+
+        _sandbox_entrypoint(
+            "fake_module:run_agent",
+            "task-1",
+            "demo",
+            {},
+            128,
+            connection,
+        )
+
+    connection.send.assert_called_once_with(
+        ("memory_error", "MemoryError: task exceeded 128MB")
+    )
+
+
+def test_sandbox_entrypoint_general_exception():
+    from unittest.mock import MagicMock
+
+    connection = MagicMock()
+
+    with patch("importlib.import_module") as mock_import:
+        module = MagicMock()
+
+        def run_agent(agent_type, context):
+            raise ValueError("test error")
+
+        module.run_agent = run_agent
+        mock_import.return_value = module
+
+        from app.services.ai.FieldOpsAI.runtime.engine import _sandbox_entrypoint
+
+        _sandbox_entrypoint(
+            "fake_module:run_agent",
+            "task-1",
+            "demo",
+            {},
+            128,
+            connection,
+        )
+
+    status, message = connection.send.call_args[0][0]
+
+    assert status == "error"
+    assert "ValueError: test error" in message

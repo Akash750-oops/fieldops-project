@@ -168,9 +168,15 @@ else:
     )
 
 # Security headers middleware
-from .middleware.tenant import SecurityHeadersMiddleware, RateLimitMiddleware
+from .middleware.tenant import (
+    SecurityHeadersMiddleware,
+    RateLimitMiddleware,
+    RequestSizeLimitMiddleware,
+)
+
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(RequestSizeLimitMiddleware)
 
 from .context import correlation_id_ctx
 import uuid
