@@ -109,6 +109,19 @@ def _title_case(value: Any) -> str:
         return ""
 
     return str(value).title()
+def _safe_url(value: Any) -> str:
+    if value is None:
+        return ""
+
+    url = str(value).strip()
+
+    if re.match(r"^(https?|mailto):", url, re.IGNORECASE):
+        return url
+
+    if url.startswith(("/", "./", "../")):
+        return url
+
+    return "#"
 
 _ALLOWED_NODE_TYPES = (
     nodes.Template, nodes.Output, nodes.TemplateData, nodes.Name, 
@@ -209,6 +222,7 @@ class PromptVariableInjector:
         env.filters["format_time"] = _format_time
         env.filters["currency"] = _currency
         env.filters["title_case"] = _title_case
+        env.filters["safe_url"] = _safe_url
 
         allowed_tests = {
             "defined", "undefined", "none", "boolean", "string", 
@@ -370,7 +384,7 @@ class PromptVariableInjector:
 
         node_count = 0
         _ALLOWED_FILTERS = {"default", "lower", "upper", "title", "capitalize", "trim", "replace", "join", "length", "int", "float", "round", "escape", "e", "format_date", "format_datetime", "format_time",
-                            "currency", "title_case",}
+                            "currency", "title_case","safe_url",}
         _ALLOWED_TESTS = {"defined", "undefined", "none", "boolean", "string", "number", "mapping", "sequence", "equalto"}
 
         for node in parsed.find_all(nodes.Node):
